@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HelpDesk Lite — Ticket #1042</title>
+<style>
+  :root {
+    --surface-base: #FFFFFF;
+    --surface-subtle: #F7F8FA;
+    --surface-muted: #EEF1F4;
+    --border-default: #E4E7EB;
+    --border-strong: #CBD2D9;
+    --text-primary: #1F2933;
+    --text-secondary: #52606D;
+    --text-muted: #7B8794;
+    --action-primary: #2563EB;
+    --action-primary-hover: #1D4ED8;
+    --status-open: #2563EB;
+    --status-inprogress: #D97706;
+    --status-resolved: #059669;
+    --status-closed: #6B7280;
+    --priority-high: #DC2626;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    background: var(--surface-subtle);
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .topbar {
+    height: 56px;
+    background: var(--surface-base);
+    border-bottom: 1px solid var(--border-default);
+    display: flex;
+    align-items: center;
+    padding: 0 32px;
+    gap: 24px;
+  }
+  .brand {
+    font-size: 16px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .brand-mark {
+    width: 28px; height: 28px;
+    background: var(--action-primary);
+    border-radius: 6px;
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .topbar-spacer { flex: 1; }
+  .back-link {
+    font-size: 14px;
+    color: var(--action-primary);
+    text-decoration: none;
+    margin-right: 16px;
+  }
+  .profile {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text-secondary);
+  }
+  .avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 500; font-size: 12px;
+  }
+  main {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 32px;
+  }
+  .breadcrumb {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .ticket-header {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .ticket-id-title {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 16px;
+  }
+  .ticket-id {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+  .ticket-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .meta-field {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .meta-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 500;
+  }
+  .meta-value {
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 500;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .pill-icon { font-size: 10px; }
+  .pill-open { background: rgba(37, 99, 235, 0.12); color: var(--status-open); }
+  .pill-inprogress { background: rgba(217, 119, 6, 0.12); color: var(--status-inprogress); }
+  .pill-resolved { background: rgba(5, 150, 105, 0.12); color: var(--status-resolved); }
+  .pill-high { background: rgba(220, 38, 38, 0.12); color: var(--priority-high); }
+  .meta-value select {
+    padding: 4px 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--surface-base);
+    color: var(--text-primary);
+  }
+  .description-card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 12px;
+  }
+  .description-text {
+    color: var(--text-primary);
+    line-height: 1.625;
+    white-space: pre-wrap;
+  }
+  .comments-card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 24px;
+  }
+  .comment {
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+  .comment:last-of-type { border-bottom: none; }
+  .comment-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px;
+  }
+  .comment-avatar {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 500; font-size: 11px;
+  }
+  .comment-author {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+  .agent-badge {
+    background: var(--action-primary);
+    color: white;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .comment-time {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .comment-body {
+    color: var(--text-primary);
+    line-height: 1.625;
+    margin-left: 32px;
+  }
+  .comment-composer {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-default);
+  }
+  textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text-primary);
+    min-height: 80px;
+    resize: vertical;
+  }
+  textarea:focus {
+    outline: none;
+    border-color: var(--border-strong);
+    box-shadow: 0 0 0 2px var(--action-primary);
+  }
+  .composer-actions {
+    display: flex; justify-content: flex-end;
+    margin-top: 8px;
+  }
+  button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .btn-primary {
+    background: var(--action-primary);
+    color: white;
+    border-color: var(--action-primary);
+  }
+  .btn-primary:hover { background: var(--action-primary-hover); border-color: var(--action-primary-hover); }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">H</div>
+      HelpDesk Lite
+    </div>
+    <a href="#" class="back-link">← Back to tickets</a>
+    <div class="topbar-spacer"></div>
+    <div class="profile">
+      <div class="avatar">S</div>
+      <span>Sam (Agent)</span>
+    </div>
+  </header>
+  <main>
+    <div class="breadcrumb">Tickets · Open</div>
+
+    <div class="ticket-header">
+      <div class="ticket-id-title">
+        <span class="ticket-id">#1042</span>
+        <span class="ticket-title">VPN won't connect from home</span>
+      </div>
+      <div class="meta-grid">
+        <div class="meta-field">
+          <div class="meta-label">Status</div>
+          <div class="meta-value">
+            <select>
+              <option selected>Open</option>
+              <option>In Progress</option>
+              <option>Resolved</option>
+            </select>
+          </div>
+        </div>
+        <div class="meta-field">
+          <div class="meta-label">Priority</div>
+          <div class="meta-value">
+            <select>
+              <option>Low</option>
+              <option>Medium</option>
+              <option selected>High</option>
+            </select>
+          </div>
+        </div>
+        <div class="meta-field">
+          <div class="meta-label">Category</div>
+          <div class="meta-value">IT</div>
+        </div>
+        <div class="meta-field">
+          <div class="meta-label">Assignee</div>
+          <div class="meta-value">
+            <select>
+              <option>Unassigned</option>
+              <option selected>Sam</option>
+              <option>Jordan</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border-default);">
+        <button class="btn-primary">Resolve</button>
+      </div>
+    </div>
+
+    <div class="description-card">
+      <div class="section-title">Description</div>
+      <div class="description-text">I cannot connect to the company VPN from home. The client shows error 800 — "Unable to establish connection." I've restarted my router and the VPN client but the problem persists.
+
+Started after the laptop update last night. Other devices on the same network work fine.
+
+Need this working before the client call at 2pm.</div>
+    </div>
+
+    <div class="comments-card">
+      <div class="section-title">Comments</div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <div class="comment-avatar">S</div>
+          <span class="comment-author">Sam</span>
+          <span class="agent-badge">Agent</span>
+          <span class="comment-time">· 2 hours ago</span>
+        </div>
+        <div class="comment-body">Hi Priya — looking into this now. Can you try opening the VPN client as administrator (right-click → Run as admin) and see if that changes anything?</div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <div class="comment-avatar">P</div>
+          <span class="comment-author">Priya Shah</span>
+          <span class="comment-time">· 1 hour ago</span>
+        </div>
+        <div class="comment-body">Tried that, same error. Also tried clearing the credentials in the VPN settings and re-entering them.</div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <div class="comment-avatar">S</div>
+          <span class="comment-author">Sam</span>
+          <span class="agent-badge">Agent</span>
+          <span class="comment-time">· 30 minutes ago</span>
+        </div>
+        <div class="comment-body">Got it. I'm going to push a config reset to your VPN profile — you should see a prompt in the next 5 minutes. Once accepted, try connecting again.</div>
+      </div>
+
+      <div class="comment-composer">
+        <textarea placeholder="Write a comment…"></textarea>
+        <div class="composer-actions">
+          <button class="btn-primary">Send</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
