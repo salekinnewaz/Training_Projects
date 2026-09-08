@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HelpDesk Lite — My Tickets</title>
+<style>
+  :root {
+    --surface-base: #FFFFFF;
+    --surface-subtle: #F7F8FA;
+    --surface-muted: #EEF1F4;
+    --border-default: #E4E7EB;
+    --border-strong: #CBD2D9;
+    --text-primary: #1F2933;
+    --text-secondary: #52606D;
+    --text-muted: #7B8794;
+    --action-primary: #2563EB;
+    --action-primary-hover: #1D4ED8;
+    --status-open: #2563EB;
+    --status-inprogress: #D97706;
+    --status-resolved: #059669;
+    --status-closed: #6B7280;
+    --priority-high: #DC2626;
+    --priority-medium: #D97706;
+    --priority-low: #6B7280;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    background: var(--surface-subtle);
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .topbar {
+    height: 56px;
+    background: var(--surface-base);
+    border-bottom: 1px solid var(--border-default);
+    display: flex;
+    align-items: center;
+    padding: 0 32px;
+    gap: 24px;
+  }
+  .brand {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .brand-mark {
+    width: 28px; height: 28px;
+    background: var(--action-primary);
+    border-radius: 6px;
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .topbar-spacer { flex: 1; }
+  .profile {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+  .avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 500;
+    font-size: 12px;
+  }
+  main {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 32px;
+  }
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .page-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .btn-primary {
+    padding: 8px 16px;
+    background: var(--action-primary);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary:hover { background: var(--action-primary-hover); }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .stat-value {
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .ticket-list {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .list-header {
+    display: grid;
+    grid-template-columns: 80px 1fr 120px 120px 120px 140px;
+    gap: 16px;
+    padding: 12px 16px;
+    background: var(--surface-subtle);
+    border-bottom: 1px solid var(--border-default);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .ticket-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 120px 120px 120px 140px;
+    gap: 16px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-default);
+    align-items: center;
+  }
+  .ticket-row:last-child { border-bottom: none; }
+  .ticket-row:hover { background: var(--surface-subtle); cursor: pointer; }
+  .ticket-id {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .ticket-title {
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  .pill-icon { font-size: 10px; }
+  .pill-open { background: rgba(37, 99, 235, 0.12); color: var(--status-open); }
+  .pill-inprogress { background: rgba(217, 119, 6, 0.12); color: var(--status-inprogress); }
+  .pill-resolved { background: rgba(5, 150, 105, 0.12); color: var(--status-resolved); }
+  .pill-closed { background: rgba(107, 114, 128, 0.12); color: var(--status-closed); }
+  .pill-high { background: rgba(220, 38, 38, 0.12); color: var(--priority-high); }
+  .pill-medium { background: rgba(217, 119, 6, 0.12); color: var(--priority-medium); }
+  .pill-low { background: rgba(107, 114, 128, 0.12); color: var(--priority-low); }
+  .assignee {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-secondary);
+  }
+  .assignee-avatar {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 500;
+  }
+  .unassigned {
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 13px;
+  }
+  .updated {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">H</div>
+      HelpDesk Lite
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="profile">
+      <div class="avatar">P</div>
+      <span>Priya Shah</span>
+    </div>
+  </header>
+  <main>
+    <div class="page-header">
+      <h1 class="page-title">My Tickets</h1>
+      <button class="btn-primary">+ Create Ticket</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-label">Open</div>
+        <div class="stat-value">3</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">In Progress</div>
+        <div class="stat-value">2</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Resolved</div>
+        <div class="stat-value">1</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Closed</div>
+        <div class="stat-value">8</div>
+      </div>
+    </div>
+
+    <div class="ticket-list">
+      <div class="list-header">
+        <div>ID</div>
+        <div>Title</div>
+        <div>Status</div>
+        <div>Priority</div>
+        <div>Assignee</div>
+        <div>Updated</div>
+      </div>
+      <div class="ticket-row">
+        <div class="ticket-id">#1042</div>
+        <div class="ticket-title">VPN won't connect from home</div>
+        <div><span class="pill pill-open"><span class="pill-icon">●</span> Open</span></div>
+        <div><span class="pill pill-high"><span class="pill-icon">▲</span> High</span></div>
+        <div><span class="assignee"><span class="assignee-avatar">S</span> Sam</span></div>
+        <div class="updated">2 hours ago</div>
+      </div>
+      <div class="ticket-row">
+        <div class="ticket-id">#1038</div>
+        <div class="ticket-title">Email signature not updating</div>
+        <div><span class="pill pill-inprogress"><span class="pill-icon">◐</span> In Progress</span></div>
+        <div><span class="pill pill-medium"><span class="pill-icon">■</span> Medium</span></div>
+        <div><span class="assignee"><span class="assignee-avatar">S</span> Sam</span></div>
+        <div class="updated">Yesterday</div>
+      </div>
+      <div class="ticket-row">
+        <div class="ticket-id">#1031</div>
+        <div class="ticket-title">Laptop battery drains in 2 hours</div>
+        <div><span class="pill pill-resolved"><span class="pill-icon">✓</span> Resolved</span></div>
+        <div><span class="pill pill-low"><span class="pill-icon">▼</span> Low</span></div>
+        <div><span class="assignee"><span class="assignee-avatar">J</span> Jordan</span></div>
+        <div class="updated">3 days ago</div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

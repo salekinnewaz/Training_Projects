@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HelpDesk Lite — Agent Dashboard</title>
+<style>
+  :root {
+    --surface-base: #FFFFFF;
+    --surface-subtle: #F7F8FA;
+    --surface-muted: #EEF1F4;
+    --border-default: #E4E7EB;
+    --border-strong: #CBD2D9;
+    --text-primary: #1F2933;
+    --text-secondary: #52606D;
+    --text-muted: #7B8794;
+    --action-primary: #2563EB;
+    --status-open: #2563EB;
+    --status-inprogress: #D97706;
+    --status-resolved: #059669;
+    --status-closed: #6B7280;
+    --priority-high: #DC2626;
+    --priority-medium: #D97706;
+    --priority-low: #6B7280;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    background: var(--surface-subtle);
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .topbar {
+    height: 56px;
+    background: var(--surface-base);
+    border-bottom: 1px solid var(--border-default);
+    display: flex;
+    align-items: center;
+    padding: 0 32px;
+    gap: 24px;
+  }
+  .brand {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .brand-mark {
+    width: 28px; height: 28px;
+    background: var(--action-primary);
+    border-radius: 6px;
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .nav-link {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+  }
+  .nav-link.active { color: var(--action-primary); background: rgba(37, 99, 235, 0.08); }
+  .topbar-spacer { flex: 1; }
+  .search {
+    width: 320px;
+    padding: 6px 12px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  .profile {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text-secondary);
+  }
+  .avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 500; font-size: 12px;
+  }
+  main {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 32px;
+  }
+  .page-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .page-title { font-size: 20px; font-weight: 600; }
+  .filter-bar {
+    display: flex; gap: 8px; margin-bottom: 24px;
+  }
+  .filter-chip {
+    padding: 6px 12px;
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .filter-chip.active {
+    border-color: var(--action-primary);
+    color: var(--action-primary);
+    background: rgba(37, 99, 235, 0.08);
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .column {
+    background: var(--surface-muted);
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 480px;
+  }
+  .column-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 4px 12px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border-default);
+  }
+  .column-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .column-count {
+    background: var(--surface-base);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(31, 41, 51, 0.06);
+  }
+  .card:hover {
+    box-shadow: 0 4px 12px rgba(31, 41, 51, 0.08);
+    border-color: var(--border-strong);
+  }
+  .card-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+  .card-pills {
+    display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .pill-icon { font-size: 9px; }
+  .pill-open { background: rgba(37, 99, 235, 0.12); color: var(--status-open); }
+  .pill-inprogress { background: rgba(217, 119, 6, 0.12); color: var(--status-inprogress); }
+  .pill-resolved { background: rgba(5, 150, 105, 0.12); color: var(--status-resolved); }
+  .pill-closed { background: rgba(107, 114, 128, 0.12); color: var(--status-closed); }
+  .pill-high { background: rgba(220, 38, 38, 0.12); color: var(--priority-high); }
+  .pill-medium { background: rgba(217, 119, 6, 0.12); color: var(--priority-medium); }
+  .pill-low { background: rgba(107, 114, 128, 0.12); color: var(--priority-low); }
+  .card-meta {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px; color: var(--text-muted);
+  }
+  .card-id {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+  }
+  .card-assignee {
+    display: flex; align-items: center; gap: 4px;
+    color: var(--text-secondary);
+  }
+  .assignee-avatar {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 500;
+  }
+  .unassigned {
+    color: var(--text-muted); font-style: italic;
+  }
+  .column-empty {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
+    padding: 8px 4px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">H</div>
+      HelpDesk Lite
+    </div>
+    <a href="#" class="nav-link active">Tickets</a>
+    <a href="#" class="nav-link">Users</a>
+    <div class="topbar-spacer"></div>
+    <input type="text" class="search" placeholder="Search by ID, title, or description">
+    <div class="profile">
+      <div class="avatar">SA</div>
+      <span>Sam (Admin)</span>
+    </div>
+  </header>
+  <main>
+    <div class="page-header">
+      <h1 class="page-title">Tickets</h1>
+    </div>
+
+    <div class="filter-bar">
+      <span class="filter-chip active">Status ▾</span>
+      <span class="filter-chip active">Priority ▾</span>
+      <span class="filter-chip">Category ▾</span>
+      <span class="filter-chip">Assignee ▾</span>
+    </div>
+
+    <div class="board">
+      <div class="column">
+        <div class="column-header">
+          <div class="column-title">
+            <span style="color: var(--status-open);">●</span> Open
+          </div>
+          <div class="column-count">4</div>
+        </div>
+        <div class="card">
+          <div class="card-title">VPN won't connect from home</div>
+          <div class="card-pills">
+            <span class="pill pill-high"><span class="pill-icon">▲</span> High</span>
+            <span class="pill pill-open"><span class="pill-icon">●</span> Open</span>
+          </div>
+          <div class="card-meta">
+            <span class="card-id">#1042</span>
+            <span class="unassigned">Unassigned</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Email signature not updating</div>
+          <div class="card-pills">
+            <span class="pill pill-medium"><span class="pill-icon">■</span> Medium</span>
+            <span class="pill pill-open"><span class="pill-icon">●</span> Open</span>
+          </div>
+          <div class="card-meta">
+            <span class="card-id">#1038</span>
+            <span class="unassigned">Unassigned</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Monitor flickering on second display</div>
+          <div class="card-pills">
+            <span class="pill pill-low"><span class="pill-icon">▼</span> Low</span>
+            <span class="pill pill-open"><span class="pill-icon">●</span> Open</span>
+          </div>
+          <div class="card-meta">
+            <span class="card-id">#1035</span>
+            <span class="card-assignee">
+              <span class="assignee-avatar">J</span> Jordan
+            </span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Need access to Figma</div>
+          <div class="card-pills">
+            <span class="pill pill-medium"><span class="pill-icon">■</span> Medium</span>
+            <span class="pill pill-open"><span class="pill-icon">●</span> Open</span>
+          </div>
+          <div class="card-meta">
+            <span class="card-id">#1029</span>
+            <span class="card-assignee">
+              <span class="assignee-avatar">S</span> Sam
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="column">
+        <div class="column-header">
+          <div class="column-title">
+            <span style="color: var(--status-inprogress);">◐</span> In Progress
+          </div>
+          <div class="column-count">2</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Payroll direct deposit not received</div>
+          <div class="card-pills">
+            <span class="pill pill-high"><span class="pill-icon">▲</span> High</span>
+            <span class="pill pill-inprogress"><span class="pill-icon">◐</span> In Progress</span>
+          </div>
+          <div class="card-meta">
+            <span class="card-id">#1040</span>
+            <span class="card-assignee">
+              <span class="assignee-avatar">J</span> Jordan
+            </span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Slack notifications stopped</div>
+          <div class="card-pills">
+            <span class="pill pill-low"><span class="pill-icon">▼</span> Low</span>
+            <span class="pill pill-inprogress"><span class="pill-icon">◐</span> In Progress</span>
+          </div>
+          <div class="card-meta">
+            <span class="card-id">#1033</span>
+            <span class="card-assignee">
+              <span class="assignee-avatar">S</span> Sam
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="column">
+        <div class="column-header">
+          <div class="column-title">
+            <span style="color: var(--status-resolved);">✓</span> Resolved
+          </div>
+          <div class="column-count">1</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Laptop battery drains in 2 hours</div>
+          <div class="card-pills">
+            <span class="pill pill-low"><span class="pill-icon">▼</span> Low</span>
+            <span class="pill pill-resolved"><span class="pill-icon">✓</span> Resolved</span>
+          </div>
+          <div class="card-meta">
+            <span class="card-id">#1031</span>
+            <span class="card-assignee">
+              <span class="assignee-avatar">J</span> Jordan
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="column">
+        <div class="column-header">
+          <div class="column-title">
+            <span style="color: var(--status-closed);">⊘</span> Closed
+          </div>
+          <div class="column-count">12</div>
+        </div>
+        <div class="column-empty">12 closed tickets · view list →</div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

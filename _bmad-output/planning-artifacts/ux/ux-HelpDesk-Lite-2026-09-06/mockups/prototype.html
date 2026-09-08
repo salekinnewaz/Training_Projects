@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HelpDesk Lite — Prototype</title>
+<style>
+  :root {
+    --surface-base: #FFFFFF;
+    --surface-subtle: #F7F8FA;
+    --surface-muted: #EEF1F4;
+    --border-default: #E4E7EB;
+    --border-strong: #CBD2D9;
+    --text-primary: #1F2933;
+    --text-secondary: #52606D;
+    --text-muted: #7B8794;
+    --text-inverse: #FFFFFF;
+    --action-primary: #2563EB;
+    --action-primary-hover: #1D4ED8;
+    --status-open: #2563EB;
+    --status-inprogress: #D97706;
+    --status-resolved: #059669;
+    --status-closed: #6B7280;
+    --priority-high: #DC2626;
+    --priority-medium: #D97706;
+    --priority-low: #6B7280;
+    --danger: #DC2626;
+    --shadow-subtle: 0 1px 2px rgba(31, 41, 51, 0.06);
+    --shadow-raised: 0 4px 12px rgba(31, 41, 51, 0.08);
+    --shadow-overlay: 0 12px 32px rgba(31, 41, 51, 0.16);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    background: var(--surface-subtle);
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  input, textarea, select { font-family: inherit; }
+
+  /* ─── Top bar ─── */
+  .topbar {
+    height: 56px;
+    background: var(--surface-base);
+    border-bottom: 1px solid var(--border-default);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 20px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .brand {
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .brand-mark {
+    width: 28px; height: 28px;
+    background: var(--action-primary);
+    border-radius: 6px;
+    color: var(--text-inverse);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .nav-link {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: none;
+    border: none;
+  }
+  .nav-link.active {
+    color: var(--action-primary);
+    background: rgba(37, 99, 235, 0.08);
+  }
+  .topbar-spacer { flex: 1; }
+  .topbar-search {
+    width: 280px;
+    padding: 6px 12px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  .profile-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    position: relative;
+  }
+  .profile-btn:hover { background: var(--surface-subtle); }
+  .avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 500;
+    font-size: 12px;
+  }
+  .role-switch {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: var(--surface-muted);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .role-switch select {
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  /* ─── Layout ─── */
+  main {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .page-title {
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .breadcrumb {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  /* ─── Buttons ─── */
+  .btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 150ms ease;
+  }
+  .btn-primary {
+    background: var(--action-primary);
+    color: var(--text-inverse);
+    border-color: var(--action-primary);
+  }
+  .btn-primary:hover { background: var(--action-primary-hover); border-color: var(--action-primary-hover); }
+  .btn-secondary {
+    background: var(--surface-base);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+  }
+  .btn-secondary:hover { background: var(--surface-subtle); }
+  .btn-ghost {
+    background: transparent;
+    color: var(--action-primary);
+    border: none;
+    padding: 4px 8px;
+  }
+  .btn-ghost:hover { background: rgba(37, 99, 235, 0.08); }
+  .btn-danger {
+    background: var(--danger);
+    color: var(--text-inverse);
+    border-color: var(--danger);
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ─── Pills ─── */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .pill-icon { font-size: 10px; }
+  .pill-open { background: rgba(37, 99, 235, 0.12); color: var(--status-open); }
+  .pill-inprogress { background: rgba(217, 119, 6, 0.12); color: var(--status-inprogress); }
+  .pill-resolved { background: rgba(5, 150, 105, 0.12); color: var(--status-resolved); }
+  .pill-closed { background: rgba(107, 114, 128, 0.12); color: var(--status-closed); }
+  .pill-high { background: rgba(220, 38, 38, 0.12); color: var(--priority-high); }
+  .pill-medium { background: rgba(217, 119, 6, 0.12); color: var(--priority-medium); }
+  .pill-low { background: rgba(107, 114, 128, 0.12); color: var(--priority-low); }
+
+  /* ─── Auth pages ─── */
+  .auth-wrap {
+    min-height: calc(100vh - 56px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+  }
+  .auth-card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    box-shadow: var(--shadow-raised);
+    padding: 40px 32px;
+    width: 100%;
+    max-width: 400px;
+  }
+  .auth-brand {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .auth-brand .brand-mark {
+    width: 40px; height: 40px;
+    margin: 0 auto 12px;
+    font-size: 18px;
+  }
+  .auth-brand .brand-name {
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .auth-title {
+    font-size: 20px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .auth-subtitle {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .form-control {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    font-size: 14px;
+    color: var(--text-primary);
+    background: var(--surface-base);
+  }
+  .form-control:focus {
+    outline: none;
+    border-color: var(--border-strong);
+    box-shadow: 0 0 0 2px var(--action-primary);
+  }
+  .form-helper {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .form-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 16px 0 24px;
+    font-size: 14px;
+  }
+  .form-row label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-weight: 400;
+    margin: 0;
+  }
+  .link {
+    color: var(--action-primary);
+    text-decoration: none;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-size: inherit;
+    padding: 0;
+  }
+  .link:hover { text-decoration: underline; }
+  .auth-footer {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+  .quick-login {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-default);
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+  .quick-login button {
+    background: var(--surface-subtle);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 4px 10px;
+    margin: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .quick-login button:hover { background: var(--surface-muted); }
+
+  /* ─── Stat cards ─── */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 500;
+  }
+  .stat-value {
+    font-size: 28px;
+    font-weight: 600;
+  }
+
+  /* ─── Ticket list ─── */
+  .ticket-list {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .list-header {
+    display: grid;
+    grid-template-columns: 80px 1fr 130px 110px 130px 110px;
+    gap: 16px;
+    padding: 12px 16px;
+    background: var(--surface-subtle);
+    border-bottom: 1px solid var(--border-default);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .ticket-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 130px 110px 130px 110px;
+    gap: 16px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-default);
+    align-items: center;
+    cursor: pointer;
+  }
+  .ticket-row:last-child { border-bottom: none; }
+  .ticket-row:hover { background: var(--surface-subtle); }
+  .ticket-id {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .ticket-title {
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .assignee {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .assignee-avatar {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .unassigned {
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 13px;
+  }
+  .updated {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  /* ─── Filters ─── */
+  .filter-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .filter-chip {
+    padding: 6px 12px;
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .filter-chip:hover { background: var(--surface-subtle); }
+  .filter-chip.active {
+    border-color: var(--action-primary);
+    color: var(--action-primary);
+    background: rgba(37, 99, 235, 0.08);
+  }
+
+  /* ─── Kanban ─── */
+  .board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .column {
+    background: var(--surface-muted);
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 480px;
+  }
+  .column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 4px 12px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border-default);
+  }
+  .column-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .column-count {
+    background: var(--surface-base);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    box-shadow: var(--shadow-subtle);
+    transition: box-shadow 150ms ease, border-color 150ms ease;
+  }
+  .card:hover {
+    box-shadow: var(--shadow-raised);
+    border-color: var(--border-strong);
+  }
+  .card-title {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+  .card-pills {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .card-id {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+  }
+  .column-empty {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
+    padding: 8px 4px;
+    text-align: center;
+  }
+
+  /* ─── Ticket details ─── */
+  .ticket-header {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .ticket-id-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .ticket-id-title .ticket-title {
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .meta-field { display: flex; flex-direction: column; gap: 4px; }
+  .meta-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 500;
+  }
+  .meta-value {
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .meta-value select, .inline-select {
+    padding: 4px 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    font-size: 13px;
+    background: var(--surface-base);
+    color: var(--text-primary);
+  }
+  .ticket-actions {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-default);
+  }
+
+  .description-card, .comments-card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 12px;
+  }
+  .description-text {
+    line-height: 1.625;
+    white-space: pre-wrap;
+  }
+
+  /* ─── Comments ─── */
+  .comment {
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+  .comment:last-of-type { border-bottom: none; }
+  .comment-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .comment-avatar {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 500;
+    font-size: 11px;
+  }
+  .comment-author { font-weight: 600; font-size: 13px; }
+  .agent-badge {
+    background: var(--action-primary);
+    color: var(--text-inverse);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .comment-time { font-size: 12px; color: var(--text-muted); }
+  .comment-body {
+    line-height: 1.625;
+    margin-left: 32px;
+  }
+  .comment-composer {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-default);
+  }
+  .comment-composer textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    font-size: 14px;
+    color: var(--text-primary);
+    min-height: 80px;
+    resize: vertical;
+  }
+  .comment-composer textarea:focus {
+    outline: none;
+    border-color: var(--border-strong);
+    box-shadow: 0 0 0 2px var(--action-primary);
+  }
+  .composer-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+    gap: 8px;
+  }
+
+  /* ─── Modal ─── */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(31, 41, 51, 0.32);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 24px;
+  }
+  .modal {
+    background: var(--surface-base);
+    border-radius: 8px;
+    box-shadow: var(--shadow-overlay);
+    width: 100%;
+    max-width: 480px;
+    overflow: hidden;
+  }
+  .modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border-default);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .modal-title { font-size: 18px; font-weight: 600; }
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: var(--text-muted);
+    padding: 0 4px;
+  }
+  .modal-body {
+    padding: 20px 24px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border-default);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* ─── User Management ─── */
+  .user-table {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .user-row {
+    display: grid;
+    grid-template-columns: 1fr 150px 150px 140px 140px;
+    gap: 16px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-default);
+    align-items: center;
+  }
+  .user-row:last-child { border-bottom: none; }
+  .user-row.header {
+    background: var(--surface-subtle);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .user-row:hover:not(.header) { background: var(--surface-subtle); cursor: pointer; }
+  .user-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .user-cell .avatar { width: 32px; height: 32px; font-size: 13px; }
+  .user-info-name { font-weight: 500; }
+  .user-info-email { font-size: 12px; color: var(--text-muted); }
+  .user-role select {
+    padding: 4px 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    font-size: 13px;
+    background: var(--surface-base);
+  }
+  .status-toggle {
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border-default);
+    cursor: pointer;
+    background: var(--surface-base);
+  }
+  .status-toggle.active {
+    background: rgba(5, 150, 105, 0.12);
+    color: var(--status-resolved);
+    border-color: rgba(5, 150, 105, 0.3);
+  }
+  .status-toggle.inactive {
+    background: rgba(107, 114, 128, 0.12);
+    color: var(--status-closed);
+    border-color: rgba(107, 114, 128, 0.3);
+  }
+
+  /* ─── Profile ─── */
+  .profile-card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 32px;
+    max-width: 560px;
+  }
+  .profile-section { margin-bottom: 24px; }
+  .profile-section:last-child { margin-bottom: 0; }
+  .profile-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 12px;
+  }
+
+  /* ─── Toast ─── */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--text-primary);
+    color: var(--text-inverse);
+    padding: 12px 16px;
+    border-radius: 6px;
+    box-shadow: var(--shadow-overlay);
+    font-size: 14px;
+    z-index: 200;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 150ms ease, transform 150ms ease;
+  }
+  .toast.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ─── Empty state ─── */
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text-muted);
+  }
+  .empty-state-icon { font-size: 32px; margin-bottom: 12px; }
+  .empty-state-text { margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ TOP BAR ═══════════════ -->
+<header class="topbar" id="topbar" style="display: none;">
+  <div class="brand" data-action="home">
+    <div class="brand-mark">H</div>
+    HelpDesk Lite
+  </div>
+  <button class="nav-link" id="nav-tickets" data-action="nav-tickets">Tickets</button>
+  <button class="nav-link" id="nav-users" data-action="nav-users" style="display:none;">Users</button>
+  <div class="topbar-spacer"></div>
+  <input type="text" class="topbar-search" id="search" placeholder="Search by ID, title, or description" style="display:none;">
+  <div class="role-switch">
+    <span>View as:</span>
+    <select id="role-switch">
+      <option value="user">User</option>
+      <option value="agent">Agent</option>
+      <option value="admin">Admin</option>
+    </select>
+  </div>
+  <button class="profile-btn" data-action="profile">
+    <div class="avatar" id="topbar-avatar">U</div>
+    <span id="topbar-name">User</span>
+  </button>
+</header>
+
+<!-- ═══════════════ APP CONTAINER ═══════════════ -->
+<div id="app"></div>
+
+<!-- ═══════════════ TOAST ═══════════════ -->
+<div class="toast" id="toast"></div>
+
+<script>
+// Surface any uncaught error visibly so a blank page never goes unexplained
+window.addEventListener('error', e => {
+  const app = document.getElementById('app');
+  if (app) {
+    app.innerHTML = '<div style="padding:32px;font-family:monospace;color:#DC2626;white-space:pre-wrap;">' +
+      '⚠ Prototype error:\n\n' + (e.message || 'unknown') + '\n\n' +
+      (e.filename ? e.filename + ':' + e.lineno + ':' + e.colno : '') +
+      '</div>';
+  }
+});
+</script>
+<script>
+/* ═══════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════ */
+const STATE = {
+  currentUser: null,        // { id, name, email, role, initials, active }
+  currentRoute: 'login',
+  tickets: [
+    {
+      id: 1042, title: "VPN won't connect from home",
+      description: "I cannot connect to the company VPN from home. The client shows error 800 — \"Unable to establish connection.\" I've restarted my router and the VPN client but the problem persists.\n\nStarted after the laptop update last night. Other devices on the same network work fine.\n\nNeed this working before the client call at 2pm.",
+      category: "IT", priority: "High", status: "Open",
+      createdBy: "Priya Shah", assignedTo: null,
+      createdAt: "2 hours ago", updatedAt: "2 hours ago",
+      comments: []
+    },
+    {
+      id: 1040, title: "Payroll direct deposit not received",
+      description: "My paycheck for last pay period never showed up in my bank account. It's been 5 business days.",
+      category: "Finance", priority: "High", status: "In Progress",
+      createdBy: "Marcus Chen", assignedTo: "Jordan",
+      createdAt: "Yesterday", updatedAt: "30 minutes ago",
+      comments: [
+        { author: "Jordan", role: "agent", time: "20 hours ago", text: "Looking into this with Finance — should have an update today." }
+      ]
+    },
+    {
+      id: 1038, title: "Email signature not updating",
+      description: "My new email signature isn't showing on outgoing mail. Updated in settings but old signature still appears.",
+      category: "IT", priority: "Medium", status: "Open",
+      createdBy: "Priya Shah", assignedTo: null,
+      createdAt: "Yesterday", updatedAt: "Yesterday",
+      comments: []
+    },
+    {
+      id: 1035, title: "Monitor flickering on second display",
+      description: "My second monitor flickers every few minutes. Already swapped the cable.",
+      category: "IT", priority: "Low", status: "Open",
+      createdBy: "Anika Patel", assignedTo: "Jordan",
+      createdAt: "3 days ago", updatedAt: "1 day ago",
+      comments: []
+    },
+    {
+      id: 1033, title: "Slack notifications stopped",
+      description: "Stopped getting desktop notifications for Slack mentions and DMs yesterday afternoon.",
+      category: "IT", priority: "Low", status: "In Progress",
+      createdBy: "Marcus Chen", assignedTo: "Sam",
+      createdAt: "4 days ago", updatedAt: "2 days ago",
+      comments: []
+    },
+    {
+      id: 1031, title: "Laptop battery drains in 2 hours",
+      description: "Battery health seems fine but drains fast now. Started after a recent update.",
+      category: "IT", priority: "Low", status: "Resolved",
+      createdBy: "Priya Shah", assignedTo: "Jordan",
+      createdAt: "5 days ago", updatedAt: "3 days ago",
+      comments: [
+        { author: "Jordan", role: "agent", time: "4 days ago", text: "Try resetting the SMC — instructions: [link]. Let me know if that helps." },
+        { author: "Priya Shah", role: "user", time: "3 days ago", text: "That worked, thanks!" }
+      ]
+    },
+    {
+      id: 1029, title: "Need access to Figma",
+      description: "Design team needs me to have edit access on the new project. PM approved.",
+      category: "General", priority: "Medium", status: "Open",
+      createdBy: "Anika Patel", assignedTo: "Sam",
+      createdAt: "1 week ago", updatedAt: "4 days ago",
+      comments: []
+    },
+    {
+      id: 1024, title: "Expense report approval question",
+      description: "What's the turnaround time for expense approvals? Submitted one 10 days ago.",
+      category: "Finance", priority: "Medium", status: "Closed",
+      createdBy: "Marcus Chen", assignedTo: "Jordan",
+      createdAt: "2 weeks ago", updatedAt: "1 week ago",
+      comments: []
+    }
+  ],
+  users: [
+    { id: 1, name: "Priya Shah", email: "priya@company.com", role: "user", initials: "P", active: true },
+    { id: 2, name: "Marcus Chen", email: "marcus@company.com", role: "user", initials: "M", active: true },
+    { id: 3, name: "Anika Patel", email: "anika@company.com", role: "user", initials: "A", active: true },
+    { id: 4, name: "Sam Rivera", email: "sam@company.com", role: "agent", initials: "S", active: true },
+    { id: 5, name: "Jordan Lee", email: "jordan@company.com", role: "agent", initials: "J", active: true },
+    { id: 6, name: "Alex Kim", email: "alex@company.com", role: "admin", initials: "AK", active: true },
+    { id: 7, name: "David Park", email: "david@company.com", role: "user", initials: "D", active: false }
+  ],
+  filters: { status: null, priority: null, category: null, assignee: null },
+  searchQuery: "",
+  modal: null,
+  toastTimer: null,
+  ticketDetailId: null
+};
+
+/* ═══════════════════════════════════════════
+   UTILS
+   ═══════════════════════════════════════════ */
+function $(sel, root = document) { return root.querySelector(sel); }
+function el(tag, attrs = {}, ...children) {
+  if (attrs == null) attrs = {};
+  const node = document.createElement(tag);
+  Object.entries(attrs).forEach(([k, v]) => {
+    if (k === 'class') node.className = v;
+    else if (k === 'style' && typeof v === 'object') Object.assign(node.style, v);
+    else if (k.startsWith('on')) node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k === 'data') Object.entries(v).forEach(([dk, dv]) => node.dataset[dk] = dv);
+    else if (v !== null && v !== undefined && v !== false) node.setAttribute(k, v);
+  });
+  children.flat().forEach(c => {
+    if (c == null || c === false) return;
+    if (typeof c === 'string' || typeof c === 'number') node.appendChild(document.createTextNode(c));
+    else node.appendChild(c);
+  });
+  return node;
+}
+function statusPill(status) {
+  const icons = { Open: '●', 'In Progress': '◐', Resolved: '✓', Closed: '⊘' };
+  return el('span', { class: `pill pill-${status.toLowerCase().replace(' ', '')}` },
+    el('span', { class: 'pill-icon' }, icons[status]),
+    status
+  );
+}
+function priorityPill(p) {
+  const icons = { High: '▲', Medium: '■', Low: '▼' };
+  return el('span', { class: `pill pill-${p.toLowerCase()}` },
+    el('span', { class: 'pill-icon' }, icons[p]),
+    p
+  );
+}
+function ticketById(id) { return STATE.tickets.find(t => t.id === id); }
+function myTickets() {
+  return STATE.tickets.filter(t => t.createdBy === STATE.currentUser.name);
+}
+function visibleTickets() {
+  let list = STATE.tickets;
+  if (STATE.currentUser.role === 'user') list = myTickets();
+  const q = STATE.searchQuery.toLowerCase().trim();
+  if (q) {
+    list = list.filter(t =>
+      String(t.id).includes(q) ||
+      t.title.toLowerCase().includes(q) ||
+      t.description.toLowerCase().includes(q)
+    );
+  }
+  if (STATE.filters.status) list = list.filter(t => t.status === STATE.filters.status);
+  if (STATE.filters.priority) list = list.filter(t => t.priority === STATE.filters.priority);
+  if (STATE.filters.category) list = list.filter(t => t.category === STATE.filters.category);
+  if (STATE.filters.assignee) list = list.filter(t => t.assignedTo === STATE.filters.assignee);
+  return list;
+}
+function showToast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('visible');
+  clearTimeout(STATE.toastTimer);
+  STATE.toastTimer = setTimeout(() => t.classList.remove('visible'), 2500);
+}
+function navigate(route, data = {}) {
+  STATE.currentRoute = route;
+  if (route === 'ticket') STATE.ticketDetailId = data.id;
+  render();
+  window.scrollTo(0, 0);
+}
+function openModal({ title, body, onConfirm, confirmLabel = 'Confirm', confirmClass = 'btn-primary' }) {
+  STATE.modal = { title, body, onConfirm, confirmLabel, confirmClass };
+  render();
+}
+function closeModal() {
+  STATE.modal = null;
+  render();
+}
+
+/* ═══════════════════════════════════════════
+   VIEWS
+   ═══════════════════════════════════════════ */
+
+// ─── Login ───
+function viewLogin() {
+  const card = el('div', { class: 'auth-card' },
+    el('div', { class: 'auth-brand' },
+      el('div', { class: 'brand-mark' }, 'H'),
+      el('div', { class: 'brand-name' }, 'HelpDesk Lite')
+    ),
+    el('h1', { class: 'auth-title' }, 'Sign in to your account'),
+    el('form', { onsubmit: e => { e.preventDefault(); doLogin('user'); } },
+      el('div', { class: 'form-group' },
+        el('label', { for: 'email' }, 'Email'),
+        el('input', { class: 'form-control', type: 'email', id: 'email', placeholder: 'you@company.com', value: 'priya@company.com', required: true })
+      ),
+      el('div', { class: 'form-group' },
+        el('label', { for: 'password' }, 'Password'),
+        el('input', { class: 'form-control', type: 'password', id: 'password', placeholder: '••••••••', value: 'password', required: true })
+      ),
+      el('div', { class: 'form-row' },
+        el('label', null,
+          el('input', { type: 'checkbox' }), ' Remember me'
+        ),
+        el('button', { type: 'button', class: 'link', onclick: () => navigate('reset') }, 'Forgot password?')
+      ),
+      el('button', { type: 'submit', class: 'btn btn-primary', style: { width: '100%' } }, 'Sign in')
+    ),
+    el('div', { class: 'auth-footer' },
+      "Don't have an account? ",
+      el('button', { class: 'link', onclick: () => navigate('register') }, 'Register')
+    ),
+    el('div', { class: 'quick-login' },
+      el('div', null, 'Quick demo login (any password works):'),
+      el('button', { onclick: () => doLogin('user') }, 'Sign in as User'),
+      el('button', { onclick: () => doLogin('agent') }, 'Sign in as Agent'),
+      el('button', { onclick: () => doLogin('admin') }, 'Sign in as Admin')
+    )
+  );
+  return el('div', { class: 'auth-wrap' }, card);
+}
+
+function doLogin(asRole) {
+  const profile = {
+    user: { id: 1, name: 'Priya Shah', email: 'priya@company.com', role: 'user', initials: 'P' },
+    agent: { id: 4, name: 'Sam Rivera', email: 'sam@company.com', role: 'agent', initials: 'S' },
+    admin: { id: 6, name: 'Alex Kim', email: 'alex@company.com', role: 'admin', initials: 'AK' }
+  };
+  STATE.currentUser = profile[asRole];
+  $('#role-switch').value = asRole;
+  navigate(asRole === 'user' ? 'dashboard' : 'kanban');
+  showToast(`Signed in as ${STATE.currentUser.name}`);
+}
+
+function viewRegister() {
+  return el('div', { class: 'auth-wrap' },
+    el('div', { class: 'auth-card' },
+      el('div', { class: 'auth-brand' },
+        el('div', { class: 'brand-mark' }, 'H'),
+        el('div', { class: 'brand-name' }, 'HelpDesk Lite')
+      ),
+      el('h1', { class: 'auth-title' }, 'Create your account'),
+      el('p', { class: 'auth-subtitle' }, 'Sign up to start tracking support requests'),
+      el('form', { onsubmit: e => { e.preventDefault(); showToast('Account created (demo)'); doLogin('user'); } },
+        el('div', { class: 'form-group' },
+          el('label', null, 'Name'),
+          el('input', { class: 'form-control', required: true, value: 'Priya Shah' })
+        ),
+        el('div', { class: 'form-group' },
+          el('label', null, 'Email'),
+          el('input', { class: 'form-control', type: 'email', required: true, value: 'priya@company.com' })
+        ),
+        el('div', { class: 'form-group' },
+          el('label', null, 'Password'),
+          el('input', { class: 'form-control', type: 'password', required: true, value: '••••••••' })
+        ),
+        el('button', { type: 'submit', class: 'btn btn-primary', style: { width: '100%' } }, 'Create account')
+      ),
+      el('div', { class: 'auth-footer' },
+        'Already have an account? ',
+        el('button', { class: 'link', onclick: () => navigate('login') }, 'Sign in')
+      )
+    )
+  );
+}
+
+function viewReset() {
+  return el('div', { class: 'auth-wrap' },
+    el('div', { class: 'auth-card' },
+      el('div', { class: 'auth-brand' },
+        el('div', { class: 'brand-mark' }, 'H'),
+        el('div', { class: 'brand-name' }, 'HelpDesk Lite')
+      ),
+      el('h1', { class: 'auth-title' }, 'Reset your password'),
+      el('p', { class: 'auth-subtitle' }, "We'll send a reset link to your email"),
+      el('form', { onsubmit: e => {
+        e.preventDefault();
+        showToast('Reset link sent (demo)');
+        navigate('login');
+      }},
+        el('div', { class: 'form-group' },
+          el('label', null, 'Email'),
+          el('input', { class: 'form-control', type: 'email', required: true, placeholder: 'you@company.com', value: 'priya@company.com' })
+        ),
+        el('button', { type: 'submit', class: 'btn btn-primary', style: { width: '100%' } }, 'Send reset link')
+      ),
+      el('div', { class: 'auth-footer' },
+        el('button', { class: 'link', onclick: () => navigate('login') }, '← Back to sign in')
+      )
+    )
+  );
+}
+
+// ─── User Dashboard ───
+function viewUserDashboard() {
+  const tickets = myTickets();
+  const stats = { Open: 0, 'In Progress': 0, Resolved: 0, Closed: 0 };
+  tickets.forEach(t => stats[t.status]++);
+
+  const statsRow = el('div', { class: 'stats' },
+    ...['Open', 'In Progress', 'Resolved', 'Closed'].map(s =>
+      el('div', { class: 'stat-card' },
+        el('div', { class: 'stat-label' }, s),
+        el('div', { class: 'stat-value' }, String(stats[s]))
+      )
+    )
+  );
+
+  const list = el('div', { class: 'ticket-list' },
+    el('div', { class: 'list-header' },
+      el('div', null, 'ID'),
+      el('div', null, 'Title'),
+      el('div', null, 'Status'),
+      el('div', null, 'Priority'),
+      el('div', null, 'Assignee'),
+      el('div', null, 'Updated')
+    ),
+    tickets.length === 0
+      ? el('div', { class: 'empty-state' },
+          el('div', { class: 'empty-state-icon' }, '📭'),
+          el('div', { class: 'empty-state-text' }, 'No tickets yet — create your first one'),
+          el('button', { class: 'btn btn-primary', onclick: () => navigate('create') }, '+ Create Ticket')
+        )
+      : tickets.map(t =>
+          el('div', { class: 'ticket-row', onclick: () => navigate('ticket', { id: t.id }) },
+            el('div', { class: 'ticket-id' }, '#' + t.id),
+            el('div', { class: 'ticket-title' }, t.title),
+            el('div', null, statusPill(t.status)),
+            el('div', null, priorityPill(t.priority)),
+            el('div', null,
+              t.assignedTo
+                ? el('span', { class: 'assignee' },
+                    el('span', { class: 'assignee-avatar' }, t.assignedTo[0]),
+                    t.assignedTo)
+                : el('span', { class: 'unassigned' }, 'Unassigned')
+            ),
+            el('div', { class: 'updated' }, t.updatedAt)
+          )
+        )
+  );
+
+  return el('main', null,
+    el('div', { class: 'page-header' },
+      el('h1', { class: 'page-title' }, 'My Tickets'),
+      el('button', { class: 'btn btn-primary', onclick: () => navigate('create') }, '+ Create Ticket')
+    ),
+    statsRow,
+    list
+  );
+}
+
+// ─── Create Ticket ───
+function viewCreateTicket() {
+  return el('main', null,
+    el('div', { class: 'breadcrumb' },
+      el('button', { class: 'link', onclick: () => history.back() }, '← Back')
+    ),
+    el('div', { class: 'page-header' },
+      el('h1', { class: 'page-title' }, 'Create Ticket')
+    ),
+    el('div', { class: 'ticket-list', style: { padding: '24px', maxWidth: '600px' } },
+      el('form', { onsubmit: e => {
+        e.preventDefault();
+        const data = new FormData(e.target);
+        const newTicket = {
+          id: 1100 + STATE.tickets.length,
+          title: data.get('title'),
+          description: data.get('description'),
+          category: data.get('category') || 'General',
+          priority: data.get('priority'),
+          status: 'Open',
+          createdBy: STATE.currentUser.name,
+          assignedTo: null,
+          createdAt: 'just now',
+          updatedAt: 'just now',
+          comments: []
+        };
+        STATE.tickets.unshift(newTicket);
+        showToast(`Ticket #${newTicket.id} created`);
+        navigate('ticket', { id: newTicket.id });
+      }},
+        el('div', { class: 'form-group' },
+          el('label', null, 'Title ', el('span', { style: { color: 'var(--action-primary)' } }, '*')),
+          el('input', { class: 'form-control', name: 'title', required: true, placeholder: 'Briefly describe the issue' })
+        ),
+        el('div', { class: 'form-group' },
+          el('label', null, 'Description ', el('span', { style: { color: 'var(--action-primary)' } }, '*')),
+          el('textarea', { class: 'form-control', name: 'description', required: true, rows: '5', placeholder: 'What happened? When did it start? Any error messages?' })
+        ),
+        el('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' } },
+          el('div', { class: 'form-group' },
+            el('label', null, 'Category'),
+            el('select', { class: 'form-control', name: 'category' },
+              el('option', { value: '' }, 'Select a category'),
+              ...['IT', 'HR', 'Finance', 'General'].map(c => el('option', { value: c }, c))
+            ),
+            el('div', { class: 'form-helper' }, 'Optional — helps agents route your ticket')
+          ),
+          el('div', { class: 'form-group' },
+            el('label', null, 'Priority ', el('span', { style: { color: 'var(--action-primary)' } }, '*')),
+            el('select', { class: 'form-control', name: 'priority' },
+              el('option', { value: 'Low' }, 'Low'),
+              el('option', { value: 'Medium', selected: true }, 'Medium'),
+              el('option', { value: 'High' }, 'High')
+            )
+          )
+        ),
+        el('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' } },
+          el('button', { type: 'button', class: 'btn btn-secondary', onclick: () => history.back() }, 'Cancel'),
+          el('button', { type: 'submit', class: 'btn btn-primary' }, 'Create Ticket')
+        )
+      )
+    )
+  );
+}
+
+// ─── Agent Kanban ───
+function viewKanban() {
+  const tickets = visibleTickets();
+  const columns = ['Open', 'In Progress', 'Resolved', 'Closed'];
+  const isAgent = STATE.currentUser.role === 'agent' || STATE.currentUser.role === 'admin';
+
+  const filterBar = el('div', { class: 'filter-bar' },
+    ...['Status', 'Priority', 'Category', 'Assignee'].map(f => {
+      const fk = f.toLowerCase();
+      const isActive = STATE.filters[fk] != null;
+      return el('button', {
+        class: 'filter-chip' + (isActive ? ' active' : ''),
+        onclick: () => cycleFilter(fk)
+      }, f + (isActive ? `: ${STATE.filters[fk]}` : ' ▾'));
+    }),
+    (STATE.filters.status || STATE.filters.priority || STATE.filters.category || STATE.filters.assignee)
+      ? el('button', { class: 'filter-chip', onclick: clearFilters }, '✕ Clear filters')
+      : null
+  );
+
+  const board = el('div', { class: 'board' },
+    ...columns.map(status => {
+      const colTickets = tickets.filter(t => t.status === status);
+      return el('div', { class: 'column' },
+        el('div', { class: 'column-header' },
+          el('div', { class: 'column-title' },
+            el('span', null, status === 'Open' ? '●' : status === 'In Progress' ? '◐' : status === 'Resolved' ? '✓' : '⊘'),
+            ' ' + status
+          ),
+          el('div', { class: 'column-count' }, String(colTickets.length))
+        ),
+        colTickets.length === 0
+          ? el('div', { class: 'column-empty' }, 'No tickets')
+          : colTickets.map(t =>
+              el('div', { class: 'card', onclick: () => navigate('ticket', { id: t.id }) },
+                el('div', { class: 'card-title' }, t.title),
+                el('div', { class: 'card-pills' },
+                  priorityPill(t.priority),
+                  statusPill(t.status)
+                ),
+                el('div', { class: 'card-meta' },
+                  el('span', { class: 'card-id' }, '#' + t.id),
+                  t.assignedTo
+                    ? el('span', { class: 'assignee' },
+                        el('span', { class: 'assignee-avatar' }, t.assignedTo[0]),
+                        t.assignedTo)
+                    : el('span', { class: 'unassigned' }, 'Unassigned')
+                )
+              )
+            )
+      );
+    })
+  );
+
+  return el('main', null,
+    el('div', { class: 'page-header' },
+      el('h1', { class: 'page-title' }, 'Tickets')
+    ),
+    isAgent ? filterBar : null,
+    board
+  );
+}
+
+function cycleFilter(key) {
+  const opts = {
+    status: ['Open', 'In Progress', 'Resolved', 'Closed'],
+    priority: ['High', 'Medium', 'Low'],
+    category: ['IT', 'HR', 'Finance', 'General'],
+    assignee: ['Sam', 'Jordan', null]
+  };
+  const list = opts[key];
+  const idx = list.indexOf(STATE.filters[key]);
+  STATE.filters[key] = idx === -1 || idx === list.length - 1 ? null : list[idx + 1];
+  render();
+}
+function clearFilters() {
+  STATE.filters = { status: null, priority: null, category: null, assignee: null };
+  render();
+}
+
+// ─── Ticket Details ───
+function viewTicketDetails() {
+  const t = ticketById(STATE.ticketDetailId);
+  if (!t) return el('main', null, el('p', null, 'Ticket not found'));
+
+  const role = STATE.currentUser.role;
+  const isCreator = t.createdBy === STATE.currentUser.name;
+  const isAgent = role === 'agent' || role === 'admin';
+  const isResolved = t.status === 'Resolved';
+  const isClosed = t.status === 'Closed';
+
+  // Build status dropdown options based on role and state
+  const statusOptions = (() => {
+    const opts = ['Open', 'In Progress', 'Resolved'];
+    if (role === 'user' && isCreator && isResolved) opts.push('Closed');
+    return opts;
+  })();
+
+  return el('main', null,
+    el('div', { class: 'breadcrumb' },
+      el('button', { class: 'link', onclick: () => history.back() }, '← Back to tickets')
+    ),
+
+    // Header card
+    el('div', { class: 'ticket-header' },
+      el('div', { class: 'ticket-id-title' },
+        el('span', { class: 'ticket-id' }, '#' + t.id),
+        el('span', { class: 'ticket-title' }, t.title)
+      ),
+      el('div', { class: 'meta-grid' },
+        el('div', { class: 'meta-field' },
+          el('div', { class: 'meta-label' }, 'Status'),
+          el('div', { class: 'meta-value' },
+            isClosed
+              ? statusPill(t.status)
+              : isAgent
+                ? el('select', {
+                    class: 'inline-select',
+                    onchange: e => changeStatus(t.id, e.target.value)
+                  },
+                  ...statusOptions.filter(s => s !== t.status).map(s => el('option', { value: s }, s)),
+                  el('option', { value: t.status, selected: true }, t.status)
+                )
+                : statusPill(t.status)
+          )
+        ),
+        el('div', { class: 'meta-field' },
+          el('div', { class: 'meta-label' }, 'Priority'),
+          el('div', { class: 'meta-value' },
+            isAgent
+              ? el('select', {
+                  class: 'inline-select',
+                  onchange: e => changePriority(t.id, e.target.value)
+                },
+                ...['Low', 'Medium', 'High'].filter(p => p !== t.priority).map(p => el('option', { value: p }, p)),
+                el('option', { value: t.priority, selected: true }, t.priority)
+              )
+              : priorityPill(t.priority)
+          )
+        ),
+        el('div', { class: 'meta-field' },
+          el('div', { class: 'meta-label' }, 'Category'),
+          el('div', { class: 'meta-value' }, t.category)
+        ),
+        el('div', { class: 'meta-field' },
+          el('div', { class: 'meta-label' }, 'Assignee'),
+          el('div', { class: 'meta-value' },
+            isAgent
+              ? el('select', {
+                  class: 'inline-select',
+                  onchange: e => changeAssignee(t.id, e.target.value)
+                },
+                el('option', { value: '' }, 'Unassigned'),
+                ...['Sam', 'Jordan'].filter(a => a !== t.assignedTo).map(a => el('option', { value: a }, a)),
+                t.assignedTo ? el('option', { value: t.assignedTo, selected: true }, t.assignedTo) : null
+              )
+              : t.assignedTo
+                ? el('span', { class: 'assignee' },
+                    el('span', { class: 'assignee-avatar' }, t.assignedTo[0]),
+                    t.assignedTo)
+                : el('span', { class: 'unassigned' }, 'Unassigned')
+          )
+        )
+      ),
+      // Action buttons
+      el('div', { class: 'ticket-actions' },
+        // Agent: Resolve (when Open or In Progress)
+        isAgent && !isResolved && !isClosed
+          ? el('button', { class: 'btn btn-primary', onclick: () => resolveTicket(t.id) }, 'Mark as Resolved')
+          : null,
+        // Agent: Reopen (when Resolved)
+        isAgent && isResolved
+          ? el('button', { class: 'btn btn-secondary', onclick: () => reopenTicket(t.id) }, 'Reopen')
+          : null,
+        // User (creator): Reopen (when Resolved)
+        role === 'user' && isCreator && isResolved
+          ? el('button', { class: 'btn btn-primary', onclick: () => reopenTicket(t.id) }, 'Reopen')
+          : null,
+        // User (creator): Confirm and Close (when Resolved)
+        role === 'user' && isCreator && isResolved
+          ? el('button', { class: 'btn btn-secondary', onclick: () => closeTicket(t.id) }, 'Confirm and close')
+          : null,
+        isClosed ? el('span', { class: 'unassigned' }, '🔒 This ticket is closed and read-only.') : null
+      )
+    ),
+
+    // Description
+    el('div', { class: 'description-card' },
+      el('div', { class: 'section-title' }, 'Description'),
+      el('div', { class: 'description-text' }, t.description)
+    ),
+
+    // Comments
+    el('div', { class: 'comments-card' },
+      el('div', { class: 'section-title' }, 'Comments'),
+      t.comments.length === 0
+        ? el('div', { style: { color: 'var(--text-muted)', fontStyle: 'italic', padding: '8px 0' } }, 'No comments yet. Start the conversation.')
+        : t.comments.map(c =>
+            el('div', { class: 'comment' },
+              el('div', { class: 'comment-header' },
+                el('div', { class: 'comment-avatar' }, c.author[0]),
+                el('span', { class: 'comment-author' }, c.author),
+                c.role === 'agent' ? el('span', { class: 'agent-badge' }, 'Agent') : null,
+                el('span', { class: 'comment-time' }, '· ' + c.time)
+              ),
+              el('div', { class: 'comment-body' }, c.text)
+            )
+          ),
+      isClosed
+        ? null
+        : el('div', { class: 'comment-composer' },
+            el('textarea', { id: 'comment-input', placeholder: 'Write a comment…' }),
+            el('div', { class: 'composer-actions' },
+              el('button', { class: 'btn btn-primary', onclick: () => addComment(t.id) }, 'Send')
+            )
+          )
+    )
+  );
+}
+
+function changeStatus(id, newStatus) {
+  const t = ticketById(id);
+  t.status = newStatus;
+  t.updatedAt = 'just now';
+  showToast(`Status updated to ${newStatus}`);
+  render();
+}
+function changePriority(id, newP) {
+  const t = ticketById(id);
+  t.priority = newP;
+  t.updatedAt = 'just now';
+  showToast(`Priority updated to ${newP}`);
+  render();
+}
+function changeAssignee(id, newA) {
+  const t = ticketById(id);
+  t.assignedTo = newA || null;
+  t.updatedAt = 'just now';
+  showToast(newA ? `Assigned to ${newA}` : 'Unassigned');
+  render();
+}
+function resolveTicket(id) {
+  openModal({
+    title: 'Mark as Resolved?',
+    body: 'The user will be notified and can confirm or reopen the ticket.',
+    confirmLabel: 'Mark Resolved',
+    onConfirm: () => {
+      changeStatus(id, 'Resolved');
+    }
+  });
+}
+function reopenTicket(id) {
+  openModal({
+    title: 'Reopen this ticket?',
+    body: 'Previous conversation and history will be kept. Status will return to Open.',
+    confirmLabel: 'Reopen',
+    onConfirm: () => {
+      const t = ticketById(id);
+      const comment = {
+        author: STATE.currentUser.name,
+        role: STATE.currentUser.role === 'user' ? 'user' : 'agent',
+        time: 'just now',
+        text: 'Ticket reopened.'
+      };
+      t.comments.push(comment);
+      t.status = 'Open';
+      t.updatedAt = 'just now';
+      showToast('Ticket reopened');
+      render();
+    }
+  });
+}
+function closeTicket(id) {
+  const t = ticketById(id);
+  t.status = 'Closed';
+  t.updatedAt = 'just now';
+  showToast('Ticket closed');
+  render();
+}
+function addComment(id) {
+  const input = $('#comment-input');
+  const text = input.value.trim();
+  if (!text) { showToast('Comment cannot be empty'); return; }
+  const t = ticketById(id);
+  t.comments.push({
+    author: STATE.currentUser.name,
+    role: STATE.currentUser.role === 'user' ? 'user' : 'agent',
+    time: 'just now',
+    text
+  });
+  t.updatedAt = 'just now';
+  input.value = '';
+  showToast('Comment added');
+  render();
+}
+
+// ─── User Management ───
+function viewUsers() {
+  const header = el('div', { class: 'user-row header' },
+    el('div', null, 'User'),
+    el('div', null, 'Email'),
+    el('div', null, 'Role'),
+    el('div', null, 'Status'),
+    el('div', null, 'Actions')
+  );
+  const rows = STATE.users.map(u =>
+    el('div', { class: 'user-row' },
+      el('div', { class: 'user-cell' },
+        el('div', { class: 'avatar' }, u.initials),
+        el('div', null,
+          el('div', { class: 'user-info-name' }, u.name),
+          el('div', { class: 'user-info-email' }, `ID: ${u.id}`)
+        )
+      ),
+      el('div', { style: { color: 'var(--text-secondary)' } }, u.email),
+      el('div', { class: 'user-role' },
+        el('select', {
+          onchange: e => changeUserRole(u.id, e.target.value)
+        },
+          ...['user', 'agent', 'admin'].filter(r => r !== u.role).map(r => el('option', { value: r }, r.charAt(0).toUpperCase() + r.slice(1))),
+          el('option', { value: u.role, selected: true }, u.role.charAt(0).toUpperCase() + u.role.slice(1))
+        )
+      ),
+      el('div', null,
+        el('button', {
+          class: 'status-toggle ' + (u.active ? 'active' : 'inactive'),
+          onclick: () => toggleUserActive(u.id)
+        }, u.active ? '● Active' : '○ Inactive')
+      ),
+      el('div', null,
+        el('button', { class: 'btn btn-ghost', onclick: () => toggleUserActive(u.id) }, u.active ? 'Deactivate' : 'Activate')
+      )
+    )
+  );
+
+  return el('main', null,
+    el('div', { class: 'page-header' },
+      el('h1', { class: 'page-title' }, 'User Management'),
+      el('div', { style: { color: 'var(--text-muted)', fontSize: '13px' } }, `${STATE.users.length} users · ${STATE.users.filter(u => u.active).length} active`)
+    ),
+    el('div', { class: 'user-table' },
+      header,
+      ...rows
+    )
+  );
+}
+
+function changeUserRole(id, role) {
+  const u = STATE.users.find(x => x.id === id);
+  u.role = role;
+  showToast(`${u.name} is now ${role}`);
+  render();
+}
+function toggleUserActive(id) {
+  const u = STATE.users.find(x => x.id === id);
+  if (u.active) {
+    openModal({
+      title: 'Deactivate user?',
+      body: `${u.name} will not be able to log in or create tickets. Existing tickets and history will be preserved.`,
+      confirmLabel: 'Deactivate',
+      confirmClass: 'btn-danger',
+      onConfirm: () => {
+        u.active = false;
+        showToast(`${u.name} deactivated`);
+        render();
+      }
+    });
+  } else {
+    u.active = true;
+    showToast(`${u.name} reactivated`);
+    render();
+  }
+}
+
+// ─── Profile ───
+function viewProfile() {
+  const u = STATE.currentUser;
+  return el('main', null,
+    el('div', { class: 'breadcrumb' },
+      el('button', { class: 'link', onclick: () => history.back() }, '← Back')
+    ),
+    el('div', { class: 'page-header' },
+      el('h1', { class: 'page-title' }, 'Profile')
+    ),
+    el('div', { class: 'profile-card' },
+      el('div', { class: 'profile-section' },
+        el('div', { style: { display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' } },
+          el('div', { class: 'avatar', style: { width: '64px', height: '64px', fontSize: '20px' } }, u.initials),
+          el('div', null,
+            el('div', { style: { fontSize: '18px', fontWeight: '600' } }, u.name),
+            el('div', { style: { color: 'var(--text-secondary)' } }, u.email)
+          )
+        )
+      ),
+      el('div', { class: 'profile-section' },
+        el('div', { class: 'profile-section-title' }, 'Account'),
+        el('div', { class: 'form-group' },
+          el('label', null, 'Name'),
+          el('input', { class: 'form-control', value: u.name })
+        ),
+        el('div', { class: 'form-group' },
+          el('label', null, 'Email'),
+          el('input', { class: 'form-control', type: 'email', value: u.email })
+        ),
+        el('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px' } },
+          el('button', { class: 'btn btn-secondary' }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onclick: () => showToast('Profile updated') }, 'Save changes')
+        )
+      ),
+      el('div', { class: 'profile-section' },
+        el('div', { class: 'profile-section-title' }, 'Role'),
+        el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'var(--surface-subtle)', borderRadius: '6px' } },
+          el('span', { class: 'pill pill-open' },
+            el('span', { class: 'pill-icon' }, '●'),
+            u.role.charAt(0).toUpperCase() + u.role.slice(1)
+          ),
+          el('span', { style: { color: 'var(--text-muted)', fontSize: '13px' } }, '· Contact an admin to change your role')
+        )
+      ),
+      el('div', { class: 'profile-section' },
+        el('div', { class: 'profile-section-title' }, 'Session'),
+        el('button', { class: 'btn btn-secondary', onclick: doLogout }, 'Sign out')
+      )
+    )
+  );
+}
+
+function doLogout() {
+  STATE.currentUser = null;
+  navigate('login');
+  showToast('Signed out');
+}
+
+/* ═══════════════════════════════════════════
+   RENDER LOOP
+   ═══════════════════════════════════════════ */
+function render() {
+  const app = $('#app');
+  const topbar = $('#topbar');
+
+  // Top bar visibility
+  if (STATE.currentUser) {
+    topbar.style.display = 'flex';
+    $('#topbar-avatar').textContent = STATE.currentUser.initials;
+    $('#topbar-name').textContent = STATE.currentUser.name + ' (' + STATE.currentUser.role.charAt(0).toUpperCase() + STATE.currentUser.role.slice(1) + ')';
+    $('#role-switch').value = STATE.currentUser.role;
+
+    const isAgent = STATE.currentUser.role === 'agent' || STATE.currentUser.role === 'admin';
+    $('#search').style.display = isAgent ? 'block' : 'none';
+    $('#nav-tickets').style.display = 'inline-block';
+    $('#nav-users').style.display = STATE.currentUser.role === 'admin' ? 'inline-block' : 'none';
+
+    $('#nav-tickets').classList.toggle('active', ['dashboard', 'kanban', 'ticket', 'create'].includes(STATE.currentRoute));
+    $('#nav-users').classList.toggle('active', STATE.currentRoute === 'users');
+  } else {
+    topbar.style.display = 'none';
+  }
+
+  // View
+  let view;
+  switch (STATE.currentRoute) {
+    case 'login': view = viewLogin(); break;
+    case 'register': view = viewRegister(); break;
+    case 'reset': view = viewReset(); break;
+    case 'dashboard': view = viewUserDashboard(); break;
+    case 'create': view = viewCreateTicket(); break;
+    case 'kanban': view = viewKanban(); break;
+    case 'ticket': view = viewTicketDetails(); break;
+    case 'users': view = viewUsers(); break;
+    case 'profile': view = viewProfile(); break;
+    default: view = viewLogin();
+  }
+  app.innerHTML = '';
+  app.appendChild(view);
+
+  // Modal
+  if (STATE.modal) {
+    const m = STATE.modal;
+    const backdrop = el('div', { class: 'modal-backdrop', onclick: e => { if (e.target === backdrop) closeModal(); } },
+      el('div', { class: 'modal', role: 'dialog' },
+        el('div', { class: 'modal-header' },
+          el('div', { class: 'modal-title' }, m.title),
+          el('button', { class: 'modal-close', onclick: closeModal }, '×')
+        ),
+        el('div', { class: 'modal-body' }, m.body),
+        el('div', { class: 'modal-footer' },
+          el('button', { class: 'btn btn-secondary', onclick: closeModal }, 'Cancel'),
+          el('button', {
+            class: 'btn ' + m.confirmClass,
+            onclick: () => { m.onConfirm(); STATE.modal = null; render(); }
+          }, m.confirmLabel)
+        )
+      )
+    );
+    app.appendChild(backdrop);
+  }
+}
+
+/* ═══════════════════════════════════════════
+   GLOBAL EVENT WIRING
+   ═══════════════════════════════════════════ */
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-action]');
+  if (!t) return;
+  const action = t.dataset.action;
+  if (action === 'home') {
+    if (!STATE.currentUser) return navigate('login');
+    navigate(STATE.currentUser.role === 'user' ? 'dashboard' : 'kanban');
+  } else if (action === 'nav-tickets') {
+    navigate(STATE.currentUser.role === 'user' ? 'dashboard' : 'kanban');
+  } else if (action === 'nav-users') {
+    navigate('users');
+  } else if (action === 'profile') {
+    navigate('profile');
+  }
+});
+
+document.getElementById('role-switch').addEventListener('change', e => {
+  const r = e.target.value;
+  doLogin(r);
+});
+
+let searchTimer;
+document.getElementById('search').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    STATE.searchQuery = e.target.value;
+    render();
+  }, 200);
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && STATE.modal) closeModal();
+});
+
+// Initial render
+render();
+</script>
+
+</body>
+</html>
