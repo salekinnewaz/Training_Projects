@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <!-- Page background -->
+  <rect x="0" y="0" width="1440" height="900" fill="#f8f9fa"/>
+
+  <!--
+    Layout:
+      App-header chrome strip: y=0..64, full width, white with bottom border.
+      Page content column: 880px wide, centered at x=720, so x=280..1160.
+      Page top margin: y=64..96 (32px).
+      "Back to Dashboard" link: y=96..116.
+      First content (header card): y=120.
+      Vertical rhythm: 32px between sections.
+      Cards: 24px internal padding.
+
+    This frame is the canonical "Employee at Open / InProgress" state.
+    Action zone is therefore [ + Comment ] only. Other states (Agent, Resolved, Closed)
+    reuse the same skeleton with action-zone and badge changes documented in the spec.
+  -->
+
+  <!-- ===== App-header chrome strip ===== -->
+  <g id="app-header">
+    <rect x="0" y="0" width="1440" height="64" fill="#ffffff"/>
+    <line x1="0" y1="64" x2="1440" y2="64" stroke="#dee2e6" stroke-width="1"/>
+    <!-- Brand mark in app header, left-aligned at 32px padding -->
+    <rect x="32" y="12" width="40" height="40" rx="6" fill="#212529"/>
+    <text x="84" y="40" font-size="22" font-weight="600" fill="#212529">HelpDesk Lite</text>
+    <!-- "My Profile ▾" trigger (single right-side link; Logout lives in dropdown) -->
+    <text x="1280" y="40" font-size="14" fill="#495057">My Profile</text>
+    <polyline points="1372,34 1380,42 1388,34" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ===== Back to Dashboard link (top-left of page content) ===== -->
+  <g id="back-link">
+    <text x="280" y="108" font-size="14" fill="#868e96">‹ Back to Dashboard</text>
+  </g>
+
+  <!-- ===== 1. Header card ===== -->
+  <g id="header-card">
+    <rect x="280" y="120" width="880" height="168" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+
+    <!-- Left column: ticket number, title, badges, metadata -->
+    <text x="304" y="156" font-size="13" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-47</text>
+    <text x="304" y="190" font-size="24" font-weight="600" fill="#212529">VPN keeps dropping every few minutes</text>
+
+    <!-- Badges (status Open, priority Medium) -->
+    <g id="badges">
+      <!-- Status: Open (warm) -->
+      <rect x="304" y="210" width="68" height="22" rx="11" fill="#fff5d6"/>
+      <text x="338" y="225" font-size="12" font-weight="600" fill="#7a5c00" text-anchor="middle">Open</text>
+      <!-- Priority: Medium (warm) -->
+      <rect x="380" y="210" width="76" height="22" rx="11" fill="#fff5d6"/>
+      <text x="418" y="225" font-size="12" font-weight="600" fill="#7a5c00" text-anchor="middle">Medium</text>
+    </g>
+
+    <!-- Metadata row 1: Owner | Submitter | Created | Category -->
+    <text x="304" y="262" font-size="12" fill="#868e96">Owner</text>
+    <text x="304" y="278" font-size="13" fill="#212529">Sam Patel · Support Agent</text>
+
+    <text x="544" y="262" font-size="12" fill="#868e96">Submitter</text>
+    <text x="544" y="278" font-size="13" fill="#212529">Eli Chen · Employee</text>
+
+    <text x="784" y="262" font-size="12" fill="#868e96">Created</text>
+    <text x="784" y="278" font-size="13" fill="#495057">Sep 14, 2026 · 09:14</text>
+
+    <text x="980" y="262" font-size="12" fill="#868e96">Category</text>
+    <text x="980" y="278" font-size="13" fill="#495057">IT</text>
+  </g>
+
+  <!-- Header card: right-side action zone (Employee at Open: only + Comment) -->
+  <g id="action-zone">
+    <!-- + Comment primary button -->
+    <rect x="1004" y="148" width="132" height="40" rx="6" fill="#212529"/>
+    <text x="1070" y="173" font-size="14" font-weight="600" fill="#ffffff" text-anchor="middle">+ Comment</text>
+    <!-- Disabled hint: Change status / Reassign / Priority buttons would render here for Agent; documented in spec, not rendered in this state -->
+    <text x="1070" y="206" font-size="11" fill="#adb5bd" text-anchor="middle">Agent actions not available</text>
+  </g>
+
+  <!-- ===== 2. Description block (single-card first message) ===== -->
+  <g id="description-block">
+    <text x="280" y="316" font-size="11" font-weight="600" fill="#868e96" letter-spacing="1.2">DESCRIPTION</text>
+
+    <!-- First message styled as a comment (Eli, Employee role) -->
+    <rect x="280" y="332" width="880" height="84" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+    <!-- Role left border -->
+    <rect x="280" y="332" width="3" height="84" fill="#adb5bd"/>
+    <!-- Comment meta -->
+    <text x="304" y="356" font-size="13" font-weight="600" fill="#212529">Eli Chen</text>
+    <rect x="370" y="343" width="74" height="18" rx="9" fill="#f1f3f5"/>
+    <text x="407" y="356" font-size="11" fill="#495057" text-anchor="middle">Employee</text>
+    <text x="454" y="356" font-size="12" fill="#868e96">Sep 14, 2026 · 09:14</text>
+    <!-- Comment body -->
+    <text x="304" y="386" font-size="14" fill="#495057">My laptop keeps dropping the VPN connection every 3-5 minutes. I've tried</text>
+    <text x="304" y="404" font-size="14" fill="#495057">restarting the client and rebooting. Same behavior. Need this for a 10am call.</text>
+  </g>
+
+  <!-- ===== 3. Comments block ===== -->
+  <g id="comments-block">
+    <text x="280" y="448" font-size="11" font-weight="600" fill="#868e96" letter-spacing="1.2">COMMENTS (2)</text>
+
+    <!-- Comment 1: Sam (Support Agent) -->
+    <rect x="280" y="464" width="880" height="76" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="280" y="464" width="3" height="76" fill="#4263eb"/>
+    <text x="304" y="488" font-size="13" font-weight="600" fill="#212529">Sam Patel</text>
+    <rect x="370" y="475" width="100" height="18" rx="9" fill="#f1f3f5"/>
+    <text x="420" y="488" font-size="11" fill="#4263eb" text-anchor="middle">Support Agent</text>
+    <text x="480" y="488" font-size="12" fill="#868e96">Sep 14, 2026 · 09:42 · 28 min ago</text>
+    <text x="304" y="518" font-size="14" fill="#495057">Restarted the VPN service on your machine. Please retest — let me know if it stays</text>
+    <text x="304" y="536" font-size="14" fill="#495057">connected for at least 15 minutes.</text>
+
+    <!-- Comment 2: Eli (Employee) -->
+    <rect x="280" y="556" width="880" height="76" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="280" y="556" width="3" height="76" fill="#adb5bd"/>
+    <text x="304" y="580" font-size="13" font-weight="600" fill="#212529">Eli Chen</text>
+    <rect x="370" y="567" width="74" height="18" rx="9" fill="#f1f3f5"/>
+    <text x="407" y="580" font-size="11" fill="#495057" text-anchor="middle">Employee</text>
+    <text x="454" y="580" font-size="12" fill="#868e96">Sep 14, 2026 · 10:05</text>
+    <text x="304" y="610" font-size="14" fill="#495057">Connected for 22 minutes so far, looking good. Will continue to monitor through</text>
+    <text x="304" y="628" font-size="14" fill="#495057">the morning and update.</text>
+
+    <!-- Composer -->
+    <g id="composer">
+      <rect x="280" y="664" width="880" height="56" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+      <text x="296" y="690" font-size="14" fill="#adb5bd">Type a comment…</text>
+      <!-- Send button (right-aligned) -->
+      <rect x="1108" y="676" width="44" height="32" rx="4" fill="#212529"/>
+      <text x="1130" y="697" font-size="13" font-weight="600" fill="#ffffff" text-anchor="middle">Send</text>
+    </g>
+  </g>
+
+  <!-- ===== 4. Activity log ===== -->
+  <g id="activity-log">
+    <text x="280" y="760" font-size="11" font-weight="600" fill="#868e96" letter-spacing="1.2">ACTIVITY LOG</text>
+
+    <!-- 5 entries, monospace-flavored compact rows -->
+    <text x="280" y="784" font-size="13" fill="#495057">• Created            — Eli Chen              Sep 14, 09:14</text>
+    <text x="280" y="804" font-size="13" fill="#495057">• Assigned to Sam    — Sam Patel              Sep 14, 09:30</text>
+    <text x="280" y="824" font-size="13" fill="#495057">• Status Open→In Progress — Sam Patel          Sep 14, 09:42</text>
+    <text x="280" y="844" font-size="13" fill="#495057">• Comment added      — Eli Chen               Sep 14, 10:05</text>
+    <text x="280" y="864" font-size="13" fill="#495057">• Priority Low→Medium — Sam Patel             Sep 14, 10:20</text>
+  </g>
+</svg>

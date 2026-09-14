@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <!-- Page background -->
+  <rect x="0" y="0" width="1440" height="900" fill="#f8f9fa"/>
+
+  <!--
+    Canonical frame: Default (chrome only) with dropdown panel rendered as overlay.
+
+    Layout:
+      App-header chrome strip: y=0..64.
+      Logomark: x=32, y=12, 40x40, fill #212529, rx=6.
+      Wordmark: x=84, baseline y=40, "HelpDesk Lite" 22px semibold #212529.
+      "My Profile" trigger: right-aligned x=1408, baseline y=40, 14px #495057.
+      Caret ▾: polyline at x≈1372, baseline y=40, drawn as small V.
+      Dropdown panel (open state, anchored below chrome):
+        x=1168..1408 (240px wide), y=80..176 (96px tall).
+        Header zone: avatar cx=1192, cy=104, r=16. Name x=1216, baseline y=109.
+        Role badge: x=1216, y=120..142 (22px pill) "Support Agent".
+        Divider: y=152, x=1168..1408, #dee2e6.
+        Logout action: x=1168..1408, y=152..176, #f8f9fa bg.
+      Logout confirmation dialog (secondary frame, shown beneath):
+        cx=720, y=380..456 (360px wide, 76px tall).
+        Headline: "Log out of HelpDesk Lite?" y=412.
+        Cancel: x=540..620, y=440..472.
+        Log out: x=820..900, y=440..472, #212529 fill.
+
+      Below the chrome, we draw a muted "canvas" area showing the dialog state
+      so the wireframe demonstrates both the open dropdown and the modal.
+  -->
+
+  <!-- ===== App-header chrome strip ===== -->
+  <g id="app-header">
+    <rect x="0" y="0" width="1440" height="64" fill="#ffffff"/>
+    <line x1="0" y1="64" x2="1440" y2="64" stroke="#dee2e6" stroke-width="1"/>
+    <!-- Logomark -->
+    <rect x="32" y="12" width="40" height="40" rx="6" fill="#212529"/>
+    <!-- Wordmark -->
+    <text x="84" y="40" font-size="22" font-weight="600" fill="#212529">HelpDesk Lite</text>
+    <!-- "My Profile" trigger (active state: darker text) -->
+    <text x="1280" y="40" font-size="14" font-weight="600" fill="#212529">My Profile</text>
+    <!-- ▾ caret immediately right of trigger text -->
+    <polyline points="1372,34 1380,42 1388,34" fill="none" stroke="#212529" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ===== Faint hint of page content underneath (just so the dropdown lift reads) ===== -->
+  <g id="page-filler" opacity="0.35">
+    <rect x="32" y="96" width="240" height="14" rx="2" fill="#dee2e6"/>
+    <rect x="32" y="120" width="160" height="14" rx="2" fill="#dee2e6"/>
+    <rect x="32" y="160" width="1376" height="64" rx="4" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="32" y="236" width="1376" height="64" rx="4" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="32" y="312" width="1376" height="64" rx="4" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+  </g>
+
+  <!-- ===== Dropdown panel (open state) ===== -->
+  <g id="dropdown-panel">
+    <!-- Panel surface -->
+    <rect x="1168" y="80" width="240" height="96" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1" filter="url(#panel-shadow)"/>
+    <!-- Header zone: avatar + name + role badge -->
+    <circle cx="1192" cy="104" r="16" fill="#adb5bd"/>
+    <text x="1192" y="108" font-size="11" font-weight="600" fill="#ffffff" text-anchor="middle">SP</text>
+    <text x="1216" y="109" font-size="14" font-weight="600" fill="#212529">Sam Patel</text>
+    <!-- Role badge pill -->
+    <rect x="1216" y="120" width="92" height="22" rx="11" fill="#edf2ff" stroke="#4263eb" stroke-width="1"/>
+    <text x="1262" y="135" font-size="11" font-weight="600" fill="#4263eb" text-anchor="middle">Support Agent</text>
+    <!-- Divider -->
+    <line x1="1168" y1="152" x2="1408" y2="152" stroke="#dee2e6" stroke-width="1"/>
+    <!-- Logout action -->
+    <rect x="1168" y="152" width="240" height="24" fill="#f8f9fa"/>
+    <text x="1184" y="169" font-size="14" font-weight="500" fill="#212529">Logout</text>
+  </g>
+
+  <!-- Shadow filter -->
+  <defs>
+    <filter id="panel-shadow" x="-10%" y="-10%" width="120%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#212529" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <!-- ===== Logout confirmation dialog (secondary frame, centered) ===== -->
+  <g id="logout-dialog">
+    <!-- Scrim -->
+    <rect x="0" y="64" width="1440" height="836" fill="#212529" fill-opacity="0.4"/>
+    <!-- Dialog surface -->
+    <rect x="540" y="380" width="360" height="100" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1" filter="url(#panel-shadow)"/>
+    <!-- Headline -->
+    <text x="720" y="416" font-size="16" font-weight="600" fill="#212529" text-anchor="middle">Log out of HelpDesk Lite?</text>
+    <!-- Cancel button (secondary, muted outline) -->
+    <rect x="540" y="440" width="80" height="32" rx="4" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+    <text x="580" y="461" font-size="14" font-weight="500" fill="#495057" text-anchor="middle">Cancel</text>
+    <!-- Log out button (primary, #212529 fill) -->
+    <rect x="820" y="440" width="80" height="32" rx="4" fill="#212529"/>
+    <text x="860" y="461" font-size="14" font-weight="500" fill="#ffffff" text-anchor="middle">Log out</text>
+  </g>
+
+  <!-- ===== Annotation labels (light) ===== -->
+  <g id="annotations" font-size="11" fill="#868e96">
+    <text x="1168" y="76">dropdown anchored right to trigger, 16px below chrome</text>
+    <text x="540" y="376">modal scrim + dialog centered</text>
+  </g>
+</svg>

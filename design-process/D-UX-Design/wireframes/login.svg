@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <!-- Background -->
+  <rect x="0" y="0" width="1440" height="900" fill="#f8f9fa"/>
+
+  <!--
+    Layout: form column is 400px wide, centered horizontally at x = (1440 - 400)/2 = 520.
+    Brand mark group must share the same horizontal center.
+    Brand mark group: logomark 40px wide + 12px gap + wordmark "HelpDesk Lite" measured 144.54px wide (22px HelveticaNeue-Bold).
+    Total brand width = 40 + 12 + 144.54 = 196.54px.
+    Centered at x = 720: logomark x = 720 - 196.54/2 = 621.73.
+    Wordmark x = 621.73 + 40 + 12 = 673.73.
+  -->
+
+  <!-- Brand mark group, centered at page center (x = 720) -->
+  <g id="brand-mark">
+    <rect x="621.73" y="180" width="40" height="40" rx="6" fill="#212529"/>
+    <text x="673.73" y="208" font-size="22" font-weight="600" fill="#212529">HelpDesk Lite</text>
+  </g>
+
+  <!-- Email field -->
+  <g id="email-field">
+    <text x="520" y="320" font-size="14" font-weight="500" fill="#495057">Email</text>
+    <rect x="520" y="332" width="400" height="44" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="532" y="360" font-size="15" fill="#adb5bd">you@company.com</text>
+  </g>
+
+  <!-- Password field -->
+  <g id="password-field">
+    <text x="520" y="404" font-size="14" font-weight="500" fill="#495057">Password</text>
+    <rect x="520" y="416" width="400" height="44" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <circle cx="536" cy="438" r="3" fill="#adb5bd"/>
+    <circle cx="548" cy="438" r="3" fill="#adb5bd"/>
+    <circle cx="560" cy="438" r="3" fill="#adb5bd"/>
+    <circle cx="572" cy="438" r="3" fill="#adb5bd"/>
+    <circle cx="584" cy="438" r="3" fill="#adb5bd"/>
+    <circle cx="596" cy="438" r="3" fill="#adb5bd"/>
+    <g id="show-hide-toggle">
+      <rect x="884" y="424" width="28" height="28" rx="4" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+      <ellipse cx="898" cy="438" rx="9" ry="5" fill="none" stroke="#495057" stroke-width="1"/>
+      <circle cx="898" cy="438" r="2" fill="#495057"/>
+    </g>
+  </g>
+
+  <!-- Log in button (primary, full width) -->
+  <g id="login-button">
+    <rect x="520" y="488" width="400" height="48" rx="6" fill="#212529"/>
+    <text x="720" y="518" font-size="16" font-weight="600" fill="#ffffff" text-anchor="middle">Log in</text>
+  </g>
+
+  <!-- Forgot password link -->
+  <g id="forgot-password">
+    <text x="720" y="568" font-size="14" fill="#868e96" text-anchor="middle">Forgot password?</text>
+  </g>
+</svg>
