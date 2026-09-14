@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <!-- Page background -->
+  <rect x="0" y="0" width="1440" height="900" fill="#f8f9fa"/>
+
+  <!--
+    Layout:
+      App-header chrome strip: y=0..64.
+      Page content column: 720px wide, centered at x=720, so x=360..1080.
+      Back link: y=108.
+      "New ticket" heading: y=148.
+      Field rhythm: 24px vertical between fields.
+        Title        label y=200,  input y=212..256  (44px tall)
+        Description  label y=288,  textarea y=300..424 (124px ≈ 5 rows)
+        Category     label y=456,  select y=468..512  (44px tall)
+        Priority     label y=544,  select y=556..600  (44px tall)
+        Attachment   label y=632,  drop zone y=644..740 (96px tall)
+        Submit       y=772..820  (48px tall, full 720 width)
+        Cancel link  y=848.
+  -->
+
+  <!-- ===== App-header chrome strip (shared) ===== -->
+  <g id="app-header">
+    <rect x="0" y="0" width="1440" height="64" fill="#ffffff"/>
+    <line x1="0" y1="64" x2="1440" y2="64" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="32" y="12" width="40" height="40" rx="6" fill="#212529"/>
+    <text x="84" y="40" font-size="22" font-weight="600" fill="#212529">HelpDesk Lite</text>
+    <text x="1280" y="40" font-size="14" fill="#495057">My Profile</text>
+    <polyline points="1372,34 1380,42 1388,34" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ===== Back link ===== -->
+  <text x="360" y="108" font-size="14" fill="#868e96">‹ Back to My Tickets</text>
+
+  <!-- ===== Page heading ===== -->
+  <text x="360" y="148" font-size="24" font-weight="600" fill="#212529">New ticket</text>
+
+  <!-- ===== Title field ===== -->
+  <g id="title-field">
+    <text x="360" y="200" font-size="14" font-weight="500" fill="#495057">Title</text>
+    <text x="404" y="200" font-size="12" fill="#868e96">(required)</text>
+    <rect x="360" y="212" width="720" height="44" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="372" y="240" font-size="15" fill="#adb5bd">Short summary of the issue</text>
+  </g>
+
+  <!-- ===== Description field ===== -->
+  <g id="description-field">
+    <text x="360" y="288" font-size="14" font-weight="500" fill="#495057">Description</text>
+    <text x="446" y="288" font-size="12" fill="#868e96">(required)</text>
+    <rect x="360" y="300" width="720" height="124" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="372" y="326" font-size="15" fill="#adb5bd">Describe what's happening — what you expected, what's actually happening,</text>
+    <text x="372" y="346" font-size="15" fill="#adb5bd">and anything you've already tried.</text>
+  </g>
+
+  <!-- ===== Category field ===== -->
+  <g id="category-field">
+    <text x="360" y="456" font-size="14" font-weight="500" fill="#495057">Category</text>
+    <text x="426" y="456" font-size="12" fill="#868e96">(optional)</text>
+    <rect x="360" y="468" width="720" height="44" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="372" y="496" font-size="15" fill="#adb5bd">Select category…</text>
+    <!-- Dropdown caret -->
+    <polyline points="1052,486 1062,496 1072,486" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ===== Priority field ===== -->
+  <g id="priority-field">
+    <text x="360" y="544" font-size="14" font-weight="500" fill="#495057">Priority</text>
+    <text x="423" y="544" font-size="12" fill="#868e96">(required)</text>
+    <rect x="360" y="556" width="720" height="44" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="372" y="584" font-size="15" fill="#212529">Medium</text>
+    <polyline points="1052,574 1062,584 1072,574" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ===== Attachment field ===== -->
+  <g id="attachment-field">
+    <text x="360" y="632" font-size="14" font-weight="500" fill="#495057">Attachment</text>
+    <text x="441" y="632" font-size="12" fill="#868e96">(optional, 10 MB max)</text>
+
+    <!-- Drop zone: dashed border, centered text -->
+    <rect x="360" y="644" width="720" height="96" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="720" y="690" font-size="14" fill="#868e96" text-anchor="middle">Drop file or click to upload · 10 MB max</text>
+  </g>
+
+  <!-- ===== Submit button ===== -->
+  <g id="submit-button">
+    <rect x="360" y="772" width="720" height="48" rx="6" fill="#212529"/>
+    <text x="720" y="802" font-size="16" font-weight="600" fill="#ffffff" text-anchor="middle">Submit ticket</text>
+  </g>
+
+  <!-- ===== Cancel link ===== -->
+  <text x="360" y="848" font-size="14" fill="#868e96">Cancel — return to My Tickets</text>
+</svg>

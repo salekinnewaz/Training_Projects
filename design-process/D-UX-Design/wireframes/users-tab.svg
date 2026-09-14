@@ -1,0 +1,189 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <!-- Page background -->
+  <rect x="0" y="0" width="1440" height="900" fill="#f8f9fa"/>
+
+  <!--
+    Layout:
+      App-header: y=0..64.
+      Heading row: "Users" at x=280, y=108.
+      Tab switcher: Queue (inactive) at x=1000..1080, Users (active) at x=1080..1160. y=88..128.
+      Active count micro-label: x=280, y=132.
+      Table header columns (11px uppercase tracked #868e96) at y=160:
+        NAME      x=280..500  (220px)
+        EMAIL     x=500..780  (280px)
+        ROLE      x=780..940  (160px)
+        STATUS    x=940..1060 (120px)
+        LAST ACT  x=1060..1160 (100px)
+      Rows starting y=176, 64px tall. 8 users.
+        1: Brown, Tom      (Employee)
+        2: Chen, Eli       (Employee)
+        3: Jones, Maya     (Support Agent)
+        4: Khan, Aki       (Support Agent)
+        5: Park, Riya      (Support Agent)
+        6: Patel, Sam      ← ADMIN viewing page; self-row with disabled controls
+        7: Sharma, Priya   (Support Agent)
+        8: Tan, Wei        (Employee, INACTIVE)
+  -->
+
+  <!-- ===== App-header chrome strip ===== -->
+  <g id="app-header">
+    <rect x="0" y="0" width="1440" height="64" fill="#ffffff"/>
+    <line x1="0" y1="64" x2="1440" y2="64" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="32" y="12" width="40" height="40" rx="6" fill="#212529"/>
+    <text x="84" y="40" font-size="22" font-weight="600" fill="#212529">HelpDesk Lite</text>
+    <text x="1280" y="40" font-size="14" fill="#495057">My Profile</text>
+    <polyline points="1372,34 1380,42 1388,34" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ===== Heading row ===== -->
+  <!-- (No tab switcher on this page; /users is reached from the Admin Dashboard's Users tab.) -->
+  <text x="280" y="108" font-size="24" font-weight="600" fill="#212529">Users</text>
+
+  <!-- Active-count micro-label -->
+  <text x="280" y="132" font-size="12" fill="#868e96">8 users · 7 active · 1 inactive</text>
+
+  <!-- ===== Table header ===== -->
+  <g id="table-header">
+    <text x="280" y="160" font-size="11" font-weight="600" fill="#868e96" letter-spacing="1.2">NAME</text>
+    <text x="500" y="160" font-size="11" font-weight="600" fill="#868e96" letter-spacing="1.2">EMAIL</text>
+    <text x="780" y="160" font-size="11" font-weight="600" fill="#868e96" letter-spacing="1.2">ROLE</text>
+    <text x="940" y="160" font-size="11" font-weight="600" fill="#868e96" letter-spacing="1.2">STATUS</text>
+    <text x="1060" y="160" font-size="11" font-weight="600" fill="#868e96" letter-spacing="1.2">LAST ACTIVE</text>
+  </g>
+
+  <!-- ===== Row 1: Brown, Tom — Employee, Active ===== -->
+  <g id="row-1">
+    <rect x="280" y="176" width="880" height="64" fill="#ffffff"/>
+    <line x1="280" y1="240" x2="1160" y2="240" stroke="#dee2e6" stroke-width="1"/>
+    <circle cx="304" cy="208" r="16" fill="#adb5bd"/>
+    <text x="304" y="212" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">TB</text>
+    <text x="332" y="213" font-size="14" font-weight="500" fill="#212529">Tom Brown</text>
+    <text x="500" y="213" font-size="13" fill="#495057">tom.brown@company.com</text>
+    <rect x="780" y="190" width="140" height="36" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="792" y="213" font-size="13" fill="#212529">Employee</text>
+    <polyline points="894,206 902,214 910,206" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Active indicator -->
+    <circle cx="952" cy="208" r="6" fill="#2b8a3e"/>
+    <text x="966" y="213" font-size="13" fill="#212529">Active</text>
+    <text x="1144" y="213" font-size="12" fill="#868e96" text-anchor="end">4h ago</text>
+  </g>
+
+  <!-- ===== Row 2: Chen, Eli — Employee, Active ===== -->
+  <g id="row-2">
+    <rect x="280" y="240" width="880" height="64" fill="#ffffff"/>
+    <line x1="280" y1="304" x2="1160" y2="304" stroke="#dee2e6" stroke-width="1"/>
+    <circle cx="304" cy="272" r="16" fill="#adb5bd"/>
+    <text x="304" y="276" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">EC</text>
+    <text x="332" y="277" font-size="14" font-weight="500" fill="#212529">Eli Chen</text>
+    <text x="500" y="277" font-size="13" fill="#495057">eli.chen@company.com</text>
+    <rect x="780" y="254" width="140" height="36" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="792" y="277" font-size="13" fill="#212529">Employee</text>
+    <polyline points="894,270 902,278 910,270" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="952" cy="272" r="6" fill="#2b8a3e"/>
+    <text x="966" y="277" font-size="13" fill="#212529">Active</text>
+    <text x="1144" y="277" font-size="12" fill="#868e96" text-anchor="end">2h ago</text>
+  </g>
+
+  <!-- ===== Row 3: Jones, Maya — Support Agent, Active ===== -->
+  <g id="row-3">
+    <rect x="280" y="304" width="880" height="64" fill="#ffffff"/>
+    <line x1="280" y1="368" x2="1160" y2="368" stroke="#dee2e6" stroke-width="1"/>
+    <circle cx="304" cy="336" r="16" fill="#adb5bd"/>
+    <text x="304" y="340" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">MJ</text>
+    <text x="332" y="341" font-size="14" font-weight="500" fill="#212529">Maya Jones</text>
+    <text x="500" y="341" font-size="13" fill="#495057">maya.jones@company.com</text>
+    <rect x="780" y="318" width="140" height="36" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="792" y="341" font-size="13" fill="#212529">Support Agent</text>
+    <polyline points="894,330 902,338 910,330" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="952" cy="336" r="6" fill="#2b8a3e"/>
+    <text x="966" y="341" font-size="13" fill="#212529">Active</text>
+    <text x="1144" y="341" font-size="12" fill="#868e96" text-anchor="end">1d ago</text>
+  </g>
+
+  <!-- ===== Row 4: Khan, Aki — Support Agent, Active ===== -->
+  <g id="row-4">
+    <rect x="280" y="368" width="880" height="64" fill="#ffffff"/>
+    <line x1="280" y1="432" x2="1160" y2="432" stroke="#dee2e6" stroke-width="1"/>
+    <circle cx="304" cy="400" r="16" fill="#adb5bd"/>
+    <text x="304" y="404" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">AK</text>
+    <text x="332" y="405" font-size="14" font-weight="500" fill="#212529">Aki Khan</text>
+    <text x="500" y="405" font-size="13" fill="#495057">aki.khan@company.com</text>
+    <rect x="780" y="382" width="140" height="36" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="792" y="405" font-size="13" fill="#212529">Support Agent</text>
+    <polyline points="894,394 902,402 910,394" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="952" cy="400" r="6" fill="#2b8a3e"/>
+    <text x="966" y="405" font-size="13" fill="#212529">Active</text>
+    <text x="1144" y="405" font-size="12" fill="#868e96" text-anchor="end">3h ago</text>
+  </g>
+
+  <!-- ===== Row 5: Park, Riya — Support Agent, Active ===== -->
+  <g id="row-5">
+    <rect x="280" y="432" width="880" height="64" fill="#ffffff"/>
+    <line x1="280" y1="496" x2="1160" y2="496" stroke="#dee2e6" stroke-width="1"/>
+    <circle cx="304" cy="464" r="16" fill="#adb5bd"/>
+    <text x="304" y="468" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">RP</text>
+    <text x="332" y="469" font-size="14" font-weight="500" fill="#212529">Riya Park</text>
+    <text x="500" y="469" font-size="13" fill="#495057">riya.park@company.com</text>
+    <rect x="780" y="446" width="140" height="36" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="792" y="469" font-size="13" fill="#212529">Support Agent</text>
+    <polyline points="894,458 902,466 910,458" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="952" cy="464" r="6" fill="#2b8a3e"/>
+    <text x="966" y="469" font-size="13" fill="#212529">Active</text>
+    <text x="1144" y="469" font-size="12" fill="#868e96" text-anchor="end">2d ago</text>
+  </g>
+
+  <!-- ===== Row 6: Patel, Sam — Admin viewing the page (SELF-ROW, disabled controls) ===== -->
+  <g id="row-6-self">
+    <rect x="280" y="496" width="880" height="64" fill="#f8f9fa"/>
+    <!-- Self-row left border -->
+    <rect x="280" y="496" width="3" height="64" fill="#212529"/>
+    <line x1="280" y1="560" x2="1160" y2="560" stroke="#dee2e6" stroke-width="1"/>
+    <circle cx="304" cy="528" r="16" fill="#adb5bd"/>
+    <text x="304" y="532" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">SP</text>
+    <text x="332" y="533" font-size="14" font-weight="500" fill="#212529">Sam Patel</text>
+    <text x="500" y="533" font-size="13" fill="#495057">sam.patel@company.com</text>
+    <!-- Disabled role dropdown -->
+    <rect x="780" y="510" width="140" height="36" rx="4" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1"/>
+    <text x="792" y="533" font-size="13" fill="#adb5bd">Admin</text>
+    <polyline points="894,522 902,530 910,522" fill="none" stroke="#adb5bd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Disabled active indicator -->
+    <circle cx="952" cy="528" r="6" fill="#adb5bd"/>
+    <text x="966" y="533" font-size="13" fill="#adb5bd">Active</text>
+    <text x="1144" y="533" font-size="12" fill="#868e96" text-anchor="end">just now</text>
+    <!-- Self-row micro-label below the row -->
+    <text x="332" y="580" font-size="11" fill="#868e96">You cannot change your own role.</text>
+  </g>
+
+  <!-- ===== Row 7: Sharma, Priya — Support Agent, Active ===== -->
+  <g id="row-7">
+    <rect x="280" y="592" width="880" height="64" fill="#ffffff"/>
+    <line x1="280" y1="656" x2="1160" y2="656" stroke="#dee2e6" stroke-width="1"/>
+    <circle cx="304" cy="624" r="16" fill="#adb5bd"/>
+    <text x="304" y="628" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">PS</text>
+    <text x="332" y="629" font-size="14" font-weight="500" fill="#212529">Priya Sharma</text>
+    <text x="500" y="629" font-size="13" fill="#495057">priya.sharma@company.com</text>
+    <rect x="780" y="606" width="140" height="36" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="792" y="629" font-size="13" fill="#212529">Support Agent</text>
+    <polyline points="894,618 902,626 910,618" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="952" cy="624" r="6" fill="#2b8a3e"/>
+    <text x="966" y="629" font-size="13" fill="#212529">Active</text>
+    <text x="1144" y="629" font-size="12" fill="#868e96" text-anchor="end">5h ago</text>
+  </g>
+
+  <!-- ===== Row 8: Tan, Wei — Employee, INACTIVE ===== -->
+  <g id="row-8">
+    <rect x="280" y="656" width="880" height="64" fill="#ffffff"/>
+    <line x1="280" y1="720" x2="1160" y2="720" stroke="#dee2e6" stroke-width="1"/>
+    <circle cx="304" cy="688" r="16" fill="#adb5bd"/>
+    <text x="304" y="692" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">WT</text>
+    <text x="332" y="693" font-size="14" font-weight="500" fill="#212529">Wei Tan</text>
+    <text x="500" y="693" font-size="13" fill="#495057">wei.tan@company.com</text>
+    <rect x="780" y="670" width="140" height="36" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="792" y="693" font-size="13" fill="#212529">Employee</text>
+    <polyline points="894,682 902,690 910,682" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Inactive indicator: empty circle with stroke -->
+    <circle cx="952" cy="688" r="6" fill="none" stroke="#adb5bd" stroke-width="1.5"/>
+    <text x="966" y="693" font-size="13" fill="#868e96">Inactive</text>
+    <text x="1144" y="693" font-size="12" fill="#868e96" text-anchor="end">Sep 02</text>
+  </g>
+</svg>

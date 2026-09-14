@@ -1,0 +1,261 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <!-- Page background -->
+  <rect x="0" y="0" width="1440" height="900" fill="#f8f9fa"/>
+
+  <!--
+    Admin Dashboard — Dashboard tab active (canonical frame).
+    Layout:
+      App-header chrome strip: y=0..64.
+      Heading "Dashboard" at x=40, y=108, 24px semibold.
+      Tab switcher (right, x=1000..1160):
+        "Dashboard" tab: x=1000..1085, ACTIVE (semibold #212529 + 2px underline at y=124).
+        "Users" tab: x=1100..1160, INACTIVE (#868e96, no underline).
+      Status summary cards: y=144..864 (4 cards, 320px wide, 16px gap, outer x=56..1384).
+        Open: x=56..376.    In Progress: x=392..712.
+        Resolved: x=728..1048.  Closed: x=1064..1384.
+      Each card:
+        Top zone y=156..200: status badge pill (left) + count (right, 28px semibold).
+        Body y=200..840: 14 rows, 40px stride. Row = mono# + title + timestamp.
+        Footer y=848..864 (only if applicable).
+      Closed card: count muted #868e96, rows muted (no click).
+  -->
+
+  <!-- ===== App-header chrome strip ===== -->
+  <g id="app-header">
+    <rect x="0" y="0" width="1440" height="64" fill="#ffffff"/>
+    <line x1="0" y1="64" x2="1440" y2="64" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="32" y="12" width="40" height="40" rx="6" fill="#212529"/>
+    <text x="84" y="40" font-size="22" font-weight="600" fill="#212529">HelpDesk Lite</text>
+    <text x="1280" y="40" font-size="14" fill="#495057">My Profile</text>
+    <polyline points="1372,34 1380,42 1388,34" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ===== Heading row + tab switcher ===== -->
+  <text x="40" y="108" font-size="24" font-weight="600" fill="#212529">Dashboard</text>
+
+  <g id="tab-switcher">
+    <!-- Dashboard tab (active) -->
+    <text x="1000" y="113" font-size="14" font-weight="600" fill="#212529">Dashboard</text>
+    <line x1="1000" y1="124" x2="1085" y2="124" stroke="#212529" stroke-width="2"/>
+    <!-- Users tab (inactive) -->
+    <text x="1100" y="113" font-size="14" fill="#868e96">Users</text>
+  </g>
+
+  <!-- =========================================================== -->
+  <!-- ===== Open card (x=56..376) ===== -->
+  <!-- =========================================================== -->
+  <g id="card-open">
+    <rect x="56" y="144" width="320" height="720" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+    <!-- Top zone: badge + count -->
+    <rect x="68" y="156" width="60" height="22" rx="11" fill="#fff5d6"/>
+    <text x="98" y="171" font-size="11" font-weight="600" fill="#7a5c00" text-anchor="middle">Open</text>
+    <text x="358" y="178" font-size="28" font-weight="600" fill="#212529" text-anchor="end">12</text>
+    <!-- Divider -->
+    <line x1="68" y1="196" x2="364" y2="196" stroke="#dee2e6" stroke-width="1"/>
+    <!-- Body: 12 rows (showing 12, count says 12 so no footer) -->
+    <g id="open-rows" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+      <!-- Row 1 -->
+      <rect x="68" y="204" width="296" height="40" fill="#ffffff"/>
+      <text x="76" y="228" font-size="11" fill="#868e96">#HD-47</text>
+      <text x="124" y="228" font-size="13" fill="#212529">VPN keeps dropping</text>
+      <text x="356" y="228" font-size="11" fill="#868e96" text-anchor="end">2h ago</text>
+      <line x1="68" y1="244" x2="364" y2="244" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="76" y="268" font-size="11" fill="#868e96">#HD-45</text>
+      <text x="124" y="268" font-size="13" fill="#212529">Cannot access shared drive</text>
+      <text x="356" y="268" font-size="11" fill="#868e96" text-anchor="end">3h ago</text>
+      <line x1="68" y1="284" x2="364" y2="284" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="76" y="308" font-size="11" fill="#868e96">#HD-43</text>
+      <text x="124" y="308" font-size="13" fill="#212529">Expense report missing</text>
+      <text x="356" y="308" font-size="11" fill="#868e96" text-anchor="end">5h ago</text>
+      <line x1="68" y1="324" x2="364" y2="324" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="76" y="348" font-size="11" fill="#868e96">#HD-42</text>
+      <text x="124" y="348" font-size="13" fill="#212529">Slack notifications off</text>
+      <text x="356" y="348" font-size="11" fill="#868e96" text-anchor="end">6h ago</text>
+      <line x1="68" y1="364" x2="364" y2="364" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="76" y="388" font-size="11" fill="#868e96">#HD-41</text>
+      <text x="124" y="388" font-size="13" fill="#212529">New hire paperwork</text>
+      <text x="356" y="388" font-size="11" fill="#868e96" text-anchor="end">1d ago</text>
+      <line x1="68" y1="404" x2="364" y2="404" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="76" y="428" font-size="11" fill="#868e96">#HD-40</text>
+      <text x="124" y="428" font-size="13" fill="#212529">Conf room display</text>
+      <text x="356" y="428" font-size="11" fill="#868e96" text-anchor="end">1d ago</text>
+      <line x1="68" y1="444" x2="364" y2="444" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="76" y="468" font-size="11" fill="#868e96">#HD-38</text>
+      <text x="124" y="468" font-size="13" fill="#212529">Adobe license expired</text>
+      <text x="356" y="468" font-size="11" fill="#868e96" text-anchor="end">2d ago</text>
+      <line x1="68" y1="484" x2="364" y2="484" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="76" y="508" font-size="11" fill="#868e96">#HD-36</text>
+      <text x="124" y="508" font-size="13" fill="#212529">Printer offline 2nd fl</text>
+      <text x="356" y="508" font-size="11" fill="#868e96" text-anchor="end">2d ago</text>
+      <line x1="68" y1="524" x2="364" y2="524" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="76" y="548" font-size="11" fill="#868e96">#HD-35</text>
+      <text x="124" y="548" font-size="13" fill="#212529">Calendar permission</text>
+      <text x="356" y="548" font-size="11" fill="#868e96" text-anchor="end">3d ago</text>
+      <line x1="68" y1="564" x2="364" y2="564" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="76" y="588" font-size="11" fill="#868e96">#HD-34</text>
+      <text x="124" y="588" font-size="13" fill="#212529">VPN credentials reset</text>
+      <text x="356" y="588" font-size="11" fill="#868e96" text-anchor="end">3d ago</text>
+      <line x1="68" y1="604" x2="364" y2="604" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="76" y="628" font-size="11" fill="#868e96">#HD-32</text>
+      <text x="124" y="628" font-size="13" fill="#212529">Missing Q3 receipt</text>
+      <text x="356" y="628" font-size="11" fill="#868e96" text-anchor="end">4d ago</text>
+      <line x1="68" y1="644" x2="364" y2="644" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="76" y="668" font-size="11" fill="#868e96">#HD-30</text>
+      <text x="124" y="668" font-size="13" fill="#212529">Outlook sync issues</text>
+      <text x="356" y="668" font-size="11" fill="#868e96" text-anchor="end">5d ago</text>
+      <line x1="68" y1="684" x2="364" y2="684" stroke="#f1f3f5" stroke-width="1"/>
+    </g>
+  </g>
+
+  <!-- =========================================================== -->
+  <!-- ===== In Progress card (x=392..712) ===== -->
+  <!-- =========================================================== -->
+  <g id="card-in-progress">
+    <rect x="392" y="144" width="320" height="720" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="404" y="156" width="96" height="22" rx="11" fill="#d0ebff"/>
+    <text x="452" y="171" font-size="11" font-weight="600" fill="#1864ab" text-anchor="middle">In Progress</text>
+    <text x="694" y="178" font-size="28" font-weight="600" fill="#212529" text-anchor="end">5</text>
+    <line x1="404" y1="196" x2="700" y2="196" stroke="#dee2e6" stroke-width="1"/>
+
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+      <text x="412" y="228" font-size="11" fill="#868e96">#HD-44</text>
+      <text x="460" y="228" font-size="13" fill="#212529">Adobe license expired</text>
+      <text x="692" y="228" font-size="11" fill="#868e96" text-anchor="end">8h ago</text>
+      <line x1="404" y1="244" x2="700" y2="244" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="412" y="268" font-size="11" fill="#868e96">#HD-39</text>
+      <text x="460" y="268" font-size="13" fill="#212529">Slack on personal device</text>
+      <text x="692" y="268" font-size="11" fill="#868e96" text-anchor="end">1d ago</text>
+      <line x1="404" y1="284" x2="700" y2="284" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="412" y="308" font-size="11" fill="#868e96">#HD-37</text>
+      <text x="460" y="308" font-size="13" fill="#212529">Laptop charger shipping</text>
+      <text x="692" y="308" font-size="11" fill="#868e96" text-anchor="end">2d ago</text>
+      <line x1="404" y1="324" x2="700" y2="324" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="412" y="348" font-size="11" fill="#868e96">#HD-31</text>
+      <text x="460" y="348" font-size="13" fill="#212529">2FA setup contractor</text>
+      <text x="692" y="348" font-size="11" fill="#868e96" text-anchor="end">3d ago</text>
+      <line x1="404" y1="364" x2="700" y2="364" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="412" y="388" font-size="11" fill="#868e96">#HD-28</text>
+      <text x="460" y="388" font-size="13" fill="#212529">GitHub vendor access</text>
+      <text x="692" y="388" font-size="11" fill="#868e96" text-anchor="end">4d ago</text>
+    </g>
+  </g>
+
+  <!-- =========================================================== -->
+  <!-- ===== Resolved card (x=728..1048) ===== -->
+  <!-- =========================================================== -->
+  <g id="card-resolved">
+    <rect x="728" y="144" width="320" height="720" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="740" y="156" width="76" height="22" rx="11" fill="#d3f9d8"/>
+    <text x="778" y="171" font-size="11" font-weight="600" fill="#2b8a3e" text-anchor="middle">Resolved</text>
+    <text x="1030" y="178" font-size="28" font-weight="600" fill="#212529" text-anchor="end">3</text>
+    <line x1="740" y1="196" x2="1036" y2="196" stroke="#dee2e6" stroke-width="1"/>
+
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+      <text x="748" y="228" font-size="11" fill="#868e96">#HD-46</text>
+      <text x="796" y="228" font-size="13" fill="#212529">Laptop charger needed</text>
+      <text x="1028" y="228" font-size="11" fill="#868e96" text-anchor="end">Yesterday</text>
+      <line x1="740" y1="244" x2="1036" y2="244" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="748" y="268" font-size="11" fill="#868e96">#HD-33</text>
+      <text x="796" y="268" font-size="13" fill="#212529">Adobe license renewed</text>
+      <text x="1028" y="268" font-size="11" fill="#868e96" text-anchor="end">2d ago</text>
+      <line x1="740" y1="284" x2="1036" y2="284" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="748" y="308" font-size="11" fill="#868e96">#HD-29</text>
+      <text x="796" y="308" font-size="13" fill="#212529">Payroll setup</text>
+      <text x="1028" y="308" font-size="11" fill="#868e96" text-anchor="end">5d ago</text>
+    </g>
+  </g>
+
+  <!-- =========================================================== -->
+  <!-- ===== Closed card (x=1064..1384) — muted, read-only ===== -->
+  <!-- =========================================================== -->
+  <g id="card-closed">
+    <rect x="1064" y="144" width="320" height="720" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="1076" y="156" width="64" height="22" rx="11" fill="#f1f3f5"/>
+    <text x="1108" y="171" font-size="11" font-weight="600" fill="#868e96" text-anchor="middle">Closed</text>
+    <text x="1366" y="178" font-size="28" font-weight="600" fill="#868e96" text-anchor="end">47</text>
+    <line x1="1076" y1="196" x2="1372" y2="196" stroke="#dee2e6" stroke-width="1"/>
+
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#868e96">
+      <text x="1084" y="228" font-size="11">#HD-26</text>
+      <text x="1132" y="228" font-size="13">Laptop BIOS boot</text>
+      <text x="1364" y="228" font-size="11" text-anchor="end">Sep 12</text>
+      <line x1="1076" y1="244" x2="1372" y2="244" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="1084" y="268" font-size="11">#HD-24</text>
+      <text x="1132" y="268" font-size="13">Conf room display</text>
+      <text x="1364" y="268" font-size="11" text-anchor="end">Sep 11</text>
+      <line x1="1076" y1="284" x2="1372" y2="284" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="1084" y="308" font-size="11">#HD-22</text>
+      <text x="1132" y="308" font-size="13">Expense receipt</text>
+      <text x="1364" y="308" font-size="11" text-anchor="end">Sep 10</text>
+      <line x1="1076" y1="324" x2="1372" y2="324" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="1084" y="348" font-size="11">#HD-20</text>
+      <text x="1132" y="348" font-size="13">VPN reconnect loop</text>
+      <text x="1364" y="348" font-size="11" text-anchor="end">Sep 09</text>
+      <line x1="1076" y1="364" x2="1372" y2="364" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="1084" y="388" font-size="11">#HD-18</text>
+      <text x="1132" y="388" font-size="13">Onboarding done</text>
+      <text x="1364" y="388" font-size="11" text-anchor="end">Sep 08</text>
+      <line x1="1076" y1="404" x2="1372" y2="404" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="1084" y="428" font-size="11">#HD-16</text>
+      <text x="1132" y="428" font-size="13">Adobe license OK</text>
+      <text x="1364" y="428" font-size="11" text-anchor="end">Sep 05</text>
+      <line x1="1076" y1="444" x2="1372" y2="444" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="1084" y="468" font-size="11">#HD-14</text>
+      <text x="1132" y="468" font-size="13">Outlook sync OK</text>
+      <text x="1364" y="468" font-size="11" text-anchor="end">Sep 04</text>
+      <line x1="1076" y1="484" x2="1372" y2="484" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="1084" y="508" font-size="11">#HD-12</text>
+      <text x="1132" y="508" font-size="13">Printer driver</text>
+      <text x="1364" y="508" font-size="11" text-anchor="end">Sep 03</text>
+      <line x1="1076" y1="524" x2="1372" y2="524" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="1084" y="548" font-size="11">#HD-10</text>
+      <text x="1132" y="548" font-size="13">GitHub access revoked</text>
+      <text x="1364" y="548" font-size="11" text-anchor="end">Sep 02</text>
+      <line x1="1076" y1="564" x2="1372" y2="564" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="1084" y="588" font-size="11">#HD-08</text>
+      <text x="1132" y="588" font-size="13">2FA backup codes</text>
+      <text x="1364" y="588" font-size="11" text-anchor="end">Aug 30</text>
+      <line x1="1076" y1="604" x2="1372" y2="604" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="1084" y="628" font-size="11">#HD-06</text>
+      <text x="1132" y="628" font-size="13">Shared drive perms</text>
+      <text x="1364" y="628" font-size="11" text-anchor="end">Aug 28</text>
+      <line x1="1076" y1="644" x2="1372" y2="644" stroke="#f1f3f5" stroke-width="1"/>
+
+      <text x="1084" y="668" font-size="11">#HD-04</text>
+      <text x="1132" y="668" font-size="13">Welcome packet</text>
+      <text x="1364" y="668" font-size="11" text-anchor="end">Aug 26</text>
+    </g>
+    <!-- Footer: "Showing 12 of 47" muted, non-interactive -->
+    <text x="1076" y="858" font-size="11" fill="#868e96">Showing 12 of 47</text>
+  </g>
+
+  <!-- ===== Annotation (light, faded) ===== -->
+  <text x="56" y="888" font-size="11" fill="#adb5bd">Admin Dashboard · Dashboard tab active · Click any row in Open / In Progress / Resolved to open Ticket Detail · Closed is read-only</text>
+</svg>

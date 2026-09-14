@@ -1,0 +1,246 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <!-- Page background -->
+  <rect x="0" y="0" width="1440" height="900" fill="#f8f9fa"/>
+
+  <!--
+    Layout (Agent role, no Admin Users tab):
+      App-header chrome strip: y=0..64.
+      Heading "Queue": y=108.
+      Filter strip: y=144..184. Controls: Search (40..360), Priority (380..520), Category (540..680), Owner (700..840).
+      Kanban board: y=200..880.
+        4 columns x 320px wide, 16px gap. Total 1328px. Outer padding x=56..1384.
+        Open:          x=56..376
+        In Progress:   x=392..712
+        Resolved:      x=728..1048
+        Closed:        x=1064..1384
+        Column header: y=200..248.
+        Column body:   y=248..880.
+      Cards 96px tall, 12px gap, stride 108px.
+      Open column: 2 orphans pinned at top with warm tint + Unassigned badge, then 2 owned cards.
+      In Progress: 3 cards.
+      Resolved: 2 cards.
+      Closed: 3 cards (read-only).
+  -->
+
+  <!-- ===== App-header chrome strip (shared) ===== -->
+  <g id="app-header">
+    <rect x="0" y="0" width="1440" height="64" fill="#ffffff"/>
+    <line x1="0" y1="64" x2="1440" y2="64" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="32" y="12" width="40" height="40" rx="6" fill="#212529"/>
+    <text x="84" y="40" font-size="22" font-weight="600" fill="#212529">HelpDesk Lite</text>
+    <text x="1280" y="40" font-size="14" fill="#495057">My Profile</text>
+    <polyline points="1372,34 1380,42 1388,34" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ===== Heading ===== -->
+  <text x="40" y="108" font-size="24" font-weight="600" fill="#212529">Queue</text>
+
+  <!-- ===== Filter strip ===== -->
+  <g id="filter-strip">
+    <!-- Search box -->
+    <rect x="40" y="144" width="320" height="40" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="56" y="170" font-size="14" fill="#adb5bd">🔍  Search queue…</text>
+
+    <!-- Priority dropdown -->
+    <rect x="380" y="144" width="140" height="40" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="396" y="170" font-size="14" fill="#212529">Priority: All</text>
+    <polyline points="494,160 502,168 510,160" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Category dropdown -->
+    <rect x="540" y="144" width="140" height="40" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="556" y="170" font-size="14" fill="#212529">Category: All</text>
+    <polyline points="654,160 662,168 670,160" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Owner dropdown -->
+    <rect x="700" y="144" width="140" height="40" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
+    <text x="716" y="170" font-size="14" fill="#212529">Owner: All</text>
+    <polyline points="814,160 822,168 830,160" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- =========================================================== -->
+  <!-- ===== Kanban board — 4 columns ===== -->
+  <!-- =========================================================== -->
+
+  <!-- ===== Column: Open ===== -->
+  <g id="col-open">
+    <!-- Column header -->
+    <text x="68" y="232" font-size="14" font-weight="600" fill="#212529">Open</text>
+    <rect x="116" y="220" width="32" height="18" rx="9" fill="#f1f3f5"/>
+    <text x="132" y="232" font-size="11" font-weight="600" fill="#495057" text-anchor="middle">4</text>
+
+    <!-- Orphan card 1 (warm tint background, Unassigned badge) -->
+    <g id="orphan-card-1">
+      <rect x="56" y="248" width="320" height="96" rx="6" fill="#fff5d6" stroke="#dee2e6" stroke-width="1"/>
+      <text x="68" y="276" font-size="13" font-weight="500" fill="#212529">VPN keeps dropping every few minutes</text>
+      <text x="68" y="294" font-size="13" font-weight="500" fill="#212529">— affects 10am client call</text>
+      <!-- Meta row -->
+      <text x="68" y="324" font-size="12" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-47</text>
+      <rect x="170" y="312" width="64" height="18" rx="9" fill="#fff5d6"/>
+      <text x="202" y="324" font-size="11" font-weight="600" fill="#7a5c00" text-anchor="middle">Medium</text>
+      <!-- Unassigned badge -->
+      <rect x="288" y="312" width="76" height="18" rx="9" fill="#fff5d6"/>
+      <text x="326" y="324" font-size="11" font-weight="600" fill="#7a5c00" text-anchor="middle">Unassigned</text>
+    </g>
+
+    <!-- Orphan card 2 (warm tint, Unassigned) -->
+    <g id="orphan-card-2">
+      <rect x="56" y="356" width="320" height="96" rx="6" fill="#fff5d6" stroke="#dee2e6" stroke-width="1"/>
+      <text x="68" y="384" font-size="13" font-weight="500" fill="#212529">Cannot access shared drive —</text>
+      <text x="68" y="402" font-size="13" font-weight="500" fill="#212529">blocked on client deliverable</text>
+      <text x="68" y="432" font-size="12" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-45</text>
+      <rect x="170" y="420" width="48" height="18" rx="9" fill="#ffe3e3"/>
+      <text x="194" y="432" font-size="11" font-weight="600" fill="#c92a2a" text-anchor="middle">High</text>
+      <rect x="288" y="420" width="76" height="18" rx="9" fill="#fff5d6"/>
+      <text x="326" y="432" font-size="11" font-weight="600" fill="#7a5c00" text-anchor="middle">Unassigned</text>
+    </g>
+
+    <!-- Owned card 3 -->
+    <g id="open-card-3">
+      <rect x="56" y="464" width="320" height="96" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+      <text x="68" y="492" font-size="13" font-weight="500" fill="#212529">Software license expired —</text>
+      <text x="68" y="510" font-size="13" font-weight="500" fill="#212529">Adobe Acrobat</text>
+      <text x="68" y="540" font-size="12" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-44</text>
+      <rect x="170" y="528" width="64" height="18" rx="9" fill="#fff5d6"/>
+      <text x="202" y="540" font-size="11" font-weight="600" fill="#7a5c00" text-anchor="middle">Medium</text>
+      <!-- Owner avatar + name -->
+      <circle cx="296" cy="537" r="10" fill="#adb5bd"/>
+      <text x="296" y="540" font-size="9" font-weight="600" fill="#ffffff" text-anchor="middle">SP</text>
+      <text x="312" y="540" font-size="12" fill="#495057">Sam</text>
+    </g>
+
+    <!-- Owned card 4 -->
+    <g id="open-card-4">
+      <rect x="56" y="572" width="320" height="96" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+      <text x="68" y="600" font-size="13" font-weight="500" fill="#212529">Expense report submitted but</text>
+      <text x="68" y="618" font-size="13" font-weight="500" fill="#212529">not showing in Concur</text>
+      <text x="68" y="648" font-size="12" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-43</text>
+      <rect x="170" y="636" width="48" height="18" rx="9" fill="#e9ecef"/>
+      <text x="194" y="648" font-size="11" font-weight="600" fill="#495057" text-anchor="middle">Low</text>
+      <circle cx="296" cy="645" r="10" fill="#adb5bd"/>
+      <text x="296" y="648" font-size="9" font-weight="600" fill="#ffffff" text-anchor="middle">RP</text>
+      <text x="312" y="648" font-size="12" fill="#495057">Riya · 2d</text>
+    </g>
+  </g>
+
+  <!-- ===== Column: In Progress ===== -->
+  <g id="col-in-progress">
+    <text x="404" y="232" font-size="14" font-weight="600" fill="#212529">In Progress</text>
+    <rect x="494" y="220" width="28" height="18" rx="9" fill="#f1f3f5"/>
+    <text x="508" y="232" font-size="11" font-weight="600" fill="#495057" text-anchor="middle">3</text>
+
+    <!-- IP card 1 -->
+    <g id="ip-card-1">
+      <rect x="392" y="248" width="320" height="96" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+      <text x="404" y="276" font-size="13" font-weight="500" fill="#212529">Laptop won't boot after BIOS</text>
+      <text x="404" y="294" font-size="13" font-weight="500" fill="#212529">update — flashing caps lock</text>
+      <text x="404" y="324" font-size="12" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-42</text>
+      <rect x="506" y="312" width="48" height="18" rx="9" fill="#ffe3e3"/>
+      <text x="530" y="324" font-size="11" font-weight="600" fill="#c92a2a" text-anchor="middle">High</text>
+      <circle cx="632" cy="321" r="10" fill="#adb5bd"/>
+      <text x="632" y="324" font-size="9" font-weight="600" fill="#ffffff" text-anchor="middle">SP</text>
+      <text x="648" y="324" font-size="12" fill="#495057">Sam · 4h</text>
+    </g>
+
+    <!-- IP card 2 -->
+    <g id="ip-card-2">
+      <rect x="392" y="356" width="320" height="96" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+      <text x="404" y="384" font-size="13" font-weight="500" fill="#212529">Onboarding paperwork for new</text>
+      <text x="404" y="402" font-size="13" font-weight="500" fill="#212529">hire — payroll access pending</text>
+      <text x="404" y="432" font-size="12" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-41</text>
+      <rect x="506" y="420" width="64" height="18" rx="9" fill="#fff5d6"/>
+      <text x="538" y="432" font-size="11" font-weight="600" fill="#7a5c00" text-anchor="middle">Medium</text>
+      <circle cx="632" cy="429" r="10" fill="#adb5bd"/>
+      <text x="632" y="432" font-size="9" font-weight="600" fill="#ffffff" text-anchor="middle">AK</text>
+      <text x="648" y="432" font-size="12" fill="#495057">Aki · 1d</text>
+    </g>
+
+    <!-- IP card 3 -->
+    <g id="ip-card-3">
+      <rect x="392" y="464" width="320" height="96" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+      <text x="404" y="492" font-size="13" font-weight="500" fill="#212529">Conference room display</text>
+      <text x="404" y="510" font-size="13" font-weight="500" fill="#212529">flickering in Room 4B</text>
+      <text x="404" y="540" font-size="12" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-40</text>
+      <rect x="506" y="528" width="48" height="18" rx="9" fill="#e9ecef"/>
+      <text x="530" y="540" font-size="11" font-weight="600" fill="#495057" text-anchor="middle">Low</text>
+      <circle cx="632" cy="537" r="10" fill="#adb5bd"/>
+      <text x="632" y="540" font-size="9" font-weight="600" fill="#ffffff" text-anchor="middle">MJ</text>
+      <text x="648" y="540" font-size="12" fill="#495057">Maya · 3d</text>
+    </g>
+  </g>
+
+  <!-- ===== Column: Resolved ===== -->
+  <g id="col-resolved">
+    <text x="740" y="232" font-size="14" font-weight="600" fill="#212529">Resolved</text>
+    <rect x="824" y="220" width="28" height="18" rx="9" fill="#f1f3f5"/>
+    <text x="838" y="232" font-size="11" font-weight="600" fill="#495057" text-anchor="middle">2</text>
+
+    <!-- Resolved card 1 -->
+    <g id="res-card-1">
+      <rect x="728" y="248" width="320" height="96" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+      <text x="740" y="276" font-size="13" font-weight="500" fill="#212529">Adobe Acrobat license</text>
+      <text x="740" y="294" font-size="13" font-weight="500" fill="#212529">renewed — please restart</text>
+      <text x="740" y="324" font-size="12" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-39</text>
+      <rect x="842" y="312" width="64" height="18" rx="9" fill="#fff5d6"/>
+      <text x="874" y="324" font-size="11" font-weight="600" fill="#7a5c00" text-anchor="middle">Medium</text>
+      <circle cx="968" cy="321" r="10" fill="#adb5bd"/>
+      <text x="968" y="324" font-size="9" font-weight="600" fill="#ffffff" text-anchor="middle">SP</text>
+      <text x="984" y="324" font-size="12" fill="#495057">Sam · 6h</text>
+    </g>
+
+    <!-- Resolved card 2 -->
+    <g id="res-card-2">
+      <rect x="728" y="356" width="320" height="96" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+      <text x="740" y="384" font-size="13" font-weight="500" fill="#212529">Slack notifications silenced</text>
+      <text x="740" y="402" font-size="13" font-weight="500" fill="#212529">on personal device</text>
+      <text x="740" y="432" font-size="12" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-38</text>
+      <rect x="842" y="420" width="48" height="18" rx="9" fill="#e9ecef"/>
+      <text x="866" y="432" font-size="11" font-weight="600" fill="#495057" text-anchor="middle">Low</text>
+      <circle cx="968" cy="429" r="10" fill="#adb5bd"/>
+      <text x="968" y="432" font-size="9" font-weight="600" fill="#ffffff" text-anchor="middle">AK</text>
+      <text x="984" y="432" font-size="12" fill="#495057">Aki · 1d</text>
+    </g>
+  </g>
+
+  <!-- ===== Column: Closed (read-only) ===== -->
+  <g id="col-closed">
+    <text x="1076" y="232" font-size="14" font-weight="600" fill="#212529">Closed</text>
+    <rect x="1144" y="220" width="28" height="18" rx="9" fill="#f1f3f5"/>
+    <text x="1158" y="232" font-size="11" font-weight="600" fill="#495057" text-anchor="middle">3</text>
+
+    <!-- Closed card 1 -->
+    <g id="cl-card-1">
+      <rect x="1064" y="248" width="320" height="96" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+      <text x="1076" y="276" font-size="13" font-weight="500" fill="#868e96">Need a new laptop charger</text>
+      <text x="1076" y="294" font-size="13" font-weight="500" fill="#868e96">— replacement shipped</text>
+      <text x="1076" y="324" font-size="12" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-37</text>
+      <rect x="1178" y="312" width="48" height="18" rx="9" fill="#e9ecef"/>
+      <text x="1202" y="324" font-size="11" font-weight="600" fill="#495057" text-anchor="middle">Low</text>
+      <text x="1304" y="324" font-size="11" fill="#868e96" text-anchor="end">Sep 14</text>
+    </g>
+
+    <!-- Closed card 2 -->
+    <g id="cl-card-2">
+      <rect x="1064" y="356" width="320" height="96" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+      <text x="1076" y="384" font-size="13" font-weight="500" fill="#868e96">Printer offline in 2nd-floor</text>
+      <text x="1076" y="402" font-size="13" font-weight="500" fill="#868e96">break room — fixed</text>
+      <text x="1076" y="432" font-size="12" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-36</text>
+      <rect x="1178" y="420" width="64" height="18" rx="9" fill="#fff5d6"/>
+      <text x="1210" y="432" font-size="11" font-weight="600" fill="#7a5c00" text-anchor="middle">Medium</text>
+      <text x="1304" y="432" font-size="11" fill="#868e96" text-anchor="end">Sep 12</text>
+    </g>
+
+    <!-- Closed card 3 -->
+    <g id="cl-card-3">
+      <rect x="1064" y="464" width="320" height="96" rx="6" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
+      <text x="1076" y="492" font-size="13" font-weight="500" fill="#868e96">Calendar permission request</text>
+      <text x="1076" y="510" font-size="13" font-weight="500" fill="#868e96">for new team room</text>
+      <text x="1076" y="540" font-size="12" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-35</text>
+      <rect x="1178" y="528" width="48" height="18" rx="9" fill="#e9ecef"/>
+      <text x="1202" y="540" font-size="11" font-weight="600" fill="#495057" text-anchor="middle">Low</text>
+      <text x="1304" y="540" font-size="11" fill="#868e96" text-anchor="end">Sep 10</text>
+    </g>
+
+    <!-- Closed column: subtle read-only indicator at bottom -->
+    <text x="1224" y="600" font-size="11" fill="#adb5bd" text-anchor="middle">Closed is read-only</text>
+  </g>
+</svg>

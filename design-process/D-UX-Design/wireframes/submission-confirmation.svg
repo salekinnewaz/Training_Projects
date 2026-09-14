@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <!-- Page background -->
+  <rect x="0" y="0" width="1440" height="900" fill="#f8f9fa"/>
+
+  <!--
+    Layout:
+      App-header chrome strip: y=0..64 (same as Ticket Detail).
+      Content column: 880px wide, centered at x=720, so x=280..1160.
+      Success check circle: cx=720, cy=240, r=32.
+      Headline: y=320 (baseline), 28px semibold.
+      Ticket number: y=380 (baseline), 32px monospace.
+      Status micro-label: y=410.
+      Status chip: y=420..442.
+      Primary CTA: y=512..560 (880x48).
+      Secondary link: y=600.
+
+    This is the canonical Default frame. Direct-arrival / not-found / session-expired
+    states are documented in the spec; only Default is rendered here.
+  -->
+
+  <!-- ===== App-header chrome strip (shared) ===== -->
+  <g id="app-header">
+    <rect x="0" y="0" width="1440" height="64" fill="#ffffff"/>
+    <line x1="0" y1="64" x2="1440" y2="64" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="32" y="12" width="40" height="40" rx="6" fill="#212529"/>
+    <text x="84" y="40" font-size="22" font-weight="600" fill="#212529">HelpDesk Lite</text>
+    <text x="1280" y="40" font-size="14" fill="#495057">My Profile</text>
+    <polyline points="1372,34 1380,42 1388,34" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ===== Success check circle ===== -->
+  <g id="success-check">
+    <circle cx="720" cy="240" r="32" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="2.5"/>
+    <!-- Check glyph: polyline from (706,242) → (716,252) → (738,228) -->
+    <polyline points="706,242 716,252 738,228" fill="none" stroke="#2b8a3e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ===== Headline ===== -->
+  <text x="720" y="320" font-size="28" font-weight="600" fill="#212529" text-anchor="middle">Ticket created</text>
+
+  <!-- ===== Ticket number ===== -->
+  <text x="720" y="380" font-size="32" fill="#212529" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-47</text>
+
+  <!-- ===== Initial status micro-label + chip ===== -->
+  <text x="720" y="410" font-size="12" fill="#868e96" text-anchor="middle">Initial status</text>
+
+  <g id="status-chip">
+    <rect x="676" y="420" width="88" height="22" rx="11" fill="#fff5d6"/>
+    <text x="720" y="435" font-size="12" font-weight="600" fill="#7a5c00" text-anchor="middle">Open</text>
+  </g>
+
+  <!-- ===== Primary CTA: View ticket ===== -->
+  <g id="view-ticket-cta">
+    <rect x="280" y="512" width="880" height="48" rx="6" fill="#212529"/>
+    <text x="720" y="543" font-size="16" font-weight="600" fill="#ffffff" text-anchor="middle">View ticket</text>
+  </g>
+
+  <!-- ===== Secondary link: Back to My Tickets ===== -->
+  <text x="720" y="600" font-size="14" fill="#868e96" text-anchor="middle">‹ Back to My Tickets</text>
+</svg>

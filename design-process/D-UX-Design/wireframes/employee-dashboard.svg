@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <!-- Page background -->
+  <rect x="0" y="0" width="1440" height="900" fill="#f8f9fa"/>
+
+  <!--
+    Layout:
+      App-header chrome strip: y=0..64.
+      Heading row: y=88..128.
+        "My Tickets" heading at x=280, baseline y=108.
+        Create Ticket button right-aligned at x=1040..1160, y=88..128.
+      List area: x=280..1160 (880px wide).
+      Row 1: y=160..224. Row stride 64px.
+        Each row: ticket number (mono) at x=296 · title at x=380 · status pill · priority pill · timestamp right-aligned at x=1144.
+      5 representative rows.
+  -->
+
+  <!-- ===== App-header chrome strip (shared) ===== -->
+  <g id="app-header">
+    <rect x="0" y="0" width="1440" height="64" fill="#ffffff"/>
+    <line x1="0" y1="64" x2="1440" y2="64" stroke="#dee2e6" stroke-width="1"/>
+    <rect x="32" y="12" width="40" height="40" rx="6" fill="#212529"/>
+    <text x="84" y="40" font-size="22" font-weight="600" fill="#212529">HelpDesk Lite</text>
+    <text x="1280" y="40" font-size="14" fill="#495057">My Profile</text>
+    <polyline points="1372,34 1380,42 1388,34" fill="none" stroke="#495057" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ===== Heading row ===== -->
+  <g id="heading-row">
+    <text x="280" y="108" font-size="24" font-weight="600" fill="#212529">My Tickets</text>
+    <!-- Create Ticket button (right-aligned) -->
+    <rect x="1040" y="88" width="120" height="40" rx="6" fill="#212529"/>
+    <text x="1100" y="113" font-size="15" font-weight="600" fill="#ffffff" text-anchor="middle">+ Create Ticket</text>
+  </g>
+
+  <!-- ===== List area: 5 representative ticket rows ===== -->
+
+  <!-- Row 1: VPN ticket (Open, Medium, just updated) -->
+  <g id="row-1">
+    <rect x="280" y="160" width="880" height="64" fill="#ffffff"/>
+    <line x1="280" y1="224" x2="1160" y2="224" stroke="#dee2e6" stroke-width="1"/>
+    <text x="296" y="196" font-size="13" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-47</text>
+    <text x="380" y="196" font-size="14" font-weight="600" fill="#212529">VPN keeps dropping every few minutes</text>
+    <!-- Status: Open -->
+    <rect x="852" y="184" width="60" height="20" rx="10" fill="#fff5d6"/>
+    <text x="882" y="198" font-size="11" font-weight="600" fill="#7a5c00" text-anchor="middle">Open</text>
+    <!-- Priority: Medium -->
+    <rect x="924" y="184" width="68" height="20" rx="10" fill="#fff5d6"/>
+    <text x="958" y="198" font-size="11" font-weight="600" fill="#7a5c00" text-anchor="middle">Medium</text>
+    <!-- Timestamp -->
+    <text x="1144" y="196" font-size="12" fill="#868e96" text-anchor="end">2 hours ago</text>
+  </g>
+
+  <!-- Row 2: Closed ticket -->
+  <g id="row-2">
+    <rect x="280" y="224" width="880" height="64" fill="#ffffff"/>
+    <line x1="280" y1="288" x2="1160" y2="288" stroke="#dee2e6" stroke-width="1"/>
+    <text x="296" y="260" font-size="13" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-46</text>
+    <text x="380" y="260" font-size="14" font-weight="600" fill="#212529">Need a new laptop charger — power brick died</text>
+    <!-- Status: Closed -->
+    <rect x="852" y="248" width="68" height="20" rx="10" fill="#e9ecef"/>
+    <text x="886" y="262" font-size="11" font-weight="600" fill="#495057" text-anchor="middle">Closed</text>
+    <!-- Priority: Low -->
+    <rect x="932" y="248" width="48" height="20" rx="10" fill="#e9ecef"/>
+    <text x="956" y="262" font-size="11" font-weight="600" fill="#495057" text-anchor="middle">Low</text>
+    <!-- Timestamp -->
+    <text x="1144" y="260" font-size="12" fill="#868e96" text-anchor="end">Yesterday</text>
+  </g>
+
+  <!-- Row 3: In Progress, High priority -->
+  <g id="row-3">
+    <rect x="280" y="288" width="880" height="64" fill="#ffffff"/>
+    <line x1="280" y1="352" x2="1160" y2="352" stroke="#dee2e6" stroke-width="1"/>
+    <text x="296" y="324" font-size="13" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-45</text>
+    <text x="380" y="324" font-size="14" font-weight="600" fill="#212529">Cannot access shared drive — urgent for client deliverable</text>
+    <!-- Status: In Progress -->
+    <rect x="852" y="312" width="92" height="20" rx="10" fill="#d0ebff"/>
+    <text x="898" y="326" font-size="11" font-weight="600" fill="#1864ab" text-anchor="middle">In Progress</text>
+    <!-- Priority: High -->
+    <rect x="956" y="312" width="52" height="20" rx="10" fill="#ffe3e3"/>
+    <text x="982" y="326" font-size="11" font-weight="600" fill="#c92a2a" text-anchor="middle">High</text>
+    <!-- Timestamp -->
+    <text x="1144" y="324" font-size="12" fill="#868e96" text-anchor="end">Sep 12</text>
+  </g>
+
+  <!-- Row 4: Resolved -->
+  <g id="row-4">
+    <rect x="280" y="352" width="880" height="64" fill="#ffffff"/>
+    <line x1="280" y1="416" x2="1160" y2="416" stroke="#dee2e6" stroke-width="1"/>
+    <text x="296" y="388" font-size="13" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-44</text>
+    <text x="380" y="388" font-size="14" font-weight="600" fill="#212529">Software license expired — Adobe Acrobat</text>
+    <!-- Status: Resolved -->
+    <rect x="852" y="376" width="80" height="20" rx="10" fill="#d3f9d8"/>
+    <text x="892" y="390" font-size="11" font-weight="600" fill="#2b8a3e" text-anchor="middle">Resolved</text>
+    <!-- Priority: Medium -->
+    <rect x="944" y="376" width="68" height="20" rx="10" fill="#fff5d6"/>
+    <text x="978" y="390" font-size="11" font-weight="600" fill="#7a5c00" text-anchor="middle">Medium</text>
+    <!-- Timestamp -->
+    <text x="1144" y="388" font-size="12" fill="#868e96" text-anchor="end">Sep 10</text>
+  </g>
+
+  <!-- Row 5: Open -->
+  <g id="row-5">
+    <rect x="280" y="416" width="880" height="64" fill="#ffffff"/>
+    <line x1="280" y1="480" x2="1160" y2="480" stroke="#dee2e6" stroke-width="1"/>
+    <text x="296" y="452" font-size="13" fill="#868e96" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#HD-43</text>
+    <text x="380" y="452" font-size="14" font-weight="600" fill="#212529">Expense report submitted but not showing in Concur</text>
+    <!-- Status: Open -->
+    <rect x="852" y="440" width="60" height="20" rx="10" fill="#fff5d6"/>
+    <text x="882" y="454" font-size="11" font-weight="600" fill="#7a5c00" text-anchor="middle">Open</text>
+    <!-- Priority: Low -->
+    <rect x="924" y="440" width="48" height="20" rx="10" fill="#e9ecef"/>
+    <text x="948" y="454" font-size="11" font-weight="600" fill="#495057" text-anchor="middle">Low</text>
+    <!-- Timestamp -->
+    <text x="1144" y="452" font-size="12" fill="#868e96" text-anchor="end">Sep 09</text>
+  </g>
+
+  <!-- Subtle hint below the list that the page is scrollable if she has more -->
+  <text x="280" y="528" font-size="12" fill="#adb5bd">— end of recent tickets —</text>
+</svg>
