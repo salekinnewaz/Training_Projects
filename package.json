@@ -1,0 +1,35 @@
+{
+  "name": "helpdesk-lite-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HelpDesk Lite monorepo — Angular 17 frontend, Express + TypeScript backend, MySQL via Sequelize. WDS Phase 6 (Mimir) implementation scaffold.",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev --workspace backend\" \"npm run start --workspace frontend\"",
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:frontend": "npm run start --workspace frontend",
+    "build": "npm run build --workspace backend && npm run build --workspace frontend",
+    "build:backend": "npm run build --workspace backend",
+    "build:frontend": "npm run build --workspace frontend",
+    "db:migrate": "npm run db:migrate --workspace backend",
+    "db:migrate:undo": "npm run db:migrate:undo --workspace backend",
+    "db:migrate:undo:all": "npm run db:migrate:undo:all --workspace backend",
+    "db:seed": "npm run db:seed --workspace backend",
+    "db:reset": "npm run db:reset --workspace backend",
+    "typecheck": "npm run typecheck --workspace backend",
+    "test": "npm run test --workspace backend",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f mysql",
+    "docker:ps": "docker compose ps"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

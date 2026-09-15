@@ -15,9 +15,29 @@ phases:
   3_ux_scenarios: completed
   4_ux_design: completed
   5_design_system: completed
+  6_mimir_handoff: in_progress (kickoff brief at design-process/G-Mimir-Handoff/phase-6-kickoff.md; 16 stories HD-001..HD-016; Milestones A + B + C; stack locked 2026-09-15)
 
 # Configuration (filled in for HelpDesk Lite)
 platform: "Web"
-tech_stack: "TBD — internal web app; PRD/brief do not lock a stack"
+tech_stack: "Angular 17+ (standalone components + CSS) + Node.js/Express + MySQL (Sequelize) + JWT/bcrypt"
 complexity: "Small (MVP, 5–20 users, 3 entities, 2 roles)"
 primary_language: "English"
+
+# Stack decisions (locked 2026-09-15 in preparation for Phase 6 Mimir handoff)
+stack:
+  frontend:
+    framework: "Angular 17+"
+    style: "Standalone components, no UI library"
+    styling: "Plain CSS — no Tailwind, no Angular Material, no PrimeNG"
+    component_mapping: "WDS Phase 5 atomic design tiers map 1:1 to Angular components"
+  backend:
+    runtime: "Node.js"
+    framework: "Express"
+    db_driver: "Sequelize ORM against MySQL"
+    auth: "JWT (short-lived) + bcrypt password hashing"
+  database:
+    engine: "MySQL"
+    schema_status: "TBD — Mimir to design tables for users, tickets, comments, activity_log"
+  auth:
+    method: "Email + Password (no SSO; SSO deferred to first-team deployment per Phase 4 login.md)"
+    storage: "JWT in localStorage or httpOnly cookie (Mimir to confirm)"
