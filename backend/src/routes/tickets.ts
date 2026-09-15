@@ -1,24 +1,34 @@
 /**
- * Tickets router — HD-007.
+ * Tickets router — HD-007 + HD-008.
  *
- * Mounted at `/api/tickets` by `routes/index.ts`. HD-007 exposes only
- * `GET /mine` (the JWT'd user's own submitted tickets). Later
- * stories append their own handlers:
+ * Mounted at `/api/tickets` by `routes/index.ts`. Routes:
+ *
+ *   GET  /mine   — list tickets the JWT'd user submitted (HD-007)
+ *   POST /        — create a new ticket on behalf of the JWT'd
+ *                   user (HD-008). Body: {title, description,
+ *                   category?, priority, attachmentId?}.
+ *                   Responds 201 with `{ ticket }`.
+ *
+ * Later stories append their own handlers:
  *   - HD-010: GET /:id
- *   - HD-012: GET / (Agent queue view)
- *   - HD-008+: POST / (Create Ticket, Submit endpoint)
+ *   - HD-012: GET /  (Agent queue view)
  *
- * All routes behind this router that read ticket data must call
- * `authMiddleware` first so `req.user` is populated.
+ * All routes behind this router that read or write ticket data
+ * must call `authMiddleware` first so `req.user` is populated.
+ * The create route intentionally does NOT use `roleGuard(['User'])`
+ * — the controller asserts the role inline so any future story that
+ * wants to allow other roles can swap the assertion without
+ * re-wiring the route.
  */
 
 import { Router } from 'express';
 
-import { listMine } from '../controllers/ticketsController';
+import { listMine, create } from '../controllers/ticketsController';
 import { authMiddleware } from '../middleware/auth';
 
 const ticketsRouter = Router();
 
 ticketsRouter.get('/mine', authMiddleware, listMine);
+ticketsRouter.post('/', authMiddleware, create);
 
 export default ticketsRouter;

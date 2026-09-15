@@ -1,20 +1,24 @@
 /**
- * ticketService — HD-007.
+ * ticketService — HD-007 + HD-008.
  *
  * Read-side helpers for the Ticket resource. Wraps the consistent
  * `findAll` shape used by every list endpoint so controllers don't
  * have to re-derive the include / order / limit triplet per story.
  *
- * HD-007 uses only `listForUser(userId)`. HD-010 (Ticket Detail) and
- * HD-012 (Agent Kanban) extend this file with their own queries
- * rather than calling `Ticket.findAll` from controllers directly.
+ * HD-007 uses `listForUser(userId)`. HD-008 (Create Ticket) adds
+ * `createTicket(submitterId, input)` — the only write-side helper
+ * this file owns right now. HD-010 (Ticket Detail) and HD-012 (Agent
+ * Kanban) extend this file with their own queries rather than
+ * calling `Ticket.findAll` from controllers directly.
  *
  * No pagination params are exposed yet — out of MVP per spec. The
  * `opts` bag exists as an extension point for HD-015 if/when
  * cursor pagination lands.
  */
 
-import { Ticket, User, Attachment } from '../models';
+import { Ticket, User, Attachment, sequelize } from '../models';
+import type { CreateTicketInput } from '../utils/validation/ticketValidation';
+import { nextTicketNumber } from '../utils/ticketNumber';
 
 export interface ListForUserOptions {
   /** Override the default 100-row cap. */
@@ -46,5 +50,74 @@ export async function listForUser(
       { model: User, as: 'owner' },
       { model: Attachment, as: 'attachment' },
     ],
+  });
+}
+
+/**
+ * Create a new ticket on behalf of `submitterId` (HD-008).
+ *
+ * Wraps a single transaction:
+ *   1. `nextTicketNumber(tx)` — atomically increments the counter
+ *      inside the same tx so concurrent inserts can't collide.
+ *   2. `Ticket.create({...}, {transaction})` — inserts with the
+ *      freshly-reserved HD-<n> number, status='Open', and the
+ *      submitter pulled from `submitterId` (NOT request body).
+ *   3. Re-fetch the row with eager-loaded submitter/owner/attachment
+ *      so the controller can serialize without a second roundtrip.
+ *
+ * On any error the transaction is rolled back and the error
+ * re-thrown — the central errorHandler maps Sequelize errors to 400
+ * and other errors to 500.
+ *
+ * Returns the freshly-created Sequelize instance with associations
+ * eager-loaded (the controller does NOT need to call `reload()`).
+ */
+export async function createTicket(
+  submitterId: number,
+  input: CreateTicketInput,
+): Promise<Ticket> {
+  return sequelize.transaction(async (tx) => {
+    // nextTicketNumber must share the same tx as the insert so the
+    // FOR UPDATE on the counter row spans both the increment and
+    // the downstream insert. Two parallel POSTs serialize on the
+    // counter row and each get a unique HD-<n>.
+    const number = await nextTicketNumber(tx);
+
+    const created = await Ticket.create(
+      {
+        number,
+        title: input.title,
+        description: input.description,
+        category: input.category,
+        priority: input.priority,
+        status: 'Open',
+        submitterId,
+        ownerId: null,
+        attachmentId: input.attachmentId,
+      },
+      { transaction: tx },
+    );
+
+    // Reload with eager includes so serializeTicket can hand the
+    // shape straight back to the frontend without a second query.
+    const reloaded = await Ticket.findByPk(created.id, {
+      transaction: tx,
+      include: [
+        { model: User, as: 'submitter' },
+        { model: User, as: 'owner' },
+        { model: Attachment, as: 'attachment' },
+      ],
+    });
+
+    // Defensive: a hard delete between the insert and the reload
+    // would yield null. Surface as an error rather than handing the
+    // caller a falsy ticket.
+    if (!reloaded) {
+      throw new Error(
+        `Ticket ${String(created.id)} disappeared immediately after insert.`,
+      );
+    }
+
+    return reloaded;
   });
 }
