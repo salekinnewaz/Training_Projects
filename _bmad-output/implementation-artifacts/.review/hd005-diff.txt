@@ -1,0 +1,889 @@
+=== NEW: frontend/src/app/components/atoms/button/button.component.ts ===
+/**
+ * button — atom (HD-005).
+ *
+ * Reusable button with three visual variants (primary / secondary /
+ * danger) and a loading state. OnPush.
+ *
+ * The button is the workhorse CTA across the app: login submit,
+ * "New ticket" on the dashboard, "Save" on the users form, dialog
+ * confirmations, etc.
+ *
+ * Loading renders an inline spinner to the left of the projected
+ * label and sets `aria-busy="true"` so assistive tech announces
+ * the in-flight state. Disabled applies both the `disabled`
+ * attribute (which blocks click events at the DOM level) and a
+ * 50% opacity + no-pointer-events visual treatment.
+ */
+
+import {
+  ChangeDetectionStrategy,
+  Component,
+  input,
+} from '@angular/core';
+
+type ButtonVariant = 'primary' | 'secondary' | 'danger';
+
+@Component({
+  selector: 'atom-button',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <button
+      [type]="type()"
+      [disabled]="disabled() || loading()"
+      [attr.aria-busy]="loading() ? 'true' : null"
+      [class]="variant()"
+    >
+      @if (loading()) {
+        <span class="spinner" aria-hidden="true"></span>
+      }
+      <ng-content />
+    </button>
+  `,
+  styles: [`
+    :host {
+      display: contents;
+    }
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      height: var(--button-height);
+      padding: 0 20px;
+      border-radius: var(--button-radius);
+      border: 1px solid transparent;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1;
+      cursor: pointer;
+      transition: background-color 120ms ease, border-color 120ms ease;
+    }
+    button:disabled {
+      opacity: 0.5;
+      pointer-events: none;
+      cursor: not-allowed;
+    }
+    .primary {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: #ffffff;
+    }
+    .primary:hover:not(:disabled) {
+      background: #000000;
+      border-color: #000000;
+    }
+    .secondary {
+      background: var(--color-surface);
+      border-color: var(--color-border);
+      color: var(--color-label);
+    }
+    .secondary:hover:not(:disabled) {
+      background: var(--color-surface-subtle);
+    }
+    .danger {
+      background: var(--color-error);
+      border-color: var(--color-error);
+      color: #ffffff;
+    }
+    .danger:hover:not(:disabled) {
+      filter: brightness(0.92);
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      animation: btn-spin 700ms linear infinite;
+    }
+    @keyframes btn-spin {
+      to { transform: rotate(360deg); }
+    }
+  `],
+})
+export class ButtonComponent {
+  readonly variant = input<ButtonVariant>('primary');
+  readonly disabled = input<boolean>(false);
+  readonly type = input<'button' | 'submit'>('button');
+  readonly loading = input<boolean>(false);
+}
+
+=== NEW: frontend/src/app/components/atoms/input-text/input-text.component.ts ===
+/**
+ * input-text — atom (HD-005).
+ *
+ * Bare `<input>` primitive. The label, error message, and any
+ * suffix widgets (e.g. the password show/hide toggle) are the
+ * responsibility of the consuming `form-field` molecule.
+ *
+ * OnPush. value is two-way bound via `value` input + `valueChange`
+ * output so the host can wire it to FormControl with
+ * `[value]="control.value"` + `(valueChange)="..."`.
+ */
+
+import {
+  ChangeDetectionStrategy,
+  Component,
+  EventEmitter,
+  Output,
+  input,
+} from '@angular/core';
+
+@Component({
+  selector: 'atom-input',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <input
+      [id]="id()"
+      [type]="type()"
+      [value]="value()"
+      [placeholder]="placeholder() ?? ''"
+      [attr.autocomplete]="autocomplete() ?? null"
+      [attr.aria-describedby]="ariaDescribedBy() ?? null"
+      [attr.aria-invalid]="invalid() ? 'true' : null"
+      [disabled]="disabled()"
+      (input)="onInput($event)"
+    />
+  `,
+  styles: [`
+    :host {
+      display: block;
+      width: 100%;
+    }
+    input {
+      width: 100%;
+      height: var(--field-height);
+      padding: 0 12px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--field-radius);
+      background: var(--color-surface);
+      color: var(--color-primary);
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.4;
+      outline: none;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+      box-sizing: border-box;
+    }
+    input::placeholder {
+      color: var(--color-muted);
+    }
+    input:disabled {
+      background: var(--color-surface-subtle);
+      color: var(--color-disabled);
+      cursor: not-allowed;
+    }
+    input[aria-invalid="true"] {
+      border-color: var(--color-error);
+    }
+    input:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: 0;
+      border-color: var(--focus-ring-color);
+    }
+  `],
+})
+export class InputTextComponent {
+  readonly id = input.required<string>();
+  readonly type = input<'email' | 'password' | 'text'>('text');
+  readonly value = input<string>('');
+  readonly placeholder = input<string | undefined>(undefined);
+  readonly autocomplete = input<string | undefined>(undefined);
+  readonly disabled = input<boolean>(false);
+  readonly invalid = input<boolean>(false);
+  readonly ariaDescribedBy = input<string | undefined>(undefined);
+
+  @Output() readonly valueChange = new EventEmitter<string>();
+
+  onInput(event: Event): void {
+    const target = event.target as HTMLInputElement;
+    this.valueChange.emit(target.value);
+  }
+}
+
+=== NEW: frontend/src/app/components/atoms/link/link.component.ts ===
+/**
+ * link — atom (HD-005).
+ *
+ * RouterLink-driven `<a>` for SPA navigation. Renders an `<a>`
+ * with `[routerLink]="href"` so the Angular Router intercepts
+ * the click and avoids a full-page reload.
+ *
+ * When `disabled=true`, the link renders a plain `<a>` without
+ * router binding and with `aria-disabled`. Callers can still
+ * listen for clicks on the host; the host does NOT prevent
+ * navigation. The "disabled" state is purely visual/a11y here —
+ * the host decides whether to actually navigate.
+ *
+ * Color + hover underline match the global `<a>` styling in
+ * styles.css.
+ */
+
+import {
+  ChangeDetectionStrategy,
+  Component,
+  EventEmitter,
+  Output,
+  input,
+} from '@angular/core';
+import { RouterLink } from '@angular/router';
+
+@Component({
+  selector: 'atom-link',
+  standalone: true,
+  imports: [RouterLink],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    @if (disabled()) {
+      <a
+        [attr.aria-disabled]="true"
+        class="disabled"
+        (click)="$event.preventDefault()"
+      ><ng-content /></a>
+    } @else {
+      <a [routerLink]="href()" (click)="onClick($event)"><ng-content /></a>
+    }
+  `,
+  styles: [`
+    :host {
+      display: inline-block;
+    }
+    a {
+      color: var(--color-primary);
+      text-decoration: none;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    a.disabled {
+      color: var(--color-disabled);
+      cursor: not-allowed;
+    }
+    a.disabled:hover {
+      text-decoration: none;
+    }
+  `],
+})
+export class LinkComponent {
+  readonly href = input.required<string>();
+  readonly disabled = input<boolean>(false);
+
+  @Output() readonly navigate = new EventEmitter<void>();
+
+  onClick(event: MouseEvent): void {
+    // RouterLink already handles the navigation. We emit so callers
+    // can run side effects (analytics, etc.) — but we do NOT
+    // preventDefault; default RouterLink behaviour wins.
+    void event;
+    this.navigate.emit();
+  }
+}
+
+=== NEW: frontend/src/app/components/atoms/show-password-toggle/show-password-toggle.component.ts ===
+/**
+ * show-password-toggle — atom (HD-005).
+ *
+ * Pressed-state button with two inline SVGs (eye-open / eye-closed)
+ * toggled by the `pressed` input. Carries `aria-pressed` mirroring
+ * the pressed state and a dynamic `aria-label` so SR users hear
+ * "Show password" / "Hide password".
+ *
+ * The host (login page) wires the click handler to flip the
+ * password input's `type` attribute between `password` and `text`.
+ */
+
+import {
+  ChangeDetectionStrategy,
+  Component,
+  EventEmitter,
+  Output,
+  input,
+} from '@angular/core';
+
+@Component({
+  selector: 'atom-show-password-toggle',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <button
+      type="button"
+      class="toggle"
+      [attr.aria-pressed]="pressed()"
+      [attr.aria-label]="pressed() ? 'Hide password' : 'Show password'"
+      [disabled]="disabled()"
+      (click)="onClick($event)"
+    >
+      @if (pressed()) {
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+             stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+          <circle cx="12" cy="12" r="3" />
+          <line x1="4" y1="4" x2="20" y2="20" />
+        </svg>
+      } @else {
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+             stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      }
+    </button>
+  `,
+  styles: [`
+    :host {
+      display: contents;
+    }
+    .toggle {
+      all: unset;
+      display: inline-grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: var(--field-radius);
+      cursor: pointer;
+      color: var(--color-muted);
+      box-sizing: border-box;
+    }
+    .toggle:hover {
+      color: var(--color-label);
+      background: var(--color-surface-subtle);
+    }
+    .toggle:disabled {
+      color: var(--color-disabled);
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+    .toggle:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: 1px;
+    }
+    svg {
+      display: block;
+    }
+  `],
+})
+export class ShowPasswordToggleComponent {
+  readonly pressed = input<boolean>(false);
+  readonly disabled = input<boolean>(false);
+
+  @Output() readonly toggle = new EventEmitter<void>();
+
+  onClick(event: MouseEvent): void {
+    event.preventDefault();
+    this.toggle.emit();
+  }
+}
+
+=== NEW: frontend/src/app/components/molecules/form-field/form-field.component.ts ===
+/**
+ * form-field — molecule (HD-005).
+ *
+ * Three-part wrapper:
+ *   1. Label (always rendered; visually-hidden when hideLabel)
+ *   2. Projected content (the `<atom-input>` and any suffix widget
+ *      like the password show/hide toggle)
+ *   3. Error message — only when `error` is truthy
+ *
+ * The label uses `[htmlFor]="id"`; the projected `<atom-input>`
+ * binds `id="..."` to the same id so clicking the label focuses
+ * the input. The error element exposes `id="<id>-error"` so the
+ * input can wire `aria-describedby` to it.
+ *
+ * Spacing between label and field is a local 8px literal — the
+ * `--space-modal-pad` token (24px) is too generous for a vertical
+ * label-stack rhythm. Promoted to `--space-form-label-gap` if a
+ * second form demands it.
+ */
+
+import {
+  ChangeDetectionStrategy,
+  Component,
+  input,
+} from '@angular/core';
+
+@Component({
+  selector: 'form-field',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    @if (!hideLabel()) {
+      <label [class.visually-hidden]="hideLabel()" [attr.for]="id()">
+        {{ label() }}@if (required()) {<span class="req" aria-hidden="true"> *</span>}
+      </label>
+    }
+    <div class="control">
+      <ng-content />
+    </div>
+    @if (error(); as e) {
+      <p class="form-field-error" [id]="id() + '-error'" role="alert">{{ e }}</p>
+    }
+  `,
+  styles: [`
+    :host {
+      display: block;
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-label);
+      margin-bottom: 8px;
+    }
+    label.visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .req {
+      color: var(--color-error);
+      margin-left: 2px;
+    }
+    .control {
+      position: relative;
+      display: block;
+    }
+    .form-field-error {
+      margin: 6px 0 0;
+      color: var(--color-error);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+  `],
+})
+export class FormFieldComponent {
+  readonly id = input.required<string>();
+  readonly label = input.required<string>();
+  readonly required = input<boolean>(false);
+  readonly hideLabel = input<boolean>(false);
+  readonly error = input<string | null>(null);
+}
+
+=== NEW: frontend/src/app/pages/login-page/login-page.component.ts ===
+/**
+ * LoginPageComponent — HD-005.
+ *
+ * Public, unauthenticated sign-in page. Renders a centered card
+ * with a reactive email/password form. On successful login the
+ * user is redirected to their role-correct dashboard via
+ * `AuthService.roleHomePath()` — no intermediate "you're signed in"
+ * page.
+ *
+ * The form never calls /me on its own — that would force a
+ * guaranteed 401 round-trip on every visit. The route guard
+ * (HD-006) will own the "already authenticated → bounce to
+ * dashboard" behaviour.
+ *
+ * Selector + class name are preserved from the HD-001 placeholder
+ * so the lazy route in app.routes.ts keeps working.
+ */
+
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  ViewChild,
+  inject,
+  signal,
+} from '@angular/core';
+import {
+  AbstractControl,
+  FormControl,
+  FormGroup,
+  ReactiveFormsModule,
+  ValidationErrors,
+  Validators,
+} from '@angular/forms';
+import { Router } from '@angular/router';
+
+import { AuthService } from '../../services/auth.service';
+import { ApiError } from '../../services/api-error';
+import { ButtonComponent } from '../../components/atoms/button/button.component';
+import { InputTextComponent } from '../../components/atoms/input-text/input-text.component';
+import { LinkComponent } from '../../components/atoms/link/link.component';
+import { ShowPasswordToggleComponent } from '../../components/atoms/show-password-toggle/show-password-toggle.component';
+import { FormFieldComponent } from '../../components/molecules/form-field/form-field.component';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function emailRegexValidator(control: AbstractControl): ValidationErrors | null {
+  const raw = (control.value ?? '').toString().trim();
+  if (raw === '') return null; // emptiness is handled by Validators.required
+  return EMAIL_RE.test(raw) ? null : { emailFormat: true };
+}
+
+const GENERIC_ERROR = 'Something went wrong. Please try again.';
+
+const WRONG_CREDS = 'Email or password is incorrect. Try again.';
+const INACTIVE_ACCOUNT = 'Your account is inactive. Contact your administrator.';
+const EMAIL_FORMAT_CLIENT = 'Enter a valid email address.';
+const PASSWORD_REQUIRED = 'Enter your password.';
+
+@Component({
+  selector: 'app-login-page',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    ReactiveFormsModule,
+    ButtonComponent,
+    InputTextComponent,
+    LinkComponent,
+    ShowPasswordToggleComponent,
+    FormFieldComponent,
+  ],
+  template: `
+    <section class="login-page">
+      <article class="login-card">
+        <header class="brand">
+          <span class="brand-mark" aria-hidden="true">HL</span>
+          <span class="brand-wordmark">HelpDesk Lite</span>
+        </header>
+
+        <h1 class="visually-hidden">Sign in</h1>
+
+        <form
+          [formGroup]="form"
+          (ngSubmit)="onSubmit()"
+          novalidate
+          autocomplete="on"
+        >
+          <div class="fields">
+            <form-field
+              id="login-email"
+              label="Email"
+              [required]="true"
+              [error]="emailFieldError()"
+            >
+              <atom-input
+                #emailInput
+                id="login-email"
+                type="email"
+                autocomplete="email"
+                placeholder="you@company.com"
+                [value]="form.controls.email.value"
+                [disabled]="submitting()"
+                [invalid]="!!emailFieldError()"
+                ariaDescribedBy="login-email-error"
+                (valueChange)="form.controls.email.setValue($event)"
+              />
+            </form-field>
+
+            <form-field
+              id="login-password"
+              label="Password"
+              [required]="true"
+              [error]="passwordFieldError()"
+            >
+              <div class="password-wrap">
+                <atom-input
+                  id="login-password"
+                  [type]="passwordVisible() ? 'text' : 'password'"
+                  autocomplete="current-password"
+                  placeholder="Your password"
+                  [value]="form.controls.password.value"
+                  [disabled]="submitting()"
+                  [invalid]="!!passwordFieldError()"
+                  ariaDescribedBy="login-password-error"
+                  (valueChange)="form.controls.password.setValue($event)"
+                />
+                <atom-show-password-toggle
+                  [pressed]="passwordVisible()"
+                  [disabled]="submitting()"
+                  (toggle)="togglePasswordVisibility()"
+                />
+              </div>
+            </form-field>
+          </div>
+
+          <atom-button
+            type="submit"
+            variant="primary"
+            [disabled]="!form.controls.email.value || !form.controls.password.value"
+            [loading]="submitting()"
+          >
+            {{ submitting() ? 'Logging in…' : 'Log in' }}
+          </atom-button>
+
+          <div class="forgot-row">
+            <atom-link href="/forgot-password">Forgot password?</atom-link>
+          </div>
+        </form>
+      </article>
+    </section>
+  `,
+  styles: [`
+    :host {
+      display: block;
+    }
+    .login-page {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: var(--color-page-bg);
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .login-card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 48px 40px;
+      box-shadow: var(--shadow-dropdown);
+      box-sizing: border-box;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+    .brand-mark {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      background: var(--color-primary);
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 14px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .brand-wordmark {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--color-primary);
+    }
+    .fields {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .password-wrap {
+      position: relative;
+    }
+    .password-wrap atom-input {
+      /* leave room for the toggle so the typed text never slides
+         under the icon */
+      padding-right: 40px;
+    }
+    .password-wrap atom-show-password-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    form > atom-button {
+      display: block;
+      width: 100%;
+    }
+    .forgot-row {
+      margin-top: 16px;
+      text-align: center;
+    }
+  `],
+})
+export class LoginPageComponent implements AfterViewInit {
+  private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
+
+  readonly form = new FormGroup({
+    email: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required, emailRegexValidator],
+    }),
+    password: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required],
+    }),
+  });
+
+  readonly submitting = signal(false);
+  readonly emailFieldError = signal<string | null>(null);
+  readonly passwordFieldError = signal<string | null>(null);
+  readonly passwordVisible = signal(false);
+
+  @ViewChild('emailInput', { static: false })
+  private readonly emailInput?: ElementRef<HTMLElement>;
+
+  ngAfterViewInit(): void {
+    // Auto-focus the email input on page load (UX spec).
+    // ViewChild is unresolved at construction time, but resolves
+    // after the first CD cycle — wrap in queueMicrotask so the
+    // host element is fully painted.
+    queueMicrotask(() => this.focusEmailInput());
+  }
+
+  private focusEmailInput(): void {
+    const host = this.emailInput?.nativeElement;
+    const inner: HTMLInputElement | null =
+      host?.querySelector('input') ?? null;
+    inner?.focus();
+  }
+
+  togglePasswordVisibility(): void {
+    this.passwordVisible.update((v) => !v);
+  }
+
+  async onSubmit(): Promise<void> {
+    // Clear previous errors so re-submitting fresh doesn't show stale UI.
+    this.emailFieldError.set(null);
+    this.passwordFieldError.set(null);
+
+    this.form.controls.email.markAsTouched();
+    this.form.controls.password.markAsTouched();
+
+    if (this.form.invalid) {
+      const emailInvalid =
+        this.form.controls.email.invalid ||
+        (this.form.controls.email.value ?? '').trim() === '';
+      const passwordInvalid =
+        this.form.controls.password.invalid ||
+        (this.form.controls.password.value ?? '').trim() === '';
+
+      if (emailInvalid) {
+        this.emailFieldError.set(EMAIL_FORMAT_CLIENT);
+      }
+      if (passwordInvalid) {
+        this.passwordFieldError.set(PASSWORD_REQUIRED);
+      }
+
+      // Re-focus the most relevant invalid field (UX spec):
+      // email when email is invalid, otherwise password.
+      queueMicrotask(() => {
+        if (emailInvalid) {
+          this.focusEmailInput();
+        } else {
+          this.focusPasswordInput();
+        }
+      });
+      return;
+    }
+
+    const email = this.form.controls.email.value.trim();
+    const password = this.form.controls.password.value;
+
+    this.submitting.set(true);
+    try {
+      await this.auth.login(email, password);
+      await this.router.navigateByUrl(this.auth.roleHomePath());
+    } catch (err) {
+      this.applyApiError(err);
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  private applyApiError(err: unknown): void {
+    let mapped: string | null = null;
+    let target: 'password' | 'email' = 'password';
+
+    if (err instanceof ApiError) {
+      switch (err.errorCode) {
+        case 'invalid_credentials':
+          mapped = WRONG_CREDS;
+          target = 'password';
+          break;
+        case 'account_inactive':
+          mapped = INACTIVE_ACCOUNT;
+          target = 'password';
+          break;
+        case 'validation_error': {
+          // backend's field-level messages land in `err.fields`
+          const fields = err.fields ?? {};
+          const emailMsg = fields['email'];
+          const passwordMsg = fields['password'];
+          if (emailMsg) {
+            this.emailFieldError.set(emailMsg);
+            target = 'email';
+          }
+          if (passwordMsg) {
+            this.passwordFieldError.set(passwordMsg);
+            // No explicit "general" target — fields are surface-level.
+          }
+          if (!emailMsg && !passwordMsg) {
+            this.passwordFieldError.set(GENERIC_ERROR);
+          }
+          queueMicrotask(() => {
+            if (target === 'email') this.focusEmailInput();
+            else this.focusPasswordInput();
+          });
+          return;
+        }
+        case 'network_error':
+        case 'internal_server_error':
+        case 'unknown_error':
+          mapped = GENERIC_ERROR;
+          target = 'password';
+          break;
+        default:
+          // forbidden / not_found / not_implemented / unauthenticated /
+          // invalid_token — defensive; shouldn't happen on /login.
+          mapped = GENERIC_ERROR;
+          target = 'password';
+          break;
+      }
+    } else {
+      mapped = GENERIC_ERROR;
+      target = 'password';
+    }
+
+    if (target === 'password') {
+      this.passwordFieldError.set(mapped);
+    } else {
+      this.emailFieldError.set(mapped);
+    }
+
+    // Restore focus to the most relevant field (UX spec: on 401
+    // "email gains focus").
+    if (err instanceof ApiError && err.errorCode === 'invalid_credentials') {
+      queueMicrotask(() => this.focusEmailInput());
+    } else {
+      queueMicrotask(() => this.focusPasswordInput());
+    }
+  }
+
+  private focusPasswordInput(): void {
+    const inner = document.querySelector<HTMLInputElement>('#login-password');
+    inner?.focus();
+  }
+}
+
+=== MODIFIED: frontend/src/styles.css ===
+Only the trailing .visually-hidden block was added (HD-005). Showing it directly:
+
+/* ── Visually hidden (SR-only) — HD-005 ──────────────────────────── */
+/* Keeps the element in the accessibility tree while clipping it
+   out of visual rendering. Used for landmarks like the page H1
+   on the login card. */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

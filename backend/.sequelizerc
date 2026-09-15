@@ -1,0 +1,17 @@
+/**
+ * Sequelize CLI configuration entry-point.
+ *
+ * Sequelize CLI is a CommonJS tool that runs against `.js` config files
+ * even though the rest of the backend is TypeScript. Models / migrations
+ * / seeders live as .js files (or compiled .ts via ts-node at runtime)
+ * but the config files themselves remain .js so sequelize-cli can load
+ * them without compiling.
+ */
+const path = require('path');
+
+module.exports = {
+  config: path.resolve(__dirname, 'src', 'config', 'sequelizeConfig.js'),
+  'models-path': path.resolve(__dirname, 'src', 'models'),
+  'seeders-path': path.resolve(__dirname, 'src', 'seeders'),
+  'migrations-path': path.resolve(__dirname, 'src', 'migrations'),
+};

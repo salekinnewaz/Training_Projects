@@ -1,1 +1,62 @@
+# ─────────────────────────────────────────────────────────────────
+# HelpDesk Lite — Monorepo .gitignore
+# Covers the root, frontend/ (Angular 17), backend/ (Express + TS),
+# and the MySQL Docker volume used for local development.
+# ─────────────────────────────────────────────────────────────────
+
+# ── OS / IDE noise ────────────────────────────────────────────────
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.example.json
+*.swp
+*.swo
+*~
+
+# ── Secrets / local config ────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ── Node / npm workspaces ─────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Build output ──────────────────────────────────────────────────
+dist/
+build/
+out/
+frontend/dist/
+frontend/.angular/
+backend/dist/
+backend/coverage/
+
+# ── Test / coverage artifacts ─────────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
+
+# ── Logs ──────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── Runtime / generated ───────────────────────────────────────────
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Allow .gitkeep markers in any folder so empty source folders
+# (e.g. atoms/, molecules/, services/, guards/, patterns/, models/)
+# remain tracked even before they're populated.
+**/.gitkeep
+
+# ── TypeScript build info ─────────────────────────────────────────
+*.tsbuildinfo
+
+# ── Docker / MySQL ────────────────────────────────────────────────
+.docker/
+mysql-data/

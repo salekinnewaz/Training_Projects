@@ -1,0 +1,203 @@
+/* ─────────────────────────────────────────────────────────────────
+ * HelpDesk Lite — Global styles + design tokens.
+ *
+ * Tokens mirror design-process/E-Design-System/01-design-tokens.md
+ * (consolidated Phase 5 reference). All values exposed as CSS custom
+ * properties on :root so that every component reads from one source.
+ *
+ * HD-001 seeds the foundation. Later stories (HD-004 onwards) extend
+ * the token table as new patterns emerge. Never hard-code a token
+ * value inside a component — always read from the corresponding var.
+ * ─────────────────────────────────────────────────────────────────
+ */
+
+:root {
+  /* ── Type ─────────────────────────────────────────────────────── */
+  --font-stack: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ── Colors ─ surface ─────────────────────────────────────────── */
+  --color-page-bg: #f8f9fa;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f1f3f5;
+  --color-surface-muted: #e9ecef;
+
+  /* ── Colors ─ text ────────────────────────────────────────────── */
+  --color-primary: #212529;        /* button bg, headings, brand mark */
+  --color-label: #495057;         /* field labels, body text */
+  --color-muted: #868e96;         /* timestamps, captions, muted links */
+  --color-success: #2b8a3e;
+  --color-error: #c92a2a;
+  --color-disabled: #adb5bd;
+
+  /* ── Colors ─ borders ─────────────────────────────────────────── */
+  --color-border: #dee2e6;
+  --color-border-strong: #adb5bd;
+
+  /* ── Colors ─ status pills (Ticket Detail + Kanban) ───────────── */
+  --status-open-bg: #fff5d6;
+  --status-open-text: #7a5c00;
+  --status-in-progress-bg: #d0ebff;
+  --status-in-progress-text: #1864ab;
+  --status-resolved-bg: #d3f9d8;
+  --status-resolved-text: #2b8a3e;
+  --status-closed-bg: #e9ecef;
+  --status-closed-text: #495057;
+
+  /* ── Colors ─ priority pills ───────────────────────────────────── */
+  --priority-low-bg: #e9ecef;
+  --priority-low-text: #495057;
+  --priority-medium-bg: #fff5d6;
+  --priority-medium-text: #7a5c00;
+  --priority-high-bg: #ffe3e3;
+  --priority-high-text: #c92a2a;
+
+  /* ── Colors ─ role borders (Ticket Detail comments + Kanban) ──── */
+  --role-employee-border: #adb5bd;
+  --role-support-agent-border: #4263eb;
+  --role-support-agent-bg: #edf2ff;
+
+  /* ── Colors ─ kanban-specific ─────────────────────────────────── */
+  --color-kanban-orphan-tint: rgba(255, 245, 214, 0.12);
+  --color-kanban-invalid-drop: #fff5f5;
+
+  /* ── Geometry ─ field / button sizes ──────────────────────────── */
+  --field-height: 44px;
+  --field-radius: 4px;
+  --button-height: 48px;
+  --button-radius: 6px;
+  --content-column-width: 880px;
+
+  /* ── Geometry ─ chrome ────────────────────────────────────────── */
+  --chrome-height: 64px;
+
+  /* ── Shadows ──────────────────────────────────────────────────── */
+  --shadow-card-hover: 0 4px 8px rgba(33, 37, 41, 0.08);
+  --shadow-dropdown: 0 4px 12px rgba(33, 37, 41, 0.12);
+
+  /* ── Focus ring ───────────────────────────────────────────────── */
+  --focus-ring-color: #4263eb;
+  --focus-ring-width: 2px;
+
+  /* ── Z-index scale ────────────────────────────────────────────── */
+  --z-dropdown: 100;
+  --z-modal-scrim: 1000;
+  --z-modal: 1001;
+  --z-toast: 2000;
+
+  /* ── Scrim (modal overlay) ────────────────────────────────────── */
+  --color-scrim: rgba(33, 37, 41, 0.4);
+
+  /* ── Role colors — Admin (Employee + Support Agent defined above) */
+  --role-admin-border: #7a5c00;
+
+  /* ── Geometry — chrome elements (HD-004) ──────────────────────── */
+  --size-avatar-32: 32px;
+  --size-avatar-24: 24px;
+  --size-dropdown-width: 240px;
+  --size-modal-width: 360px;
+  --space-modal-pad: 24px;
+  --space-chrome-bottom-gap: 16px;
+}
+
+/* ── Base resets + page chrome ───────────────────────────────────── */
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-stack);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-label);
+  background: var(--color-page-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--color-primary);
+  margin: 0;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 24px;
+}
+
+h2 {
+  font-size: 20px;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ── Utility classes (used by placeholder pages; full set grows
+       with each story) ───────────────────────────────────────────── */
+
+.page-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-content {
+  flex: 1;
+  padding: 32px;
+  max-width: var(--content-column-width);
+  margin: 0 auto;
+  width: 100%;
+}
+
+.placeholder-page {
+  /* Single class applied to every HD-001 placeholder page
+     so the visual rhythm is consistent. Later stories override. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+}
+
+.placeholder-page h1 {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.placeholder-page .placeholder-subtitle {
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+/* ── Focus-visible (keyboard only, matches Phase 4 spec) ─────────── */
+
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* ── Visually hidden (SR-only) — HD-005 ──────────────────────────── */
+/* Keeps the element in the accessibility tree while clipping it
+   out of visual rendering. Used for landmarks like the page H1
+   on the login card. */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
