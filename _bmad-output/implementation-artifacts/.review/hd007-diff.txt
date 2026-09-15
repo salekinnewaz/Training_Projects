@@ -1,0 +1,1174 @@
+diff --git a/backend/src/controllers/ticketsController.ts b/backend/src/controllers/ticketsController.ts
+new file mode 100644
+index 0000000..e631764
+--- /dev/null
++++ b/backend/src/controllers/ticketsController.ts
+@@ -0,0 +1,47 @@
++/**
++ * Tickets controller — HD-007.
++ *
++ * Single endpoint exposed for HD-007:
++ *   GET /api/tickets/mine  → list tickets the JWT'd user submitted
++ *
++ * The submitterId filter comes from the JWT (never the query string),
++ * so a user can only ever see their own tickets through this route.
++ *
++ * Later stories (HD-010 ticket detail, HD-012 queue, HD-013 admin)
++ * register their own handlers in this controller file.
++ */
++
++import type { Request, Response } from 'express';
++
++import { Ticket } from '../models';
++import { asyncHandler } from '../utils/asyncHandler';
++import { listForUser } from '../services/ticketService';
++
++/**
++ * Serialize a Ticket instance (with eager-loaded associations) into
++ * the wire shape the frontend `Ticket` interface declares.
++ *
++ * - `toJSON()` flattens Sequelize instances and converts the
++ *   nested User/Attachment associations into plain objects.
++ * - Date fields stay as `Date` after toJSON; the frontend expects
++ *   ISO strings, so we re-serialize the four timestamp fields.
++ */
++function serializeTicket(ticket: Ticket): Record<string, unknown> {
++  const json = ticket.toJSON() as unknown as Record<string, unknown>;
++  json.createdAt = ticket.createdAt.toISOString();
++  json.updatedAt = ticket.updatedAt.toISOString();
++  json.deletedAt = ticket.deletedAt
++    ? ticket.deletedAt.toISOString()
++    : null;
++  return json;
++}
++
++export const listMine = asyncHandler(async (req: Request, res: Response) => {
++  // authMiddleware ran before us and populated req.user.
++  const userId = req.user!.id;
++
++  const tickets = await listForUser(userId);
++  const payload = tickets.map(serializeTicket);
++
++  res.status(200).json({ tickets: payload, count: payload.length });
++});
+\ No newline at end of file
+diff --git a/backend/src/routes/index.ts b/backend/src/routes/index.ts
+index 712645f..f0cbdaf 100644
+--- a/backend/src/routes/index.ts
++++ b/backend/src/routes/index.ts
+@@ -1,17 +1,18 @@
+ import { Router } from 'express';
+ import { healthController } from '../controllers/healthController';
+ import authRouter from './auth';
++import ticketsRouter from './tickets';
+ 
+ /**
+  * Single router for every `/api/*` resource. Mounts:
+- *   - /health (HD-001)
+- *   - /auth   (HD-003)
++ *   - /health     (HD-001)
++ *   - /auth       (HD-003)
++ *   - /tickets    (HD-007 — GET /mine; later stories append to it)
+  *
+  * Later stories add more resource routers by calling
+  *   apiRouter.use('/<resource>', <resourceRouter>)` here.
+  *
+- * Example for HD-007+:
+- *   apiRouter.use('/tickets', ticketsRouter);
++ * Example for HD-014:
+  *   apiRouter.use('/users', usersRouter);
+  *   apiRouter.use('/attachments', attachmentsRouter);
+  */
+@@ -19,5 +20,6 @@ const apiRouter = Router();
+ 
+ apiRouter.get('/health', healthController);
+ apiRouter.use('/auth', authRouter);
++apiRouter.use('/tickets', ticketsRouter);
+ 
+ export default apiRouter;
+diff --git a/backend/src/routes/tickets.ts b/backend/src/routes/tickets.ts
+new file mode 100644
+index 0000000..41a1306
+--- /dev/null
++++ b/backend/src/routes/tickets.ts
+@@ -0,0 +1,24 @@
++/**
++ * Tickets router — HD-007.
++ *
++ * Mounted at `/api/tickets` by `routes/index.ts`. HD-007 exposes only
++ * `GET /mine` (the JWT'd user's own submitted tickets). Later
++ * stories append their own handlers:
++ *   - HD-010: GET /:id
++ *   - HD-012: GET / (Agent queue view)
++ *   - HD-008+: POST / (Create Ticket, Submit endpoint)
++ *
++ * All routes behind this router that read ticket data must call
++ * `authMiddleware` first so `req.user` is populated.
++ */
++
++import { Router } from 'express';
++
++import { listMine } from '../controllers/ticketsController';
++import { authMiddleware } from '../middleware/auth';
++
++const ticketsRouter = Router();
++
++ticketsRouter.get('/mine', authMiddleware, listMine);
++
++export default ticketsRouter;
+\ No newline at end of file
+diff --git a/backend/src/services/ticketService.ts b/backend/src/services/ticketService.ts
+new file mode 100644
+index 0000000..06f68bd
+--- /dev/null
++++ b/backend/src/services/ticketService.ts
+@@ -0,0 +1,50 @@
++/**
++ * ticketService — HD-007.
++ *
++ * Read-side helpers for the Ticket resource. Wraps the consistent
++ * `findAll` shape used by every list endpoint so controllers don't
++ * have to re-derive the include / order / limit triplet per story.
++ *
++ * HD-007 uses only `listForUser(userId)`. HD-010 (Ticket Detail) and
++ * HD-012 (Agent Kanban) extend this file with their own queries
++ * rather than calling `Ticket.findAll` from controllers directly.
++ *
++ * No pagination params are exposed yet — out of MVP per spec. The
++ * `opts` bag exists as an extension point for HD-015 if/when
++ * cursor pagination lands.
++ */
++
++import { Ticket, User, Attachment } from '../models';
++
++export interface ListForUserOptions {
++  /** Override the default 100-row cap. */
++  limit?: number;
++  /** Override the default newest-first sort. */
++  order?: 'newest' | 'oldest';
++}
++
++export async function listForUser(
++  userId: number,
++  opts: ListForUserOptions = {},
++): Promise<Ticket[]> {
++  const limit = opts.limit ?? 100;
++  const order: [string, 'DESC' | 'ASC'][] =
++    opts.order === 'oldest'
++      ? [['updatedAt', 'ASC']]
++      : [['updatedAt', 'DESC']];
++
++  // `paranoid: true` on the Ticket model (HD-002) already excludes
++  // soft-deleted rows — no explicit `deletedAt` filter needed.
++  // Eager-load the nested associations the frontend's Ticket view
++  // model declares (submitter / owner / attachment).
++  return Ticket.findAll({
++    where: { submitterId: userId },
++    order,
++    limit,
++    include: [
++      { model: User, as: 'submitter' },
++      { model: User, as: 'owner' },
++      { model: Attachment, as: 'attachment' },
++    ],
++  });
++}
+\ No newline at end of file
+diff --git a/frontend/src/app/app.routes.ts b/frontend/src/app/app.routes.ts
+index 69b0f5b..9e9d8ae 100644
+--- a/frontend/src/app/app.routes.ts
++++ b/frontend/src/app/app.routes.ts
+@@ -52,7 +52,7 @@ export const routes: Routes = [
+ 
+   {
+     path: 'dashboard',
+-    canActivate: [authGuard, roleGuard(['User', 'Support Agent', 'Admin'])],
++    canActivate: [authGuard, roleGuard(['User'])],
+     loadComponent: () =>
+       import('./pages/employee-dashboard-page/employee-dashboard-page.component').then(
+         (m) => m.EmployeeDashboardPageComponent
+diff --git a/frontend/src/app/components/atoms/badge-priority/badge-priority.component.ts b/frontend/src/app/components/atoms/badge-priority/badge-priority.component.ts
+new file mode 100644
+index 0000000..9bba180
+--- /dev/null
++++ b/frontend/src/app/components/atoms/badge-priority/badge-priority.component.ts
+@@ -0,0 +1,72 @@
++/**
++ * badge-priority — atom (HD-007).
++ *
++ * Pill that communicates how urgent a ticket is. Display-only —
++ * no interactive states. Variant class picks the (background,
++ * text) pair from the three `--priority-*` CSS tokens seeded in
++ * styles.css by HD-001 / HD-004.
++ *
++ * Variants:
++ *   Low    → --priority-low-bg / --priority-low-text
++ *   Medium → --priority-medium-bg / --priority-medium-text
++ *   High   → --priority-high-bg / --priority-high-text
++ *
++ * Like badge-status, the literal label is rendered as text so the
++ * pill is legible without color (WCAG 1.4.1).
++ */
++
++import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
++
++import type { TicketPriority } from '../../../models/enums';
++
++type PriorityVariant = 'low' | 'medium' | 'high';
++
++@Component({
++  selector: 'badge-priority',
++  standalone: true,
++  changeDetection: ChangeDetectionStrategy.OnPush,
++  template: `<span class="badge" [class]="variantClass()">{{ label() }}</span>`,
++  styles: [`
++    .badge {
++      display: inline-block;
++      min-height: 20px;
++      padding: 0 10px;
++      border-radius: 10px;
++      font-size: 11px;
++      font-weight: 600;
++      line-height: 20px;
++      white-space: nowrap;
++      box-sizing: border-box;
++    }
++    .low {
++      background: var(--priority-low-bg);
++      color: var(--priority-low-text);
++    }
++    .medium {
++      background: var(--priority-medium-bg);
++      color: var(--priority-medium-text);
++    }
++    .high {
++      background: var(--priority-high-bg);
++      color: var(--priority-high-text);
++    }
++  `],
++})
++export class BadgePriorityComponent {
++  readonly priority = input.required<TicketPriority>();
++
++  readonly variant = computed<PriorityVariant>(() => {
++    switch (this.priority()) {
++      case 'Low':
++        return 'low';
++      case 'Medium':
++        return 'medium';
++      case 'High':
++        return 'high';
++    }
++  });
++
++  readonly variantClass = computed(() => this.variant());
++
++  readonly label = computed(() => this.priority());
++}
+\ No newline at end of file
+diff --git a/frontend/src/app/components/atoms/badge-status/badge-status.component.ts b/frontend/src/app/components/atoms/badge-status/badge-status.component.ts
+new file mode 100644
+index 0000000..9e2ddee
+--- /dev/null
++++ b/frontend/src/app/components/atoms/badge-status/badge-status.component.ts
+@@ -0,0 +1,79 @@
++/**
++ * badge-status — atom (HD-007).
++ *
++ * Pill that names a ticket's current status. Display-only — no
++ * interactive states. Variant class picks the (background, text)
++ * pair from the four `--status-*` CSS tokens seeded in styles.css
++ * by HD-001 / HD-004.
++ *
++ * Variants:
++ *   Open        → --status-open-bg / --status-open-text
++ *   In Progress → --status-in-progress-bg / --status-in-progress-text
++ *   Resolved    → --status-resolved-bg / --status-resolved-text
++ *   Closed      → --status-closed-bg / --status-closed-text
++ *
++ * The status literal is also rendered as text so screen readers
++ * and color-blind users always get the label (WCAG 1.4.1).
++ */
++
++import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
++
++import type { TicketStatus } from '../../../models/enums';
++
++type StatusVariant = 'open' | 'in-progress' | 'resolved' | 'closed';
++
++@Component({
++  selector: 'badge-status',
++  standalone: true,
++  changeDetection: ChangeDetectionStrategy.OnPush,
++  template: `<span class="badge" [class]="variantClass()">{{ label() }}</span>`,
++  styles: [`
++    .badge {
++      display: inline-block;
++      min-height: 22px;
++      padding: 0 10px;
++      border-radius: 11px;
++      font-size: 11px;
++      font-weight: 600;
++      line-height: 22px;
++      white-space: nowrap;
++      box-sizing: border-box;
++    }
++    .open {
++      background: var(--status-open-bg);
++      color: var(--status-open-text);
++    }
++    .in-progress {
++      background: var(--status-in-progress-bg);
++      color: var(--status-in-progress-text);
++    }
++    .resolved {
++      background: var(--status-resolved-bg);
++      color: var(--status-resolved-text);
++    }
++    .closed {
++      background: var(--status-closed-bg);
++      color: var(--status-closed-text);
++    }
++  `],
++})
++export class BadgeStatusComponent {
++  readonly status = input.required<TicketStatus>();
++
++  readonly variant = computed<StatusVariant>(() => {
++    switch (this.status()) {
++      case 'Open':
++        return 'open';
++      case 'In Progress':
++        return 'in-progress';
++      case 'Resolved':
++        return 'resolved';
++      case 'Closed':
++        return 'closed';
++    }
++  });
++
++  readonly variantClass = computed(() => this.variant());
++
++  readonly label = computed(() => this.status());
++}
+\ No newline at end of file
+diff --git a/frontend/src/app/components/atoms/button/button.component.ts b/frontend/src/app/components/atoms/button/button.component.ts
+index 0e88bd0..d9823b4 100644
+--- a/frontend/src/app/components/atoms/button/button.component.ts
++++ b/frontend/src/app/components/atoms/button/button.component.ts
+@@ -1,8 +1,12 @@
+ /**
+- * button — atom (HD-005).
++ * button — atom (HD-005, HD-007).
+  *
+  * Reusable button with three visual variants (primary / secondary /
+- * danger) and a loading state. OnPush.
++ * danger), a loading state, and two height sizes (`md` = 40px,
++ * `lg` = 48px). HD-007 added the `pressed` output (re-emits the
++ * host click so callers can navigate without wrapping the button
++ * in an `<a>`) and the `size` input (so the empty-state CTA can
++ * render slightly taller than the header CTA).
+  *
+  * The button is the workhorse CTA across the app: login submit,
+  * "New ticket" on the dashboard, "Save" on the users form, dialog
+@@ -13,15 +17,27 @@
+  * the in-flight state. Disabled applies both the `disabled`
+  * attribute (which blocks click events at the DOM level) and a
+  * 50% opacity + no-pointer-events visual treatment.
++ *
++ * Size tokens:
++ *   `md` (default) → uses `--button-md-height` (40px)
++ *   `lg`           → uses `--button-lg-height` (48px)
++ *
++ * The default `--button-height` token (48px) stays in place so
++ * existing callers that don't pass a size still render at the
++ * legacy height. Callers needing a specific pixel count should
++ * opt into the explicit `size` input.
+  */
+ 
+ import {
+   ChangeDetectionStrategy,
+   Component,
++  EventEmitter,
++  Output,
+   input,
+ } from '@angular/core';
+ 
+ type ButtonVariant = 'primary' | 'secondary' | 'danger';
++type ButtonSize = 'md' | 'lg';
+ 
+ @Component({
+   selector: 'atom-button',
+@@ -32,7 +48,8 @@ type ButtonVariant = 'primary' | 'secondary' | 'danger';
+       [type]="type()"
+       [disabled]="disabled() || loading()"
+       [attr.aria-busy]="loading() ? 'true' : null"
+-      [class]="variant()"
++      [class]="cssClass()"
++      (click)="onClick($event)"
+     >
+       @if (loading()) {
+         <span class="spinner" aria-hidden="true"></span>
+@@ -50,7 +67,7 @@ type ButtonVariant = 'primary' | 'secondary' | 'danger';
+       justify-content: center;
+       gap: 8px;
+       width: 100%;
+-      height: var(--button-height);
++      height: var(--button-md-height);
+       padding: 0 20px;
+       border-radius: var(--button-radius);
+       border: 1px solid transparent;
+@@ -60,12 +77,22 @@ type ButtonVariant = 'primary' | 'secondary' | 'danger';
+       line-height: 1;
+       cursor: pointer;
+       transition: background-color 120ms ease, border-color 120ms ease;
++      box-sizing: border-box;
+     }
+     button:disabled {
+       opacity: 0.5;
+       pointer-events: none;
+       cursor: not-allowed;
+     }
++    button.lg {
++      height: var(--button-lg-height);
++    }
++    button:not(.md):not(.lg) {
++      /* Legacy callers that don't pass a size still inherit the
++         historical 48px --button-height token. The explicit md
++         class overrides this with --button-md-height (40px). */
++      height: var(--button-height);
++    }
+     .primary {
+       background: var(--color-primary);
+       border-color: var(--color-primary);
+@@ -110,4 +137,27 @@ export class ButtonComponent {
+   readonly disabled = input<boolean>(false);
+   readonly type = input<'button' | 'submit'>('button');
+   readonly loading = input<boolean>(false);
++  readonly size = input<ButtonSize>('md');
++
++  /**
++   * Re-emits the host click event. HD-007 added this so callers can
++   * navigate via `(pressed)="navigate()"` instead of wrapping the
++   * atom-button in an `<a routerLink>`, which produced invalid HTML
++   * (button-in-anchor) and ambiguous screen-reader announcements.
++   */
++  @Output() readonly pressed = new EventEmitter<MouseEvent>();
++
++  onClick(event: MouseEvent): void {
++    this.pressed.emit(event);
++  }
++
++  /**
++   * Combined class string so both variant + size apply. The `.md`
++   * class is always present so the explicit `height: var(--button-md-height)`
++   * rule wins; absent `.lg`, it falls through to the legacy
++   * `--button-height` default.
++   */
++  cssClass(): string {
++    return `${this.variant()} ${this.size()}`;
++  }
+ }
+diff --git a/frontend/src/app/components/molecules/empty-state/empty-state.component.ts b/frontend/src/app/components/molecules/empty-state/empty-state.component.ts
+new file mode 100644
+index 0000000..2c71a6d
+--- /dev/null
++++ b/frontend/src/app/components/molecules/empty-state/empty-state.component.ts
+@@ -0,0 +1,112 @@
++/**
++ * empty-state — molecule (HD-007).
++ *
++ * Centered card rendered in place of a list when there's nothing
++ * to show. Carries the headline + caption in a stacked vertical
++ * rhythm, then the CTA button.
++ *
++ * Used by the Employee Dashboard when `listMine()` returns an
++ * empty array. The card is 480px wide (matches design spec) and
++ * vertically positioned in the upper third of the available list
++ * area so it's visible without scrolling.
++ *
++ * The CTA renders as `<atom-button (pressed)>` so the host page
++ * navigates via the router without wrapping the button in an
++ * `<a>` (which would be invalid HTML).
++ */
++
++import {
++  ChangeDetectionStrategy,
++  Component,
++  EventEmitter,
++  Output,
++  inject,
++  input,
++} from '@angular/core';
++import { Router } from '@angular/router';
++
++import { ButtonComponent } from '../../atoms/button/button.component';
++
++@Component({
++  selector: 'empty-state',
++  standalone: true,
++  imports: [ButtonComponent],
++  changeDetection: ChangeDetectionStrategy.OnPush,
++  template: `
++    <section class="empty-state" role="region" aria-labelledby="empty-headline">
++      <h2 id="empty-headline">{{ headline() }}</h2>
++      <p class="caption">{{ caption() }}</p>
++      <atom-button
++        variant="primary"
++        size="lg"
++        (pressed)="onCtaPress()"
++      >{{ actionLabel() }}</atom-button>
++      <div class="supporting">
++        <ng-content />
++      </div>
++    </section>
++  `,
++  styles: [`
++    :host {
++      display: block;
++      width: 100%;
++      margin-top: 32px;
++    }
++    .empty-state {
++      width: 480px;
++      max-width: 100%;
++      margin: 0 auto;
++      background: var(--color-surface);
++      border: 1px solid var(--color-border);
++      border-radius: 8px;
++      padding: 48px 32px;
++      box-sizing: border-box;
++      text-align: center;
++      box-shadow: var(--shadow-card-hover);
++    }
++    h2 {
++      margin: 0;
++      font-size: 20px;
++      font-weight: 600;
++      color: var(--color-primary);
++    }
++    .caption {
++      margin: 8px 0 0;
++      font-size: 14px;
++      color: var(--color-label);
++    }
++    atom-button {
++      display: block;
++      width: 240px;
++      max-width: 100%;
++      margin: 32px auto 0;
++    }
++    .supporting {
++      margin-top: 16px;
++      font-size: 13px;
++      color: var(--color-muted);
++    }
++  `],
++})
++export class EmptyStateComponent {
++  private readonly router = inject(Router);
++
++  readonly headline = input.required<string>();
++  readonly caption = input.required<string>();
++  readonly actionLabel = input.required<string>();
++  readonly actionHref = input.required<string>();
++
++  /**
++   * Emits when the user clicks the CTA. The host page is also
++   * responsible for handling the click — by default the molecule
++   * itself navigates to `actionHref` via the router when the
++   * button is pressed. Hosts that want custom behavior can
++   * ignore this event (no consumers yet).
++   */
++  @Output() readonly action = new EventEmitter<void>();
++
++  onCtaPress(): void {
++    this.action.emit();
++    void this.router.navigateByUrl(this.actionHref());
++  }
++}
+\ No newline at end of file
+diff --git a/frontend/src/app/components/molecules/ticket-row/ticket-row.component.ts b/frontend/src/app/components/molecules/ticket-row/ticket-row.component.ts
+new file mode 100644
+index 0000000..2c6e64b
+--- /dev/null
++++ b/frontend/src/app/components/molecules/ticket-row/ticket-row.component.ts
+@@ -0,0 +1,125 @@
++/**
++ * ticket-row — molecule (HD-007).
++ *
++ * One row in the Employee Dashboard list. Renders the row per
++ * design spec:
++ *   ticket number (mono) · title · status pill · priority pill · timestamp (right-aligned)
++ *
++ * Implementation note: the spec considered two interaction models:
++ *
++ *   1. Native `<button>` + `(rowClick)` event
++ *   2. Single `<a routerLink>` so the whole row is one focusable element
++ *
++ * Per the spec's "Ticket-row click vs link semantics" decision,
++ * we use option (2) — an `<a routerLink="/tickets/:id">` wraps
++ * the row content. This gives native Enter-to-activate keyboard
++ * support and one focusable element per row (matches the UX
++ * spec exactly: "Tab moves through rows as a single focusable
++ * element each"). Removes the need for a `(rowClick)` event.
++ *
++ * The `relativeTime` input lets the host pass a pre-formatted
++ * "2 hours ago" / "Yesterday" string so this component doesn't
++ * ship a date-formatting dependency (kept within MVP scope).
++ */
++
++import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
++import { RouterLink } from '@angular/router';
++
++import type { Ticket } from '../../../models/ticket';
++import { BadgeStatusComponent } from '../../atoms/badge-status/badge-status.component';
++import { BadgePriorityComponent } from '../../atoms/badge-priority/badge-priority.component';
++
++@Component({
++  selector: 'ticket-row',
++  standalone: true,
++  imports: [RouterLink, BadgeStatusComponent, BadgePriorityComponent],
++  changeDetection: ChangeDetectionStrategy.OnPush,
++  template: `
++    <li class="row-wrap">
++      <a
++        class="row"
++        [routerLink]="linkHref()"
++        [attr.aria-label]="ariaLabel()"
++      >
++        <span class="number">{{ ticket().number }}</span>
++        <span class="title">{{ ticket().title }}</span>
++        <span class="status">
++          <badge-status [status]="ticket().status" />
++        </span>
++        <span class="priority">
++          <badge-priority [priority]="ticket().priority" />
++        </span>
++        <time class="timestamp" [attr.datetime]="ticket().updatedAt">
++          {{ relativeTime() }}
++        </time>
++      </a>
++    </li>
++  `,
++  styles: [`
++    :host {
++      display: block;
++    }
++    .row-wrap {
++      list-style: none;
++    }
++    .row {
++      display: grid;
++      grid-template-columns: 80px 1fr auto auto 110px;
++      align-items: center;
++      gap: 16px;
++      height: 64px;
++      padding: 0 16px;
++      background: var(--color-surface);
++      border-bottom: 1px solid var(--color-border);
++      color: var(--color-label);
++      text-decoration: none;
++      cursor: pointer;
++      box-sizing: border-box;
++      transition: background-color 120ms ease;
++    }
++    .row:hover {
++      background: var(--color-surface-subtle);
++      text-decoration: none;
++    }
++    .row:focus-visible {
++      outline: var(--focus-ring-width) solid var(--focus-ring-color);
++      outline-offset: -2px;
++      background: var(--color-surface-subtle);
++    }
++    .number {
++      font-family: var(--font-mono);
++      font-size: 13px;
++      color: var(--color-muted);
++      letter-spacing: 0.5px;
++    }
++    .title {
++      font-size: 14px;
++      font-weight: 600;
++      color: var(--color-label);
++      overflow: hidden;
++      text-overflow: ellipsis;
++      white-space: nowrap;
++      min-width: 0;
++    }
++    .status, .priority {
++      display: inline-flex;
++      align-items: center;
++    }
++    .timestamp {
++      font-size: 13px;
++      color: var(--color-muted);
++      justify-self: end;
++    }
++  `],
++})
++export class TicketRowComponent {
++  readonly ticket = input.required<Ticket>();
++  readonly relativeTime = input<string>('');
++
++  readonly linkHref = computed(() => `/tickets/${this.ticket().id}`);
++
++  readonly ariaLabel = computed(() => {
++    const t = this.ticket();
++    return `Ticket ${t.number}, ${t.title}, ${t.status}, ${t.priority} priority`;
++  });
++}
+\ No newline at end of file
+diff --git a/frontend/src/app/components/patterns/loading-skeleton/loading-skeleton.component.ts b/frontend/src/app/components/patterns/loading-skeleton/loading-skeleton.component.ts
+new file mode 100644
+index 0000000..aae2f86
+--- /dev/null
++++ b/frontend/src/app/components/patterns/loading-skeleton/loading-skeleton.component.ts
+@@ -0,0 +1,130 @@
++/**
++ * loading-skeleton — pattern (HD-007).
++ *
++ * Placeholder structure rendered while the dashboard's initial
++ * fetch is in flight. Mirrors the canonical "with tickets" layout
++ * (heading placeholder, button placeholder, N row placeholders)
++ * so the layout doesn't pop when data arrives.
++ *
++ * Row placeholders are 64px tall (matches the real ticket-row
++ * height) with bars inside for the number / title / badges /
++ * timestamp regions. The pulse animation gives a subtle "alive"
++ * cue without a spinner — per the UX spec, "no spinner overlay".
++ */
++
++import { ChangeDetectionStrategy, Component, input } from '@angular/core';
++
++@Component({
++  selector: 'loading-skeleton',
++  standalone: true,
++  changeDetection: ChangeDetectionStrategy.OnPush,
++  template: `
++    <section class="skeleton" aria-busy="true" aria-label="Loading your tickets">
++      <div class="head-row">
++        <div class="bar bar-heading"></div>
++        <div class="bar bar-button"></div>
++      </div>
++      <ul class="rows">
++        @for (_ of rowArray(); track $index) {
++          <li class="row" aria-hidden="true">
++            <div class="bar bar-number"></div>
++            <div class="bar bar-title"></div>
++            <div class="bar bar-badge"></div>
++            <div class="bar bar-badge short"></div>
++            <div class="bar bar-timestamp"></div>
++          </li>
++        }
++      </ul>
++    </section>
++  `,
++  styles: [`
++    :host {
++      display: block;
++      width: 100%;
++    }
++    .skeleton {
++      width: 100%;
++      box-sizing: border-box;
++    }
++    .head-row {
++      display: flex;
++      justify-content: space-between;
++      align-items: center;
++      margin-bottom: 24px;
++    }
++    .bar {
++      background: var(--color-surface-muted);
++      border-radius: 4px;
++      animation: skel-pulse 1200ms ease-in-out infinite;
++    }
++    .bar-heading {
++      width: 160px;
++      height: 28px;
++    }
++    .bar-button {
++      width: 160px;
++      height: var(--button-md-height);
++      border-radius: var(--button-radius);
++    }
++    .rows {
++      list-style: none;
++      margin: 0;
++      padding: 0;
++      background: var(--color-surface);
++      border: 1px solid var(--color-border);
++      border-radius: 8px;
++      overflow: hidden;
++    }
++    .row {
++      display: grid;
++      grid-template-columns: 80px 1fr auto auto 100px;
++      align-items: center;
++      gap: 16px;
++      padding: 0 16px;
++      height: 64px;
++      border-bottom: 1px solid var(--color-border);
++    }
++    .row:last-child {
++      border-bottom: none;
++    }
++    .bar-number {
++      width: 56px;
++      height: 14px;
++    }
++    .bar-title {
++      width: 100%;
++      max-width: 360px;
++      height: 14px;
++    }
++    .bar-badge {
++      width: 64px;
++      height: 22px;
++      border-radius: 11px;
++    }
++    .bar-badge.short {
++      width: 48px;
++    }
++    .bar-timestamp {
++      width: 80px;
++      height: 12px;
++      justify-self: end;
++    }
++    @keyframes skel-pulse {
++      0%, 100% { opacity: 1; }
++      50% { opacity: 0.55; }
++    }
++  `],
++})
++export class LoadingSkeletonComponent {
++  /** Number of row placeholders to render. Default 5 per UX spec. */
++  readonly rows = input<number>(5);
++
++  /**
++   * Build a fixed-length array of `rows()` for @for iteration in
++   * OnPush templates (Angular's @for needs an iterable, not a
++   * numeric count).
++   */
++  rowArray(): unknown[] {
++    return new Array(Math.max(0, this.rows()));
++  }
++}
+\ No newline at end of file
+diff --git a/frontend/src/app/pages/employee-dashboard-page/employee-dashboard-page.component.ts b/frontend/src/app/pages/employee-dashboard-page/employee-dashboard-page.component.ts
+index 9184e65..56178e6 100644
+--- a/frontend/src/app/pages/employee-dashboard-page/employee-dashboard-page.component.ts
++++ b/frontend/src/app/pages/employee-dashboard-page/employee-dashboard-page.component.ts
+@@ -1,23 +1,217 @@
+-import { Component } from '@angular/core';
+-
+ /**
+- * Employee Dashboard (My Tickets) placeholder.
+- * Source spec: design-process/D-UX-Design/employee-dashboard.md
+- * Real implementation: HD-007.
++ * EmployeeDashboardPageComponent — HD-007.
++ *
++ * The My Tickets page Eli lands on after Login. Lists the
++ * JWT'd user's tickets, newest-first, with one click target
++ * per row. The page wraps itself in `<app-chrome>` (HD-006
++ * deferred wiring `app-chrome` as a parent-route layout
++ * because doing it without per-page opt-in would force every
++ * placeholder to revisit its selector).
++ *
++ * Render states (mutually exclusive — `@switch`):
++ *
++ *   loading → <loading-skeleton [rows]="5">
++ *   error   → inline message + heading + Create Ticket CTA
++ *   empty   → <empty-state> with the centered "No tickets yet"
++ *   list    → N × <ticket-row>
++ *
++ * `ngOnInit` fetches via `TicketService.listMine()`. Per the spec,
++ * this is a "cold navigation = full fetch; warm cache from a
++ * tab switch = re-use" — every visit currently re-fetches (MVP).
++ *
++ * Keyboard: the page relies on `<app-chrome>` for the skip-link
++ * + `<main id="main-content" tabindex="-1">` target. The first
++ * interactive inside the header CTA; tab order then visits each
++ * ticket-row.
+  */
++
++import {
++  ChangeDetectionStrategy,
++  Component,
++  OnInit,
++  inject,
++  signal,
++} from '@angular/core';
++import { Router, RouterLink } from '@angular/router';
++
++import { TicketService } from '../../services/ticket.service';
++import { ApiError } from '../../services/api-error';
++import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
++import { ButtonComponent } from '../../components/atoms/button/button.component';
++import { EmptyStateComponent } from '../../components/molecules/empty-state/empty-state.component';
++import { TicketRowComponent } from '../../components/molecules/ticket-row/ticket-row.component';
++import { LoadingSkeletonComponent } from '../../components/patterns/loading-skeleton/loading-skeleton.component';
++import type { Ticket } from '../../models/ticket';
++
++type RenderState = 'loading' | 'error' | 'empty' | 'list';
++
++const GENERIC_LOAD_ERROR = "Couldn't load your tickets. Refresh to try again.";
++const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
++
+ @Component({
+   selector: 'app-employee-dashboard-page',
+   standalone: true,
++  imports: [
++    RouterLink,
++    AppChromeComponent,
++    ButtonComponent,
++    EmptyStateComponent,
++    TicketRowComponent,
++    LoadingSkeletonComponent,
++  ],
++  changeDetection: ChangeDetectionStrategy.OnPush,
+   template: `
+-    <section class="placeholder-page">
+-      <div>
+-        <h1>My Tickets</h1>
+-        <p class="placeholder-subtitle">
+-          Placeholder — full implementation lands in HD-007.
+-          <br />Route: <code>/dashboard</code>
+-        </p>
+-      </div>
+-    </section>
++    <app-chrome>
++      <section class="dashboard-page">
++        <header class="dashboard-header">
++          <h1>My Tickets</h1>
++          <atom-button
++            variant="primary"
++            size="md"
++            (pressed)="goToCreate()"
++          >Create Ticket</atom-button>
++        </header>
++
++        @switch (renderState()) {
++          @case ('loading') {
++            <loading-skeleton [rows]="5" />
++          }
++          @case ('error') {
++            <p class="error-message" role="alert">{{ errorMessage() }}</p>
++          }
++          @case ('empty') {
++            <empty-state
++              headline="No tickets yet"
++              caption="When you file a request it'll appear here."
++              actionLabel="Create Ticket"
++              actionHref="/tickets/new"
++            />
++          }
++          @case ('list') {
++            <ul class="ticket-list">
++              @for (t of tickets(); track t.id) {
++                <ticket-row
++                  [ticket]="t"
++                  [relativeTime]="formatRelative(t.updatedAt)"
++                />
++              }
++            </ul>
++          }
++        }
++      </section>
++    </app-chrome>
+   `,
++  styles: [`
++    :host {
++      display: block;
++    }
++    .dashboard-page {
++      width: 100%;
++    }
++    .dashboard-header {
++      display: flex;
++      justify-content: space-between;
++      align-items: center;
++      gap: 24px;
++      margin-bottom: 24px;
++    }
++    .dashboard-header h1 {
++      margin: 0;
++      font-size: 24px;
++      font-weight: 600;
++      color: var(--color-primary);
++    }
++    .dashboard-header atom-button {
++      width: auto;
++      min-width: 160px;
++    }
++    .error-message {
++      margin: 0;
++      padding: 16px;
++      border: 1px solid var(--color-error);
++      background: var(--color-surface);
++      color: var(--color-error);
++      font-size: 14px;
++      border-radius: 6px;
++    }
++    .ticket-list {
++      list-style: none;
++      margin: 0;
++      padding: 0;
++      background: var(--color-surface);
++      border: 1px solid var(--color-border);
++      border-radius: 8px;
++      overflow: hidden;
++    }
++    .ticket-list > * {
++      display: block;
++    }
++  `],
+ })
+-export class EmployeeDashboardPageComponent {}
++export class EmployeeDashboardPageComponent implements OnInit {
++  private readonly ticketService = inject(TicketService);
++  private readonly router = inject(Router);
++
++  readonly tickets = signal<Ticket[]>([]);
++  readonly renderState = signal<RenderState>('loading');
++  readonly errorMessage = signal<string | null>(null);
++
++  ngOnInit(): void {
++    void this.load();
++  }
++
++  goToCreate(): void {
++    void this.router.navigateByUrl('/tickets/new');
++  }
++
++  /**
++   * Format an ISO timestamp into a coarse "X ago" string so the row
++   * doesn't need a date-formatting dependency. Intentionally light
++   * — full date formatting lives on the Ticket Detail page (HD-010).
++   */
++  formatRelative(iso: string): string {
++    const then = new Date(iso).getTime();
++    if (Number.isNaN(then)) return '';
++    const seconds = Math.floor((Date.now() - then) / 1000);
++    if (seconds < 60) return 'just now';
++    const minutes = Math.floor(seconds / 60);
++    if (minutes < 60) return `${minutes}m ago`;
++    const hours = Math.floor(minutes / 60);
++    if (hours < 24) return `${hours}h ago`;
++    const days = Math.floor(hours / 24);
++    if (days < 30) return `${days}d ago`;
++    const months = Math.floor(days / 30);
++    if (months < 12) return `${months}mo ago`;
++    const years = Math.floor(days / 365);
++    return `${years}y ago`;
++  }
++
++  private async load(): Promise<void> {
++    this.renderState.set('loading');
++    this.errorMessage.set(null);
++    try {
++      const list = await this.ticketService.listMine();
++      this.tickets.set(list);
++      this.renderState.set(list.length === 0 ? 'empty' : 'list');
++    } catch (err) {
++      // Session-expired → bounce to /login; per spec, "session
++      // expired" is a sub-case of the server-error state. We log
++      // the user out silently (auth service already nulled the
++      // user$ subject on 401) and send them back through the
++      // guard. Other failures show the inline retry message.
++      if (err instanceof ApiError && err.status === 401) {
++        this.errorMessage.set(SESSION_EXPIRED_ERROR);
++        this.renderState.set('error');
++        // Defer the redirect a tick so the message paints first.
++        setTimeout(() => {
++          void this.router.navigate(['/login'], {
++            queryParams: { return_to: '/dashboard' },
++          });
++        }, 0);
++        return;
++      }
++      this.errorMessage.set(GENERIC_LOAD_ERROR);
++      this.renderState.set('error');
++    }
++  }
++}
+\ No newline at end of file
+diff --git a/frontend/src/app/services/ticket.service.ts b/frontend/src/app/services/ticket.service.ts
+new file mode 100644
+index 0000000..6cf3654
+--- /dev/null
++++ b/frontend/src/app/services/ticket.service.ts
+@@ -0,0 +1,55 @@
++/**
++ * TicketService — HD-007.
++ *
++ * Thin wrapper over the `/api/tickets/*` endpoints. HD-007 ships
++ * one method (`listMine()`); HD-010 (Ticket Detail) and HD-008
++ * (Create) extend this file.
++ *
++ * Provided as `providedIn: 'root'` so any page can inject it
++ * without a module-level import dance — mirrors `AuthService`.
++ *
++ * Auth: every request goes through the `authInterceptor`, which
++ * stamps `withCredentials: true` and converts HttpErrorResponse
++ * into a typed `ApiError`. Services never need to think about
++ * cookies or CORS preflight.
++ */
++
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++
++import { environment } from '../../environments/environment';
++import type { Ticket } from '../models/ticket';
++import { apiErrorFrom } from './api-error';
++
++interface ListMineResponse {
++  tickets: Ticket[];
++  count: number;
++}
++
++@Injectable({ providedIn: 'root' })
++export class TicketService {
++  private readonly http = inject(HttpClient);
++
++  /**
++   * GET /api/tickets/mine — newest-first by `updatedAt`, max 100,
++   * filtered server-side by the JWT'd user's `submitterId`.
++   *
++   * Throws `ApiError` on any non-2xx response (auth interceptor does
++   * the HttpErrorResponse → ApiError conversion). Returns `[]`
++   * when the employee has zero tickets.
++   */
++  async listMine(): Promise<Ticket[]> {
++    try {
++      const res = await firstValueFrom(
++        this.http.get<ListMineResponse>(
++          `${environment.apiBaseUrl}/tickets/mine`,
++          { withCredentials: true },
++        ),
++      );
++      return res.tickets;
++    } catch (err) {
++      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
++    }
++  }
++}
+\ No newline at end of file
+diff --git a/frontend/src/styles.css b/frontend/src/styles.css
+index edeb6f1..fb87b4a 100644
+--- a/frontend/src/styles.css
++++ b/frontend/src/styles.css
+@@ -64,7 +64,9 @@
+   /* ── Geometry ─ field / button sizes ──────────────────────────── */
+   --field-height: 44px;
+   --field-radius: 4px;
+-  --button-height: 48px;
++  --button-height: 48px;        /* legacy default for atom-button */
++  --button-md-height: 40px;     /* HD-007: header CTAs */
++  --button-lg-height: 48px;     /* HD-007: empty-state CTA */
+   --button-radius: 6px;
+   --content-column-width: 880px;
+ 

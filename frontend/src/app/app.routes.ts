@@ -52,7 +52,7 @@ export const routes: Routes = [
 
   {
     path: 'dashboard',
-    canActivate: [authGuard, roleGuard(['User', 'Support Agent', 'Admin'])],
+    canActivate: [authGuard, roleGuard(['User'])],
     loadComponent: () =>
       import('./pages/employee-dashboard-page/employee-dashboard-page.component').then(
         (m) => m.EmployeeDashboardPageComponent

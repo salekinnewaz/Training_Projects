@@ -64,7 +64,9 @@
   /* ── Geometry ─ field / button sizes ──────────────────────────── */
   --field-height: 44px;
   --field-radius: 4px;
-  --button-height: 48px;
+  --button-height: 48px;        /* legacy default for atom-button */
+  --button-md-height: 40px;     /* HD-007: header CTAs */
+  --button-lg-height: 48px;     /* HD-007: empty-state CTA */
   --button-radius: 6px;
   --content-column-width: 880px;
 
