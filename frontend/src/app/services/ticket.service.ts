@@ -1,9 +1,9 @@
 /**
- * TicketService — HD-007.
+ * TicketService — HD-007 + HD-008.
  *
  * Thin wrapper over the `/api/tickets/*` endpoints. HD-007 ships
- * one method (`listMine()`); HD-010 (Ticket Detail) and HD-008
- * (Create) extend this file.
+ * `listMine()`; HD-008 adds `create()`. HD-010 (Ticket Detail)
+ * extends this file.
  *
  * Provided as `providedIn: 'root'` so any page can inject it
  * without a module-level import dance — mirrors `AuthService`.
@@ -20,11 +20,36 @@ import { firstValueFrom } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import type { Ticket } from '../models/ticket';
+import type {
+  TicketCategory,
+  TicketPriority,
+} from '../models/enums';
 import { apiErrorFrom } from './api-error';
 
 interface ListMineResponse {
   tickets: Ticket[];
   count: number;
+}
+
+interface CreateResponse {
+  ticket: Ticket;
+}
+
+/**
+ * The body sent to POST /api/tickets.
+ *
+ * Mirrors the backend validator (HD-008). `category` is optional —
+ * omitted or empty string means "Uncategorized" (the DB column
+ * allows null). `attachmentId` is optional and only meaningful once
+ * the attachments upload endpoint lands (HD-011). HD-008 ships with
+ * the drop zone disabled so this field is always omitted today.
+ */
+export interface CreateTicketPayload {
+  title: string;
+  description: string;
+  category?: TicketCategory | '';
+  priority: TicketPriority;
+  attachmentId?: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -48,6 +73,51 @@ export class TicketService {
         ),
       );
       return res.tickets;
+    } catch (err) {
+      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
+    }
+  }
+
+  /**
+   * POST /api/tickets — file a new ticket (HD-008).
+   *
+   * The endpoint is restricted to the `User` role on the backend;
+   * the frontend only exposes this from the Create Ticket page,
+   * which is `roleGuard(['User'])`-ed in `app.routes.ts`.
+   *
+   * Sends `{ title, description, category, priority, attachmentId? }`.
+   * Empty-string category is stripped before send so the backend
+   * validator sees an absent field (it normalizes absent + null +
+   * empty to null on the ticket row).
+   *
+   * Throws `ApiError` on any non-2xx response. The Create Ticket
+   * page switches on:
+   *   - status 400 + fields → maps to per-field error UX
+   *   - status 401 → session-expired stash + redirect to /login
+   *   - other    → generic "Couldn't submit your ticket" message
+   */
+  async create(payload: CreateTicketPayload): Promise<Ticket> {
+    const body: Record<string, unknown> = {
+      title: payload.title,
+      description: payload.description,
+      priority: payload.priority,
+    };
+    if (payload.category && (payload.category as string) !== '') {
+      body['category'] = payload.category;
+    }
+    if (payload.attachmentId !== undefined) {
+      body['attachmentId'] = payload.attachmentId;
+    }
+
+    try {
+      const res = await firstValueFrom(
+        this.http.post<CreateResponse>(
+          `${environment.apiBaseUrl}/tickets`,
+          body,
+          { withCredentials: true },
+        ),
+      );
+      return res.ticket;
     } catch (err) {
       throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
     }
