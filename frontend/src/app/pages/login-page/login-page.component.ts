@@ -33,7 +33,7 @@ import {
   ValidationErrors,
   Validators,
 } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { AuthService } from '../../services/auth.service';
 import { ApiError } from '../../services/api-error';
@@ -82,7 +82,7 @@ const PASSWORD_REQUIRED = 'Enter your password.';
     FormFieldComponent,
   ],
   template: `
-    <section class="login-page">
+    <section class="login-page" id="main-content">
       <article class="login-card">
         <header class="brand">
           <span class="brand-mark" aria-hidden="true">HL</span>
@@ -242,6 +242,10 @@ const PASSWORD_REQUIRED = 'Enter your password.';
 export class LoginPageComponent implements AfterViewInit {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+
+  /** Validated deep-link target. Null when absent, malformed, or unsafe. */
+  private returnTo: string | null = null;
 
   readonly form = new FormGroup({
     email: new FormControl<string>('', {
@@ -266,6 +270,30 @@ export class LoginPageComponent implements AfterViewInit {
   private readonly passwordInput?: ElementRef<HTMLElement>;
 
   ngAfterViewInit(): void {
+    // Read & validate the optional ?return_to= deep-link target
+    // (added by authGuard). Must start with `/` and not contain `//`
+    // or `\\` — that combination rejects absolute URLs ("https://evil"),
+    // protocol-relative URLs ("//evil"), backslash-bypass attempts
+    // ("/\evil" — WHATWG URL parser normalizes `\` to `/`),
+    // and bare paths ("foo"). A bare `/` is also treated as null
+    // so a successful login doesn't bounce through the `''` redirect.
+    const raw = this.route.snapshot.queryParamMap.get('return_to') ?? '';
+    const isSafeSpaPath =
+      raw.startsWith('/') &&
+      raw !== '/' &&
+      !raw.includes('//') &&
+      !raw.includes('\\');
+    if (isSafeSpaPath) {
+      this.returnTo = raw;
+    } else if (raw) {
+      // Open-redirect attempt or malformed value. Fall back to the
+      // role-correct home — logged in dev only, no UI noise so the
+      // user isn't tipped off about the protection in place.
+      // eslint-disable-next-line no-console
+      console.warn('[hd-006] rejected unsafe return_to:', raw);
+      this.returnTo = null;
+    }
+
     // Auto-focus the email input on page load (UX spec).
     // ViewChild is unresolved at construction time, but resolves
     // after the first CD cycle — wrap in queueMicrotask so the
@@ -332,7 +360,7 @@ export class LoginPageComponent implements AfterViewInit {
     this.submitting.set(true);
     try {
       await this.auth.login(email, password);
-      await this.router.navigateByUrl(this.auth.roleHomePath());
+      await this.router.navigateByUrl(this.returnTo ?? this.auth.roleHomePath());
     } catch (err) {
       this.applyApiError(err);
     } finally {

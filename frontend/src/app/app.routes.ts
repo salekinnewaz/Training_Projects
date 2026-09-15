@@ -15,20 +15,24 @@ import { Routes } from '@angular/router';
  *   HD-013  /admin
  *   HD-014  /users
  *   (out of MVP) /forgot-password
+ *   HD-006  /forbidden
  *
- * Authentication + role-based route guards (authGuard / roleGuard) land
- * in HD-006 and are applied here at that time.
+ * HD-006 wires `authGuard` (must be authenticated) and `roleGuard(...)`
+ * (role-restricted routes) into every protected entry. `/login` uses
+ * `loginGuard` so an already-authenticated user bounces to their role
+ * home instead of seeing the form. `/forbidden` is authGuard'd but NOT
+ * roleGuard'd so role mismatches have somewhere to land without looping.
  */
+import { authGuard } from './guards/auth.guard';
+import { roleGuard } from './guards/role.guard';
+import { loginGuard } from './guards/login.guard';
+
 export const routes: Routes = [
-  // HD-004 retarget: while the chrome is being smoke-tested without
-  // a login flow (HD-005) or guards (HD-006), landing on `/` drops
-  // the user on the chrome-preview page where the chrome + dropdown
-  // can be exercised against a cookie set via curl. HD-006 flips
-  // this back to redirect 'login' once authGuard lands.
-  { path: '', redirectTo: 'chrome-preview', pathMatch: 'full' },
+  { path: '', redirectTo: 'login', pathMatch: 'full' },
 
   {
     path: 'login',
+    canActivate: [loginGuard],
     loadComponent: () =>
       import('./pages/login-page/login-page.component').then(
         (m) => m.LoginPageComponent
@@ -36,19 +40,19 @@ export const routes: Routes = [
     title: 'Sign in · HelpDesk Lite',
   },
 
-  // TODO(hd-006): remove this route — chrome-preview is a HD-004
-  // scaffolding page for verifying the chrome end-to-end.
   {
-    path: 'chrome-preview',
+    path: 'forbidden',
+    canActivate: [authGuard],
     loadComponent: () =>
-      import('./pages/chrome-preview-page/chrome-preview-page.component').then(
-        (m) => m.ChromePreviewPageComponent
+      import('./pages/forbidden-page/forbidden-page.component').then(
+        (m) => m.ForbiddenPageComponent
       ),
-    title: 'HD-004 chrome preview · HelpDesk Lite',
+    title: 'Forbidden · HelpDesk Lite',
   },
 
   {
     path: 'dashboard',
+    canActivate: [authGuard, roleGuard(['User', 'Support Agent', 'Admin'])],
     loadComponent: () =>
       import('./pages/employee-dashboard-page/employee-dashboard-page.component').then(
         (m) => m.EmployeeDashboardPageComponent
@@ -58,6 +62,7 @@ export const routes: Routes = [
 
   {
     path: 'tickets/new',
+    canActivate: [authGuard, roleGuard(['User'])],
     loadComponent: () =>
       import('./pages/create-ticket-page/create-ticket-page.component').then(
         (m) => m.CreateTicketPageComponent
@@ -67,6 +72,7 @@ export const routes: Routes = [
 
   {
     path: 'tickets/:id/created',
+    canActivate: [authGuard, roleGuard(['User'])],
     loadComponent: () =>
       import(
         './pages/submission-confirmation-page/submission-confirmation-page.component'
@@ -76,6 +82,7 @@ export const routes: Routes = [
 
   {
     path: 'tickets/:id',
+    canActivate: [authGuard, roleGuard(['User', 'Support Agent', 'Admin'])],
     loadComponent: () =>
       import('./pages/ticket-detail-page/ticket-detail-page.component').then(
         (m) => m.TicketDetailPageComponent
@@ -85,6 +92,7 @@ export const routes: Routes = [
 
   {
     path: 'queue',
+    canActivate: [authGuard, roleGuard(['Support Agent'])],
     loadComponent: () =>
       import('./pages/agent-kanban-page/agent-kanban-page.component').then(
         (m) => m.AgentKanbanPageComponent
@@ -94,6 +102,7 @@ export const routes: Routes = [
 
   {
     path: 'admin',
+    canActivate: [authGuard, roleGuard(['Admin'])],
     loadComponent: () =>
       import('./pages/admin-dashboard-page/admin-dashboard-page.component').then(
         (m) => m.AdminDashboardPageComponent
@@ -103,6 +112,7 @@ export const routes: Routes = [
 
   {
     path: 'users',
+    canActivate: [authGuard, roleGuard(['Admin'])],
     loadComponent: () =>
       import('./pages/users-tab-page/users-tab-page.component').then(
         (m) => m.UsersTabPageComponent
