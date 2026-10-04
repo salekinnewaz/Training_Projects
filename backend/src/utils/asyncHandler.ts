@@ -18,8 +18,12 @@ type AsyncHandlerFn = (
 
 export function asyncHandler(
   fn: AsyncHandlerFn,
-): (req: Request, res: Response, next: NextFunction) => void {
+): (req: Request, res: Response, next: NextFunction) => Promise<unknown> {
   return (req, res, next) => {
-    fn(req, res, next).catch(next);
+    // Return the promise so callers (including tests) can `await`
+    // the wrapped handler and observe the resolved/rejected state
+    // directly. The `.catch(next)` still forwards rejections to
+    // Express's error pipeline in production.
+    return fn(req, res, next).catch(next);
   };
 }

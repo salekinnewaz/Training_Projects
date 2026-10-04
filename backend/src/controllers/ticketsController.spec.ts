@@ -1,6 +1,6 @@
 /**
  * ticketsController — smoke spec (HD-007) + create spec (HD-008)
- *                     + getById spec (HD-009).
+ *                     + getById spec (HD-009) + HD-010 spec.
  *
  * Verifies GET /api/tickets/mine:
  *   - calls Ticket.findAll filtered by the JWT'd user's id (submitterId)
@@ -27,6 +27,16 @@
  *     different submitterId than the JWT'd User → HttpError(404,
  *     'not_found') forwarded to next (NOT 403, by design).
  *
+ * Verifies HD-010 handlers:
+ *   - PATCH /:id (200 happy + 400 invalid transition + 403 user-role +
+ *     404 not-found)
+ *   - POST /:id/comments (201 happy + 400 empty body + 403 closed ticket)
+ *   - GET  /:id/comments (200 happy)
+ *   - GET  /:id/activity (200 happy)
+ *   - POST /:id/reopen (200 happy + 403 non-submitter + 400 wrong-status)
+ *   - POST /:id/confirm-close (200 happy + 403 non-submitter +
+ *     400 wrong-status)
+ *
  * Both `authMiddleware` and the models are mocked so the controller
  * is exercised in isolation — no real DB or JWT verification is touched.
  */
@@ -34,7 +44,17 @@
 import type { NextFunction, Request, Response } from 'express';
 
 import { Ticket } from '../models';
-import { listMine, create, getById } from './ticketsController';
+import {
+  listMine,
+  create,
+  getById,
+  patch,
+  addCommentHandler,
+  listCommentsHandler,
+  listActivityHandler,
+  reopen,
+  confirmClose,
+} from './ticketsController';
 
 jest.mock('../middleware/auth', () => ({
   authMiddleware: (
@@ -62,6 +82,13 @@ jest.mock('../services/ticketService', () => ({
   listForUser: jest.fn(),
   createTicket: jest.fn(),
   getById: jest.fn(),
+  updateTicket: jest.fn(),
+  addComment: jest.fn(),
+  reopenTicket: jest.fn(),
+  confirmCloseTicket: jest.fn(),
+  listComments: jest.fn(),
+  listActivity: jest.fn(),
+  listActiveAgents: jest.fn(),
 }));
 
 interface FakeTicket {
@@ -583,5 +610,905 @@ describe('ticketsController.getById', () => {
 
     expect(ticketService.getById).toHaveBeenCalledWith(456);
     expect(statusMock.mock.calls[0][0]).toBe(200);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// HD-010 — Ticket Detail (/tickets/:id) handlers
+// ════════════════════════════════════════════════════════════════════════
+//
+// Each describe re-uses the `ticketService` jest-mock registry
+// declared above. The controller calls loadTicketForUser (which
+// delegates to ticketService.getById) before any validation, so we
+// stub `getById` to return a fake ticket the tests can mutate
+// (status / submitterId) per scenario.
+//
+// Notes:
+//   - "User" role tests use submitterId=7 (matches the authMiddleware
+//     mock) so enumeration does not fire. Other roles pass any
+//     submitterId because agents/admins skip the enumeration check.
+//   - For the 403/404 paths we assert via the `next` mock — the
+//     asyncHandler forwards HttpError rejections to next().
+
+function makeResolvedTicket(overrides: Record<string, unknown> = {}): {
+  id: number;
+  number: string;
+  title: string;
+  description: string;
+  category: string | null;
+  priority: string;
+  status: string;
+  submitterId: number;
+  ownerId: number | null;
+  attachmentId: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+  toJSON: () => Record<string, unknown>;
+} {
+  const createdAt = new Date('2026-09-15T12:00:00.000Z');
+  const updatedAt = new Date('2026-09-15T12:00:00.000Z');
+  return {
+    id: 47,
+    number: 'HD-47',
+    title: 'WiFi drops',
+    description: 'every few minutes',
+    category: 'IT',
+    priority: 'Medium',
+    status: 'Open',
+    submitterId: 7,
+    ownerId: null,
+    attachmentId: null,
+    createdAt,
+    updatedAt,
+    deletedAt: null,
+    toJSON: () => ({}),
+    ...overrides,
+  };
+}
+
+describe('ticketsController.patch (HD-010)', () => {
+  const ticketService = require('../services/ticketService');
+
+  beforeEach(() => {
+    (ticketService.getById as jest.Mock).mockReset();
+    (ticketService.updateTicket as jest.Mock).mockReset();
+  });
+
+  it('returns 200 with the serialized ticket when a Support Agent changes the status', async () => {
+    const fake = makeResolvedTicket();
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+    (ticketService.updateTicket as jest.Mock).mockResolvedValueOnce(fake);
+
+    const req = {
+      params: { id: '47' },
+      body: { status: 'In Progress' },
+      user: {
+        id: 11,
+        email: 'sam@example.com',
+        displayName: 'Sam',
+        role: 'Support Agent',
+      },
+    } as unknown as Request;
+    const statusMock = jest.fn();
+    const jsonMock = jest.fn();
+    const res = {
+      status: (n: number) => {
+        statusMock(n);
+        return { json: (b: unknown) => jsonMock(b) };
+      },
+    } as unknown as Response;
+
+    await patch(req, res, jest.fn() as unknown as NextFunction);
+
+    expect(ticketService.updateTicket).toHaveBeenCalledWith(
+      47,
+      11,
+      'Support Agent',
+      { status: 'In Progress' },
+    );
+    expect(statusMock.mock.calls[0][0]).toBe(200);
+  });
+
+  it('returns 400 validation_error when a User attempts to change status', async () => {
+    const { HttpError } = require('../utils/errors');
+    const fake = makeResolvedTicket();
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+
+    const req = {
+      params: { id: '47' },
+      body: { status: 'In Progress' },
+      user: {
+        id: 7,
+        email: 'eli@example.com',
+        displayName: 'Eli',
+        role: 'User',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await patch(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(400);
+    expect(err.errorCode).toBe('validation_error');
+    expect(ticketService.updateTicket).not.toHaveBeenCalled();
+  });
+
+  it('forwards HttpError(404) when getById returns null', async () => {
+    const { HttpError } = require('../utils/errors');
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(null);
+
+    const req = {
+      params: { id: '99999' },
+      body: { priority: 'High' },
+      user: {
+        id: 11,
+        email: 'sam@example.com',
+        displayName: 'Sam',
+        role: 'Support Agent',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await patch(req, res, next);
+    await Promise.resolve();
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(404);
+    expect(ticketService.updateTicket).not.toHaveBeenCalled();
+  });
+
+  it('forwards HttpError(400, validation_error) when the body is empty', async () => {
+    const { HttpError } = require('../utils/errors');
+    const fake = makeResolvedTicket();
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+
+    const req = {
+      params: { id: '47' },
+      body: {},
+      user: {
+        id: 11,
+        email: 'sam@example.com',
+        displayName: 'Sam',
+        role: 'Support Agent',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await patch(req, res, next);
+    await Promise.resolve();
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(400);
+    expect(err.errorCode).toBe('validation_error');
+    expect(ticketService.updateTicket).not.toHaveBeenCalled();
+  });
+
+  it('forwards HttpError(400, validation_error) when status transition is invalid', async () => {
+    const { HttpError } = require('../utils/errors');
+    const fake = makeResolvedTicket();
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+    (ticketService.updateTicket as jest.Mock).mockRejectedValueOnce(
+      new HttpError(
+        400,
+        'validation_error',
+        'Invalid transition',
+        { status: 'Closed is a terminal status; cannot transition.' },
+      ),
+    );
+
+    const req = {
+      params: { id: '47' },
+      body: { status: 'Open' },
+      user: {
+        id: 11,
+        email: 'sam@example.com',
+        displayName: 'Sam',
+        role: 'Support Agent',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await patch(req, res, next);
+    await Promise.resolve();
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(400);
+    expect(err.errorCode).toBe('validation_error');
+    // The wire envelope includes a fields map keyed by the offending
+    // field so the frontend can pin the message to the Status control.
+    expect(err.fields).toBeDefined();
+    expect(Object.keys(err.fields || {})).toContain('status');
+  });
+
+  it('returns 200 with the serialized ticket when a Support Agent reassigns the ticket via ownerId', async () => {
+    const newOwner = {
+      id: 22,
+      email: 'jordan@example.com',
+      displayName: 'Jordan',
+      role: 'Support Agent',
+    };
+    const createdAt = new Date('2026-09-15T12:00:00.000Z');
+    const updatedAt = new Date('2026-09-15T12:00:00.000Z');
+    // The serialized ticket — what `serializeTicket` returns — must
+    // include the new owner association; that's what the frontend
+    // reads to refresh the assignee dropdown.
+    const updated = {
+      id: 47,
+      number: 'HD-47',
+      title: 'WiFi drops',
+      description: 'every few minutes',
+      category: 'IT',
+      priority: 'Medium',
+      status: 'Open',
+      submitterId: 7,
+      ownerId: 22,
+      attachmentId: null,
+      createdAt,
+      updatedAt,
+      deletedAt: null,
+      submitter: {
+        id: 7,
+        email: 'eli@example.com',
+        displayName: 'Eli',
+        role: 'User',
+      },
+      owner: newOwner,
+      attachment: null,
+      toJSON: () => ({
+        id: 47,
+        number: 'HD-47',
+        title: 'WiFi drops',
+        description: 'every few minutes',
+        category: 'IT',
+        priority: 'Medium',
+        status: 'Open',
+        submitterId: 7,
+        ownerId: 22,
+        attachmentId: null,
+        submitter: {
+          id: 7,
+          email: 'eli@example.com',
+          displayName: 'Eli',
+          role: 'User',
+        },
+        owner: newOwner,
+        attachment: null,
+        createdAt,
+        updatedAt,
+        deletedAt: null,
+      }),
+    };
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(makeResolvedTicket());
+    (ticketService.updateTicket as jest.Mock).mockResolvedValueOnce(updated);
+
+    const req = {
+      params: { id: '47' },
+      body: { ownerId: 22 },
+      user: {
+        id: 11,
+        email: 'sam@example.com',
+        displayName: 'Sam',
+        role: 'Support Agent',
+      },
+    } as unknown as Request;
+    const statusMock = jest.fn();
+    const jsonMock = jest.fn();
+    const res = {
+      status: (n: number) => {
+        statusMock(n);
+        return { json: (b: unknown) => jsonMock(b) };
+      },
+    } as unknown as Response;
+
+    await patch(req, res, jest.fn() as unknown as NextFunction);
+
+    expect(ticketService.updateTicket).toHaveBeenCalledWith(
+      47,
+      11,
+      'Support Agent',
+      { ownerId: 22 },
+    );
+    expect(statusMock.mock.calls[0][0]).toBe(200);
+    const body = jsonMock.mock.calls[0][0] as {
+      ticket: { owner: { id: number; displayName: string } };
+    };
+    expect(body.ticket.owner.id).toBe(22);
+    expect(body.ticket.owner.displayName).toBe('Jordan');
+  });
+});
+
+describe('ticketsController.addComment (HD-010)', () => {
+  const ticketService = require('../services/ticketService');
+
+  beforeEach(() => {
+    (ticketService.getById as jest.Mock).mockReset();
+    (ticketService.addComment as jest.Mock).mockReset();
+    (ticketService.listComments as jest.Mock).mockReset();
+  });
+
+  it('returns 201 with the serialized comment on a valid body', async () => {
+    const fake = makeResolvedTicket();
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+    const createdAt = new Date('2026-09-15T12:00:00.000Z');
+    const created = {
+      id: 99,
+      ticketId: 47,
+      authorId: 11,
+      body: 'Restarting config reset',
+      createdAt,
+      toJSON: () => ({
+        id: 99,
+        ticketId: 47,
+        author: {
+          id: 11,
+          email: 'sam@example.com',
+          displayName: 'Sam',
+          role: 'Support Agent',
+        },
+        body: 'Restarting config reset',
+        createdAt,
+      }),
+    };
+    (ticketService.addComment as jest.Mock).mockResolvedValueOnce(created);
+    (ticketService.listComments as jest.Mock).mockResolvedValueOnce([created]);
+
+    const req = {
+      params: { id: '47' },
+      body: { body: 'Restarting config reset' },
+      user: {
+        id: 11,
+        email: 'sam@example.com',
+        displayName: 'Sam',
+        role: 'Support Agent',
+      },
+    } as unknown as Request;
+    const statusMock = jest.fn();
+    const jsonMock = jest.fn();
+    const res = {
+      status: (n: number) => {
+        statusMock(n);
+        return { json: (b: unknown) => jsonMock(b) };
+      },
+    } as unknown as Response;
+
+    await addCommentHandler(req, res, jest.fn() as unknown as NextFunction);
+
+    expect(ticketService.addComment).toHaveBeenCalledWith(
+      47,
+      11,
+      'Restarting config reset',
+    );
+    expect(statusMock.mock.calls[0][0]).toBe(201);
+    const body = jsonMock.mock.calls[0][0] as {
+      comment: { id: number; body: string };
+    };
+    expect(body.comment.id).toBe(99);
+    expect(body.comment.body).toBe('Restarting config reset');
+  });
+
+  it('forwards HttpError(400, validation_error) when body is empty', async () => {
+    const { HttpError } = require('../utils/errors');
+    const fake = makeResolvedTicket();
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+
+    const req = {
+      params: { id: '47' },
+      body: { body: '' },
+      user: {
+        id: 11,
+        email: 'sam@example.com',
+        displayName: 'Sam',
+        role: 'Support Agent',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await addCommentHandler(req, res, next);
+    await Promise.resolve();
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(400);
+    expect(err.errorCode).toBe('validation_error');
+    expect(ticketService.addComment).not.toHaveBeenCalled();
+  });
+
+  it('forwards HttpError(400, validation_error) when body is exactly 5001 chars', async () => {
+    const { HttpError } = require('../utils/errors');
+    const fake = makeResolvedTicket();
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+    const tooLong = 'a'.repeat(5001);
+
+    const req = {
+      params: { id: '47' },
+      body: { body: tooLong },
+      user: {
+        id: 11,
+        email: 'sam@example.com',
+        displayName: 'Sam',
+        role: 'Support Agent',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await addCommentHandler(req, res, next);
+    await Promise.resolve();
+
+    expect(next).toHaveBeenCalledTimes(1);
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(400);
+    expect(err.errorCode).toBe('validation_error');
+    // The 5001-char boundary must surface as a `fields.body` error so
+    // the frontend can pin the message to the composer textarea.
+    expect(err.fields).toBeDefined();
+    expect(err.fields?.body).toBe('Comment is limited to 5000 characters.');
+    expect(ticketService.addComment).not.toHaveBeenCalled();
+  });
+
+  it('forwards HttpError(403, forbidden) when ticket status is Closed', async () => {
+    const { HttpError } = require('../utils/errors');
+    const fake = makeResolvedTicket({ status: 'Closed' });
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+    (ticketService.addComment as jest.Mock).mockRejectedValueOnce(
+      new HttpError(
+        403,
+        'forbidden',
+        'Ticket is closed and cannot accept new comments.',
+      ),
+    );
+
+    const req = {
+      params: { id: '47' },
+      body: { body: 'attempt to comment on closed ticket' },
+      user: {
+        id: 7,
+        email: 'eli@example.com',
+        displayName: 'Eli',
+        role: 'User',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await addCommentHandler(req, res, next);
+    await Promise.resolve();
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(403);
+    expect(err.errorCode).toBe('forbidden');
+  });
+});
+
+describe('ticketsController.listComments / listActivity (HD-010)', () => {
+  const ticketService = require('../services/ticketService');
+
+  beforeEach(() => {
+    (ticketService.getById as jest.Mock).mockReset();
+    (ticketService.listComments as jest.Mock).mockReset();
+    (ticketService.listActivity as jest.Mock).mockReset();
+  });
+
+  it('listComments returns 200 with comments oldest-first', async () => {
+    const fake = makeResolvedTicket();
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+    const createdAt = new Date('2026-09-15T12:00:00.000Z');
+    (ticketService.listComments as jest.Mock).mockResolvedValueOnce([
+      {
+        id: 1,
+        ticketId: 47,
+        authorId: 11,
+        body: 'first',
+        createdAt,
+        toJSON: () => ({ id: 1, body: 'first' }),
+      },
+    ]);
+
+    const req = {
+      params: { id: '47' },
+      user: {
+        id: 11,
+        email: 'sam@example.com',
+        displayName: 'Sam',
+        role: 'Support Agent',
+      },
+    } as unknown as Request;
+    const statusMock = jest.fn();
+    const jsonMock = jest.fn();
+    const res = {
+      status: (n: number) => {
+        statusMock(n);
+        return { json: (b: unknown) => jsonMock(b) };
+      },
+    } as unknown as Response;
+
+    await listCommentsHandler(req, res, jest.fn() as unknown as NextFunction);
+
+    expect(statusMock.mock.calls[0][0]).toBe(200);
+    const body = jsonMock.mock.calls[0][0] as {
+      comments: Array<{ id: number; body: string }>;
+      count: number;
+    };
+    expect(body.count).toBe(1);
+    expect(body.comments[0].body).toBe('first');
+  });
+
+  it('listActivity returns 200 with activity events newest-first', async () => {
+    const fake = makeResolvedTicket();
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+    const older = new Date('2026-09-15T10:00:00.000Z');
+    const newer = new Date('2026-09-15T12:00:00.000Z');
+    (ticketService.listActivity as jest.Mock).mockResolvedValueOnce([
+      {
+        id: 2,
+        ticketId: 47,
+        actorId: 11,
+        eventType: 'StatusChanged',
+        payload: null,
+        createdAt: newer,
+        toJSON: () => ({
+          id: 2,
+          eventType: 'StatusChanged',
+          payload: null,
+        }),
+      },
+      {
+        id: 1,
+        ticketId: 47,
+        actorId: 11,
+        eventType: 'Created',
+        payload: null,
+        createdAt: older,
+        toJSON: () => ({
+          id: 1,
+          eventType: 'Created',
+          payload: null,
+        }),
+      },
+    ]);
+
+    const req = {
+      params: { id: '47' },
+      user: {
+        id: 11,
+        email: 'sam@example.com',
+        displayName: 'Sam',
+        role: 'Support Agent',
+      },
+    } as unknown as Request;
+    const statusMock = jest.fn();
+    const jsonMock = jest.fn();
+    const res = {
+      status: (n: number) => {
+        statusMock(n);
+        return { json: (b: unknown) => jsonMock(b) };
+      },
+    } as unknown as Response;
+
+    await listActivityHandler(req, res, jest.fn() as unknown as NextFunction);
+
+    expect(statusMock.mock.calls[0][0]).toBe(200);
+    const body = jsonMock.mock.calls[0][0] as {
+      activity: Array<{ id: number; eventType: string }>;
+      count: number;
+    };
+    expect(body.count).toBe(2);
+    // Newer row first — pins newest-first ordering on the controller
+    // (the service sorts DESC, but the controller must relay it).
+    expect(body.activity[0].id).toBe(2);
+    expect(body.activity[0].eventType).toBe('StatusChanged');
+    expect(body.activity[1].id).toBe(1);
+    expect(body.activity[1].eventType).toBe('Created');
+  });
+});
+
+describe('ticketsController.reopen (HD-010)', () => {
+  const ticketService = require('../services/ticketService');
+
+  beforeEach(() => {
+    (ticketService.getById as jest.Mock).mockReset();
+    (ticketService.reopenTicket as jest.Mock).mockReset();
+  });
+
+  it('returns 200 with the serialized ticket on a happy reopen', async () => {
+    const fake = makeResolvedTicket({ status: 'Resolved' });
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+    (ticketService.reopenTicket as jest.Mock).mockResolvedValueOnce({
+      ...fake,
+      status: 'Open',
+    });
+
+    const req = {
+      params: { id: '47' },
+      user: {
+        id: 7,
+        email: 'eli@example.com',
+        displayName: 'Eli',
+        role: 'User',
+      },
+    } as unknown as Request;
+    const statusMock = jest.fn();
+    const jsonMock = jest.fn();
+    const res = {
+      status: (n: number) => {
+        statusMock(n);
+        return { json: (b: unknown) => jsonMock(b) };
+      },
+    } as unknown as Response;
+
+    await reopen(req, res, jest.fn() as unknown as NextFunction);
+
+    expect(ticketService.reopenTicket).toHaveBeenCalledWith(47, 7);
+    expect(statusMock.mock.calls[0][0]).toBe(200);
+  });
+
+  it('forwards HttpError(403) when a non-submitter calls reopen', async () => {
+    const { HttpError } = require('../utils/errors');
+    const fake = makeResolvedTicket({
+      status: 'Resolved',
+      submitterId: 99, // NOT the requester
+    });
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+
+    const req = {
+      params: { id: '47' },
+      user: {
+        id: 7,
+        email: 'eli@example.com',
+        displayName: 'Eli',
+        role: 'User',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await reopen(req, res, next);
+    await Promise.resolve();
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    // Enumeration protection: a User trying to reopen another user's
+    // ticket sees the same 404 envelope as a missing ticket (mirrors
+    // getById). The 403-only-on-mine check fires only when the
+    // requester is the actual submitter.
+    expect(err.status).toBe(404);
+    expect(err.errorCode).toBe('not_found');
+    expect(ticketService.reopenTicket).not.toHaveBeenCalled();
+  });
+
+  it('forwards HttpError(400, validation_error) when ticket status is not Resolved', async () => {
+    const { HttpError } = require('../utils/errors');
+    const fake = makeResolvedTicket({ status: 'Open' });
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+
+    const req = {
+      params: { id: '47' },
+      user: {
+        id: 7,
+        email: 'eli@example.com',
+        displayName: 'Eli',
+        role: 'User',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await reopen(req, res, next);
+    await Promise.resolve();
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(400);
+    expect(err.errorCode).toBe('validation_error');
+    expect(ticketService.reopenTicket).not.toHaveBeenCalled();
+  });
+
+  it('forwards HttpError(404, not_found) when ticket is missing', async () => {
+    const { HttpError } = require('../utils/errors');
+    // getByIdService returns null → loadTicketForUser throws 404.
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(null);
+
+    const req = {
+      params: { id: '99999' },
+      user: {
+        id: 7,
+        email: 'eli@example.com',
+        displayName: 'Eli',
+        role: 'User',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await reopen(req, res, next);
+    await Promise.resolve();
+
+    expect(next).toHaveBeenCalledTimes(1);
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(404);
+    expect(err.errorCode).toBe('not_found');
+    expect(ticketService.reopenTicket).not.toHaveBeenCalled();
+  });
+});
+
+describe('ticketsController.confirmClose (HD-010)', () => {
+  const ticketService = require('../services/ticketService');
+
+  beforeEach(() => {
+    (ticketService.getById as jest.Mock).mockReset();
+    (ticketService.confirmCloseTicket as jest.Mock).mockReset();
+  });
+
+  it('returns 200 with the serialized ticket on a happy confirm-close', async () => {
+    const fake = makeResolvedTicket({ status: 'Resolved' });
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+    (ticketService.confirmCloseTicket as jest.Mock).mockResolvedValueOnce({
+      ...fake,
+      status: 'Closed',
+    });
+
+    const req = {
+      params: { id: '47' },
+      user: {
+        id: 7,
+        email: 'eli@example.com',
+        displayName: 'Eli',
+        role: 'User',
+      },
+    } as unknown as Request;
+    const statusMock = jest.fn();
+    const jsonMock = jest.fn();
+    const res = {
+      status: (n: number) => {
+        statusMock(n);
+        return { json: (b: unknown) => jsonMock(b) };
+      },
+    } as unknown as Response;
+
+    await confirmClose(req, res, jest.fn() as unknown as NextFunction);
+
+    expect(ticketService.confirmCloseTicket).toHaveBeenCalledWith(47, 7);
+    expect(statusMock.mock.calls[0][0]).toBe(200);
+  });
+
+  it('forwards HttpError(403) when a non-submitter calls confirmClose', async () => {
+    const { HttpError } = require('../utils/errors');
+    const fake = makeResolvedTicket({
+      status: 'Resolved',
+      submitterId: 99,
+    });
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+
+    const req = {
+      params: { id: '47' },
+      user: {
+        id: 7,
+        email: 'eli@example.com',
+        displayName: 'Eli',
+        role: 'User',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await confirmClose(req, res, next);
+    await Promise.resolve();
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    // Enumeration protection: a User trying to confirm-close another
+    // user's ticket sees the same 404 envelope as a missing ticket.
+    expect(err.status).toBe(404);
+    expect(err.errorCode).toBe('not_found');
+    expect(ticketService.confirmCloseTicket).not.toHaveBeenCalled();
+  });
+
+  it('forwards HttpError(400) when ticket status is not Resolved', async () => {
+    const { HttpError } = require('../utils/errors');
+    const fake = makeResolvedTicket({ status: 'Open' });
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+
+    const req = {
+      params: { id: '47' },
+      user: {
+        id: 7,
+        email: 'eli@example.com',
+        displayName: 'Eli',
+        role: 'User',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await confirmClose(req, res, next);
+    await Promise.resolve();
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(400);
+    expect(err.errorCode).toBe('validation_error');
+    expect(ticketService.confirmCloseTicket).not.toHaveBeenCalled();
+  });
+
+  it('forwards HttpError(404, not_found) when ticket is missing', async () => {
+    const { HttpError } = require('../utils/errors');
+    // getByIdService returns null → loadTicketForUser throws 404.
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(null);
+
+    const req = {
+      params: { id: '99999' },
+      user: {
+        id: 7,
+        email: 'eli@example.com',
+        displayName: 'Eli',
+        role: 'User',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await confirmClose(req, res, next);
+    await Promise.resolve();
+
+    expect(next).toHaveBeenCalledTimes(1);
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(404);
+    expect(err.errorCode).toBe('not_found');
+    expect(ticketService.confirmCloseTicket).not.toHaveBeenCalled();
   });
 });
