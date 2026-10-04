@@ -1,5 +1,5 @@
 /**
- * Tickets router — HD-007 + HD-008.
+ * Tickets router — HD-007 + HD-008 + HD-009.
  *
  * Mounted at `/api/tickets` by `routes/index.ts`. Routes:
  *
@@ -8,9 +8,15 @@
  *                   user (HD-008). Body: {title, description,
  *                   category?, priority, attachmentId?}.
  *                   Responds 201 with `{ ticket }`.
+ *   GET  /:id    — fetch a single ticket by primary key (HD-009).
+ *                   The `:id` is the numeric PK, not the HD-<n>
+ *                   number. User sees only own; Support Agent /
+ *                   Admin see any. Responds 200 with `{ ticket }`,
+ *                   404 when missing or non-owner.
  *
  * Later stories append their own handlers:
- *   - HD-010: GET /:id
+ *   - HD-010: PATCH /:id, POST /:id/comments, POST /:id/reopen,
+ *             POST /:id/confirm-close
  *   - HD-012: GET /  (Agent queue view)
  *
  * All routes behind this router that read or write ticket data
@@ -23,12 +29,17 @@
 
 import { Router } from 'express';
 
-import { listMine, create } from '../controllers/ticketsController';
+import {
+  listMine,
+  create,
+  getById,
+} from '../controllers/ticketsController';
 import { authMiddleware } from '../middleware/auth';
 
 const ticketsRouter = Router();
 
 ticketsRouter.get('/mine', authMiddleware, listMine);
 ticketsRouter.post('/', authMiddleware, create);
+ticketsRouter.get('/:id', authMiddleware, getById);
 
 export default ticketsRouter;

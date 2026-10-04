@@ -60,3 +60,9 @@ backend/uploads/*
 # ── Docker / MySQL ────────────────────────────────────────────────
 .docker/
 mysql-data/
+
+# ── Puku CLI installer state ──────────────────────────────────────
+# Holds installed skills + per-story review scratch (commit-msg,
+# diffs, screenshots, smoke logs). Installer-managed; never part
+# of the project source.
+.puku-cli/
