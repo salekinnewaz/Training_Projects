@@ -1,5 +1,5 @@
 /**
- * ticketService — HD-007 + HD-008.
+ * ticketService — HD-007 + HD-008 + HD-009.
  *
  * Read-side helpers for the Ticket resource. Wraps the consistent
  * `findAll` shape used by every list endpoint so controllers don't
@@ -7,9 +7,10 @@
  *
  * HD-007 uses `listForUser(userId)`. HD-008 (Create Ticket) adds
  * `createTicket(submitterId, input)` — the only write-side helper
- * this file owns right now. HD-010 (Ticket Detail) and HD-012 (Agent
- * Kanban) extend this file with their own queries rather than
- * calling `Ticket.findAll` from controllers directly.
+ * this file owns right now. HD-009 (Submission Confirmation) adds
+ * `getById(id)` for the per-ticket fetch. HD-010 (Ticket Detail)
+ * and HD-012 (Agent Kanban) extend this file with their own queries
+ * rather than calling `Ticket.findAll` from controllers directly.
  *
  * No pagination params are exposed yet — out of MVP per spec. The
  * `opts` bag exists as an extension point for HD-015 if/when
@@ -119,5 +120,27 @@ export async function createTicket(
     }
 
     return reloaded;
+  });
+}
+
+/**
+ * Fetch a single ticket by primary key (HD-009).
+ *
+ * Eager-loads submitter / owner / attachment so the controller can
+ * pass the instance straight to `serializeTicket` without a second
+ * round-trip. Same include shape as `createTicket`'s reload.
+ *
+ * Returns `null` when the row does not exist (or has been soft-
+ * deleted — `paranoid: true` on the model excludes those). The
+ * controller maps null → HttpError(404, 'not_found'); the role gate
+ * (User non-owner → 404) lives in the controller, not here.
+ */
+export async function getById(id: number): Promise<Ticket | null> {
+  return Ticket.findByPk(id, {
+    include: [
+      { model: User, as: 'submitter' },
+      { model: User, as: 'owner' },
+      { model: Attachment, as: 'attachment' },
+    ],
   });
 }

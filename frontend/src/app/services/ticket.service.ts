@@ -1,9 +1,9 @@
 /**
- * TicketService — HD-007 + HD-008.
+ * TicketService — HD-007 + HD-008 + HD-009.
  *
  * Thin wrapper over the `/api/tickets/*` endpoints. HD-007 ships
- * `listMine()`; HD-008 adds `create()`. HD-010 (Ticket Detail)
- * extends this file.
+ * `listMine()`; HD-008 adds `create()`; HD-009 adds `getById()`.
+ * HD-010 (Ticket Detail) extends this file.
  *
  * Provided as `providedIn: 'root'` so any page can inject it
  * without a module-level import dance — mirrors `AuthService`.
@@ -32,6 +32,10 @@ interface ListMineResponse {
 }
 
 interface CreateResponse {
+  ticket: Ticket;
+}
+
+interface GetByIdResponse {
   ticket: Ticket;
 }
 
@@ -114,6 +118,36 @@ export class TicketService {
         this.http.post<CreateResponse>(
           `${environment.apiBaseUrl}/tickets`,
           body,
+          { withCredentials: true },
+        ),
+      );
+      return res.ticket;
+    } catch (err) {
+      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
+    }
+  }
+
+  /**
+   * GET /api/tickets/:id — fetch a single ticket (HD-009).
+   *
+   * The `:id` is the numeric primary key, NOT the HD-<n> number.
+   * Used by the Submission Confirmation page (HD-009) and the
+   * Ticket Detail page (HD-010).
+   *
+   * Throws `ApiError` on any non-2xx response. Backend returns:
+   *   - 404 with errorCode 'not_found' for missing tickets
+   *   - 404 (NOT 403) for tickets the JWT'd User doesn't own —
+   *     enumeration protection so a User can't probe other users'
+   *     ticket IDs by status code
+   *
+   * Mirrors the `listMine()` shape: HttpClient → firstValueFrom →
+   * response unwrap → error mapping via apiErrorFrom.
+   */
+  async getById(id: number): Promise<Ticket> {
+    try {
+      const res = await firstValueFrom(
+        this.http.get<GetByIdResponse>(
+          `${environment.apiBaseUrl}/tickets/${id}`,
           { withCredentials: true },
         ),
       );
