@@ -1,10 +1,11 @@
 /**
- * TicketService — HD-007 + HD-008 + HD-009 + HD-010.
+ * TicketService — HD-007 + HD-008 + HD-009 + HD-010 + HD-012.
  *
  * Thin wrapper over the `/api/tickets/*` endpoints. HD-007 ships
  * `listMine()`; HD-008 adds `create()`; HD-009 adds `getById()`;
  * HD-010 (Ticket Detail) adds `patch()`, `addComment()`, `reopen()`,
- * `confirmClose()`, `listComments()`, `listActivity()`.
+ * `confirmClose()`, `listComments()`, `listActivity()`; HD-012 (Agent
+ * Kanban) adds `listForQueue()`.
  *
  * Provided as `providedIn: 'root'` so any page can inject it
  * without a module-level import dance — mirrors `AuthService`.
@@ -31,6 +32,11 @@ import type {
 import { apiErrorFrom } from './api-error';
 
 interface ListMineResponse {
+  tickets: Ticket[];
+  count: number;
+}
+
+interface ListForQueueResponse {
   tickets: Ticket[];
   count: number;
 }
@@ -114,6 +120,34 @@ export class TicketService {
       const res = await firstValueFrom(
         this.http.get<ListMineResponse>(
           `${environment.apiBaseUrl}/tickets/mine`,
+          { withCredentials: true },
+        ),
+      );
+      return res.tickets;
+    } catch (err) {
+      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
+    }
+  }
+
+  /**
+   * GET /api/tickets/queue — every ticket in the system, newest-first
+   * (HD-012 Agent Kanban).
+   *
+   * Support Agent only. The Angular `roleGuard(['Support Agent'])` is
+   * the primary gate; if a programmatic client somehow reaches the
+   * endpoint, the backend returns 403 and the page falls through to
+   * the error render state with a generic message.
+   *
+   * Mirrors `listMine()` exactly: HttpClient → `firstValueFrom` →
+   * response unwrap → `apiErrorFrom` on non-2xx. The page treats a
+   * 401 as session-expired (per the auth interceptor's mapping) and
+   * 5xx as a generic load failure.
+   */
+  async listForQueue(): Promise<Ticket[]> {
+    try {
+      const res = await firstValueFrom(
+        this.http.get<ListForQueueResponse>(
+          `${environment.apiBaseUrl}/tickets/queue`,
           { withCredentials: true },
         ),
       );

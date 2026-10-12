@@ -1,6 +1,7 @@
 /**
  * ticketsController — smoke spec (HD-007) + create spec (HD-008)
- *                     + getById spec (HD-009) + HD-010 spec.
+ *                     + getById spec (HD-009) + HD-010 spec +
+ *                     HD-012 listForQueue spec.
  *
  * Verifies GET /api/tickets/mine:
  *   - calls Ticket.findAll filtered by the JWT'd user's id (submitterId)
@@ -37,6 +38,12 @@
  *   - POST /:id/confirm-close (200 happy + 403 non-submitter +
  *     400 wrong-status)
  *
+ * Verifies HD-012 listForQueue:
+ *   - 200 happy path: listForQueue service helper called; respond with
+ *     serialized tickets
+ *   - 403 role: a non-Support-Agent role throws HttpError(403,
+ *     'forbidden', ...) and never reaches the service
+ *
  * Both `authMiddleware` and the models are mocked so the controller
  * is exercised in isolation — no real DB or JWT verification is touched.
  */
@@ -46,6 +53,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { Ticket } from '../models';
 import {
   listMine,
+  listForQueueHandler,
   create,
   getById,
   patch,
@@ -80,6 +88,7 @@ jest.mock('../models', () => ({
 
 jest.mock('../services/ticketService', () => ({
   listForUser: jest.fn(),
+  listForQueue: jest.fn(),
   createTicket: jest.fn(),
   getById: jest.fn(),
   updateTicket: jest.fn(),
@@ -1510,5 +1519,150 @@ describe('ticketsController.confirmClose (HD-010)', () => {
     expect(err.status).toBe(404);
     expect(err.errorCode).toBe('not_found');
     expect(ticketService.confirmCloseTicket).not.toHaveBeenCalled();
+  });
+});
+
+describe('ticketsController.listForQueueHandler (HD-012)', () => {
+  const ticketService = require('../services/ticketService');
+
+  beforeEach(() => {
+    (ticketService.listForQueue as jest.Mock).mockReset();
+  });
+
+  it('returns 200 with serialized tickets when the caller is a Support Agent', async () => {
+    const createdAt = new Date('2026-09-15T12:00:00.000Z');
+    const updatedAt = new Date('2026-09-15T12:00:00.000Z');
+    const fake = {
+      id: 47,
+      number: 'HD-47',
+      title: 'WiFi drops',
+      description: 'every few minutes',
+      category: 'IT',
+      priority: 'Medium',
+      status: 'Open',
+      submitterId: 7,
+      ownerId: null,
+      attachmentId: null,
+      createdAt,
+      updatedAt,
+      deletedAt: null,
+      toJSON: () => ({
+        id: 47,
+        number: 'HD-47',
+        title: 'WiFi drops',
+        description: 'every few minutes',
+        category: 'IT',
+        priority: 'Medium',
+        status: 'Open',
+        submitterId: 7,
+        ownerId: null,
+        attachmentId: null,
+        submitter: {
+          id: 7,
+          email: 'eli@example.com',
+          displayName: 'Eli',
+          role: 'User',
+        },
+        owner: null,
+        attachment: null,
+        createdAt,
+        updatedAt,
+        deletedAt: null,
+      }),
+    };
+    (ticketService.listForQueue as jest.Mock).mockResolvedValueOnce([fake]);
+
+    const req = {
+      user: {
+        id: 11,
+        email: 'sam@example.com',
+        displayName: 'Sam',
+        role: 'Support Agent',
+      },
+    } as unknown as Request;
+    const statusMock = jest.fn();
+    const jsonMock = jest.fn();
+    const res = {
+      status: (n: number) => {
+        statusMock(n);
+        return { json: (b: unknown) => jsonMock(b) };
+      },
+    } as unknown as Response;
+
+    await listForQueueHandler(req, res, jest.fn() as unknown as NextFunction);
+
+    expect(ticketService.listForQueue).toHaveBeenCalledWith();
+    expect(statusMock.mock.calls[0][0]).toBe(200);
+    const body = jsonMock.mock.calls[0][0] as {
+      tickets: Array<{
+        id: number;
+        number: string;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+      count: number;
+    };
+    expect(body.count).toBe(1);
+    expect(body.tickets[0].id).toBe(47);
+    expect(body.tickets[0].number).toBe('HD-47');
+    expect(new Date(body.tickets[0].createdAt).toISOString()).toBe(
+      body.tickets[0].createdAt,
+    );
+  });
+
+  it('returns 403 forbidden when the caller is a User (not a Support Agent)', async () => {
+    const { HttpError } = require('../utils/errors');
+
+    const req = {
+      user: {
+        id: 7,
+        email: 'eli@example.com',
+        displayName: 'Eli',
+        role: 'User',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await listForQueueHandler(req, res, next);
+    await Promise.resolve();
+
+    expect(next).toHaveBeenCalledTimes(1);
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(403);
+    expect(err.errorCode).toBe('forbidden');
+    expect(ticketService.listForQueue).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 forbidden when the caller is an Admin (Support Agent only)', async () => {
+    const { HttpError } = require('../utils/errors');
+
+    const req = {
+      user: {
+        id: 1,
+        email: 'admin@example.com',
+        displayName: 'Admin',
+        role: 'Admin',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await listForQueueHandler(req, res, next);
+    await Promise.resolve();
+
+    expect(next).toHaveBeenCalledTimes(1);
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(403);
+    expect(err.errorCode).toBe('forbidden');
+    expect(ticketService.listForQueue).not.toHaveBeenCalled();
   });
 });

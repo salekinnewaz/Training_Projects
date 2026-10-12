@@ -1,5 +1,5 @@
 /**
- * ticketService — HD-007 + HD-008 + HD-009 + HD-010.
+ * ticketService — HD-007 + HD-008 + HD-009 + HD-010 + HD-012.
  *
  * Read-side helpers for the Ticket resource. Wraps the consistent
  * `findAll` shape used by every list endpoint so controllers don't
@@ -13,9 +13,10 @@
  * `reopenTicket`, `confirmCloseTicket`, `listComments`,
  * `listActivity`, and `listActiveAgents` — covering the PATCH /
  * comments / reopen / confirm-close / agents endpoints that
- * the Ticket Detail page drives. HD-012 (Agent Kanban) extends
- * this file with its own queries rather than calling `Ticket.findAll`
- * from controllers directly.
+ * the Ticket Detail page drives. HD-012 (Agent Kanban) adds
+ * `listForQueue()` to power the /queue board — a Support-Agent
+ * view across every ticket in the system. HD-015 will add combined
+ * filter / search helpers and cursor pagination.
  *
  * No pagination params are exposed yet — out of MVP per spec. The
  * `opts` bag exists as an extension point for HD-015 if/when
@@ -60,6 +61,44 @@ export async function listForUser(
   // model declares (submitter / owner / attachment).
   return Ticket.findAll({
     where: { submitterId: userId },
+    order,
+    limit,
+    include: [
+      { model: User, as: 'submitter' },
+      { model: User, as: 'owner' },
+      { model: Attachment, as: 'attachment' },
+    ],
+  });
+}
+
+/**
+ * List every ticket in the system, newest-first by `createdAt`
+ * (HD-012 GET /api/tickets/queue).
+ *
+ * Powers the Agent Kanban board (`/queue`). The page applies its
+ * own client-side sort + filter over the returned set; HD-015 will
+ * lift filter / search into a dedicated endpoint.
+ *
+ * No `submitterId` filter — Sam sees every ticket in the system
+ * (not just ones he created). Eager-loads the same associations
+ * `listForUser` does so the frontend `Ticket` view model can
+ * round-trip without a second roundtrip per card.
+ *
+ * Limit: 100 — out-of-MVP pagination; HD-015 will add cursor
+ * pagination.
+ */
+export async function listForQueue(
+  opts: ListForUserOptions = {},
+): Promise<Ticket[]> {
+  const limit = opts.limit ?? 100;
+  const order: [string, 'DESC' | 'ASC'][] =
+    opts.order === 'oldest'
+      ? [['createdAt', 'ASC']]
+      : [['createdAt', 'DESC']];
+
+  // `paranoid: true` on the Ticket model (HD-002) already excludes
+  // soft-deleted rows — no explicit `deletedAt` filter needed.
+  return Ticket.findAll({
     order,
     limit,
     include: [
