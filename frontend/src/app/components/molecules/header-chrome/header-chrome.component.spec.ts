@@ -60,6 +60,10 @@ describe('HeaderChromeComponent', () => {
   let routerNavigateSpy: jasmine.Spy;
 
   beforeEach(async () => {
+    // Clear any stragglers left in document.body by other suites
+    // (users-tab-page opens a dialog modal too) so the header-chrome
+    // tests don't pick up a foreign modal here.
+    document.body.innerHTML = '';
     authService = {
       user$: new BehaviorSubject<UserPublic | null>(null),
       userSnapshot: jasmine.createSpy('userSnapshot'),

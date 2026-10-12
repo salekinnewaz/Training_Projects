@@ -54,6 +54,10 @@ describe('DialogModalComponent', () => {
   let host: HostComponent;
 
   beforeEach(async () => {
+    // Clear any stragglers left in document.body by other suites
+    // (users-tab-page opens a dialog modal too) so the dialog-modal
+    // tests don't pick up a foreign modal here.
+    document.body.innerHTML = '';
     await TestBed.configureTestingModule({
       imports: [HostComponent],
     }).compileComponents();
@@ -73,7 +77,9 @@ describe('DialogModalComponent', () => {
     document.body.innerHTML = '';
   });
 
-  it('renders a scrim and a role="dialog" aria-modal="true" element', () => {
+  it('renders a scrim and a role="dialog" aria-modal="true" element', async () => {
+    await fixture.whenStable();
+    fixture.detectChanges();
     const dialog = document.body.querySelector('[role="dialog"]') as HTMLElement;
     expect(dialog).not.toBeNull();
     expect(dialog.getAttribute('aria-modal')).toBe('true');
@@ -83,14 +89,18 @@ describe('DialogModalComponent', () => {
     expect(scrim).not.toBeNull();
   });
 
-  it('renders the headline text', () => {
+  it('renders the headline text', async () => {
+    await fixture.whenStable();
+    fixture.detectChanges();
     const headline = document.body.querySelector('.modal-headline') as HTMLElement;
     expect(headline.textContent?.trim()).toBe('Are you sure?');
   });
 
-  it('uses the cancelLabel + confirmLabel inputs for the action buttons', () => {
+  it('uses the cancelLabel + confirmLabel inputs for the action buttons', async () => {
     host.cancelLabel = 'No';
     host.confirmLabel = 'Yes, log out';
+    fixture.detectChanges();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     const buttons = document.body.querySelectorAll('.modal-actions button');
@@ -98,37 +108,49 @@ describe('DialogModalComponent', () => {
     expect(buttons[1]?.textContent?.trim()).toBe('Yes, log out');
   });
 
-  it('emits cancel when the scrim is clicked', () => {
+  it('emits cancel when the scrim is clicked', async () => {
+    await fixture.whenStable();
+    fixture.detectChanges();
     const scrim = document.body.querySelector('.scrim') as HTMLElement;
     scrim.click();
     expect(host.cancelCount).toBe(1);
     expect(host.confirmCount).toBe(0);
   });
 
-  it('emits cancel when the cancel button is clicked', () => {
+  it('emits cancel when the cancel button is clicked', async () => {
+    await fixture.whenStable();
+    fixture.detectChanges();
     const buttons = document.body.querySelectorAll('.modal-actions button');
     (buttons[0] as HTMLButtonElement).click();
     expect(host.cancelCount).toBe(1);
   });
 
-  it('emits confirm when the confirm button is clicked', () => {
+  it('emits confirm when the confirm button is clicked', async () => {
+    await fixture.whenStable();
+    fixture.detectChanges();
     const buttons = document.body.querySelectorAll('.modal-actions button');
     (buttons[1] as HTMLButtonElement).click();
     expect(host.confirmCount).toBe(1);
     expect(host.cancelCount).toBe(0);
   });
 
-  it('emits cancel when Escape is pressed (HostListener on document)', () => {
+  it('emits cancel when Escape is pressed (HostListener on document)', async () => {
+    await fixture.whenStable();
+    fixture.detectChanges();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(host.cancelCount).toBe(1);
   });
 
-  it('does NOT render the inline error when [error] is null', () => {
+  it('does NOT render the inline error when [error] is null', async () => {
+    await fixture.whenStable();
+    fixture.detectChanges();
     expect(document.body.querySelector('.modal-error')).toBeNull();
   });
 
-  it('renders the inline error with role="alert" when [error] is set', () => {
+  it('renders the inline error with role="alert" when [error] is set', async () => {
     host.error = "Couldn't reach the server.";
+    fixture.detectChanges();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     const err = document.body.querySelector('.modal-error') as HTMLElement;
@@ -137,8 +159,10 @@ describe('DialogModalComponent', () => {
     expect(err.getAttribute('role')).toBe('alert');
   });
 
-  it('disables both action buttons when [confirming] is true', () => {
+  it('disables both action buttons when [confirming] is true', async () => {
     host.confirming = true;
+    fixture.detectChanges();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     const buttons = document.body.querySelectorAll(
