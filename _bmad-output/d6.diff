@@ -1,0 +1,336 @@
+diff --git a/_bmad-output/implementation-artifacts/deferred-work.md b/_bmad-output/implementation-artifacts/deferred-work.md
+index 19bdfc2..7e66446 100644
+--- a/_bmad-output/implementation-artifacts/deferred-work.md
++++ b/_bmad-output/implementation-artifacts/deferred-work.md
+@@ -10,7 +10,7 @@
+ | HD-005 | D3 | No `environment.prod.ts` swap file | Out of MVP per HD-004 plan | Add when production deploy story lands. |
+ | HD-005 | D4 | No 429 (`rate_limited`) handler in `api-error.ts` or login page | When backend rate-limiting ships (post-HD-003) | Spec boundary: backend doesn't rate-limit yet. Add `rate_limited` to `ApiErrorCode` union + a "Too many attempts. Please wait a moment." message wired to the password field. |
+ | HD-005 | D5 | `api-error.ts` `asFieldMap` only handles string field values; drops `string[]` silently | When HD-008 (create-ticket) lands field-level validation | Defensive; revisit if backend starts emitting array field messages. |
+-| HD-005 | D6 | No barrel `index.ts` in `components/atoms/` or `components/molecules/` | Style convergence slice (post-HD-016) | Every consumer imports by full path today. Land barrel files when a third deep-import need surfaces. |
++| HD-005 | D6 | No barrel `index.ts` in `components/atoms/` or `components/molecules/` | Style convergence slice (post-HD-016) | **Closed by D6 slice.** `frontend/src/app/components/atoms/index.ts` re-exports all 13 atom components + 3 public types (`SelectOption`, `SelectPlaceholderOption`, `CheckCircleSize`). `frontend/src/app/components/molecules/index.ts` re-exports all 9 molecule components + 1 public type (`ActorLookup`). Selective re-exports (no `export *`); `export type` for type-only entries (isolatedModules-safe). Additive only — every existing deep-path import keeps working unchanged. tsc exits 0; frontend 344/351 unchanged. Spec at `_bmad-output/implementation-artifacts/spec-d6-component-barrels.md`. |
+ | HD-005 | D7 | `dialog-modal` hand-rolls `.btn-primary` / `.btn-secondary` instead of using `<atom-button>` | Pattern-convergence slice (post-HD-016) | Per HD-004/HD-005 impl notes, convergence is deliberate non-goal. Land when dialogs gain a second use case (HD-008 create-ticket confirm). |
+ | HD-008 | D8 | Attachment upload endpoint (`POST /api/attachments`) + frontend wiring on `<file-drop>` (flip disabled → enabled, add upload on fileSelected, pass `attachmentId` to `POST /api/tickets`) | HD-011 (Attachments slice) or follow-up | **Closed by HD-016.** `attachmentsController.ts` (POST upload + GET download, with mimetype allowlist + 10 MB cap), `routes/attachments.ts`, and `AttachmentService.upload()` / `downloadUrl()` all shipped. `create-ticket-page` calls the service in `onSubmit` (lines 580–597) and passes the returned `id` as `attachmentId`. The `<file-drop>` organism's `disabled` flag is no longer the binding constraint — `attachmentDisabled()` is `false` by default (line 360). The "coming soon" copy was removed from the create-ticket template during HD-016. Verified end-to-end: `POST /api/attachments` returns 401 with `unauthenticated` for a missing cookie. |
+ | HD-008 | D9 | Backend integration test for `ticketService.createTicket` (transaction + FOR UPDATE counter + Ticket.create in the same tx). The spec's DUPLICATE_NUMBER edge case ("two parallel POSTs get unique HD-<n>") has no pinning test | Backend testing-infrastructure story | **Closed by D9 slice.** Jest `projects: [unit, integration]` split in `backend/jest.config.js`. New `test/integration/setup.ts` overrides `DB_NAME` → `helpdesk_lite_test`, syncs the schema, seeds the counter, and fails fast with a friendly "start MySQL" message if the container is unreachable. New `test/integration/createTicket.integration.spec.ts` pins 4 tests: happy path (HD-21), sequential counter increments (HD-21/22/23), DUPLICATE_NUMBER 2× parallel (HD-21, HD-22 distinct), and a 10× parallel stress test (HD-10000..HD-10009 distinct) — the last is the one that actually proves `lock: UPDATE` is doing the work. Real MySQL/InnoDB on a sibling DB on the same `docker-compose.yml` container (no new service). New `docker/mysql-init/01-helpdesk_lite_test.sql` (mounted via `docker-entrypoint-initdb.d/`) bootstraps the test DB + `helpdesk` user grant on first container start. `npm test` → 118/118 pass (was 114; +4 integration). `npm run test:integration` runs just the DB-backed project. Spec at `_bmad-output/implementation-artifacts/spec-d9-create-ticket-integration.md`. |
+diff --git a/_bmad-output/implementation-artifacts/spec-d6-component-barrels.md b/_bmad-output/implementation-artifacts/spec-d6-component-barrels.md
+new file mode 100644
+index 0000000..bc4c38e
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/spec-d6-component-barrels.md
+@@ -0,0 +1,226 @@
++# D6 — `components/atoms/` and `components/molecules/` barrel files
++
++## Context
++
++`deferred-work.md` D6 notes that the project has no barrel
++`index.ts` files in the design-system tiers, and that every
++consumer (13 pages, 9 molecules, every spec) imports by full
++path:
++
++```ts
++import { ButtonComponent } from '../../components/atoms/button/button.component';
++```
++
++The deferred note's "Owner" column reads "Style convergence
++slice (post-HD-016)" and the "Notes" column reads "Every
++consumer imports by full path today. Land barrel files when a
++third deep-import need surfaces." With 13 atoms and 9
++molecules and 100% path consistency (verified), the "third
++deep-import need" is *now* — barrels are pure additive, no
++consumer migration is required, and the deep paths keep
++working unchanged.
++
++## Why barrels (and why now)
++
++The pain point isn't ergonomic — it's a **churn tax**. Every
++time a new component is added to either tier:
++
++- Every page that imports the new component picks the deep
++  path by default (because that's what every other page does).
++- If the third consumer ever wants to swap to a barrel, it has
++  to import from a non-existent file (`../../components/atoms`),
++  hitting a TS2307 error before the barrel exists.
++- A barrel is one file with N re-export lines — adding it
++  today costs ~25 lines of code and ~0 risk; waiting for the
++  "third need" is just deferring a one-line addition while
++  the cost of writing the barrel (and the cost of *every*
++  import that runs through it) is exactly the same.
++
++The fix is small, the risk is zero (the barrels are
++**additive only** — see Boundaries below), and the user-
++facing benefit is a single import line per component in
++future slices.
++
++## Scope
++
++### New files
++
++1. **`frontend/src/app/components/atoms/index.ts`** —
++   13 selective re-exports for the atom components + their
++   public types (`SelectOption`, `SelectPlaceholderOption`,
++   `CheckCircleSize`).
++2. **`frontend/src/app/components/molecules/index.ts`** —
++   9 selective re-exports for the molecule components + their
++   public types (`ActorLookup` from `timeline-entry`).
++
++### Modified files
++
++None. This is a strictly additive slice — see
++**Boundaries** below for the explicit no-consumer-migration
++contract.
++
++## Files
++
++**New:**
++- `frontend/src/app/components/atoms/index.ts`
++- `frontend/src/app/components/molecules/index.ts`
++- `_bmad-output/implementation-artifacts/spec-d6-component-barrels.md`
++- `_bmad-output/d6.diff`
++
++**Modified:**
++- `_bmad-output/implementation-artifacts/deferred-work.md`
++  (D6 row close)
++
++## Reuse (no new patterns)
++
++- **`export { Foo } from './foo/foo.component'`** — vanilla ES
++  module re-export; the standard barrel primitive. No
++  third-party `barrel-bench` / barrel-builder / `ng-packagr`
++  needed.
++- **TypeScript's `export type` syntax** — used for
++  `SelectOption`, `SelectPlaceholderOption`, `CheckCircleSize`,
++  `ActorLookup`. Same primitive as every other type-only
++  export in the codebase.
++- **`tsconfig.spec.json`'s `isolatedModules: true`** — every
++  re-export line in both barrels is value-or-type, never a
++  re-exported value-as-type, so `isolatedModules` is happy.
++- **No new dev dependency** — barrel files are pure ES module
++  syntax.
++
++## Re-exports included
++
++### Atoms (13 components + 3 types)
++
++| Component / Type               | Source file                                  |
++|--------------------------------|----------------------------------------------|
++| `ButtonComponent`              | `button/button.component.ts`                 |
++| `InputTextComponent`           | `input-text/input-text.component.ts`         |
++| `LinkComponent`                | `link/link.component.ts`                     |
++| `ShowPasswordToggleComponent`  | `show-password-toggle/...`                   |
++| `TextareaComponent`            | `textarea/textarea.component.ts`             |
++| `SelectComponent`              | `select/select.component.ts`                 |
++| `SelectOption`                 | `select/select.component.ts` (type)          |
++| `SelectPlaceholderOption`      | `select/select.component.ts` (type)          |
++| `BadgePriorityComponent`       | `badge-priority/...`                         |
++| `BadgeRoleComponent`           | `badge-role/...`                             |
++| `BadgeStatusComponent`         | `badge-status/...`                           |
++| `CaretDownComponent`           | `caret-down/...`                             |
++| `CheckCircleComponent`         | `check-circle/...`                           |
++| `CheckCircleSize`              | `check-circle/...` (type: `24 | 32 | 64`)    |
++| `ChromeAvatarComponent`        | `chrome-avatar/...`                          |
++| `DividerHrComponent`           | `divider-hr/...`                             |
++
++### Molecules (9 components + 1 type)
++
++| Component / Type             | Source file                                  |
++|------------------------------|----------------------------------------------|
++| `DialogModalComponent`       | `dialog-modal/...`                           |
++| `DropdownPanelComponent`     | `dropdown-panel/...`                         |
++| `EmptyStateComponent`        | `empty-state/...`                            |
++| `FormFieldComponent`         | `form-field/...`                             |
++| `HeaderChromeComponent`      | `header-chrome/...`                          |
++| `KanbanCardComponent`        | `kanban-card/...`                            |
++| `TicketRowComponent`         | `ticket-row/...`                             |
++| `TimelineEntryComponent`     | `timeline-entry/...`                         |
++| `ActorLookup`                | `timeline-entry/...` (type:                  |
++|                              | `Record<number, string>`)                    |
++| `UserRowComponent`           | `user-row/...`                               |
++
++## Why selective (not `export *`)
++
++Three reasons:
++
++1. **Explicit surface.** A new atom added later doesn't
++   accidentally leak into a consumer's bundle via the barrel
++   until someone adds it to `index.ts`. The barrel is
++   deliberately a curated list.
++2. **TypeScript `isolatedModules` compatibility.** The tsconfig
++   sets `isolatedModules: true`; `export *` re-exports of
++   value+type mixed modules under isolatedModules need a
++   `type` qualifier on the `export` line. Selective re-exports
++   sidestep that.
++3. **Diff-friendliness.** When a component is renamed or
++   removed, the diff shows up in exactly one file (the
++   barrel) plus the deep path. `export *` hides the surface
++   in a transitive closure that's hard to audit.
++
++## Test plan
++
++### Existing tests (unchanged behavior)
++
++`cd frontend && npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox`
++
++- Baseline: **344/351** (7 pre-existing failures, all in
++  `EmployeeDashboardPageComponent` × 3, `ForbiddenPageComponent`
++  × 3, `UserRowComponent` × 1 — same as before this slice).
++- After D6: **344/351** (no change). Barrels are
++  non-discoverable at the karma-spec layer (Karma discovers
++  `*.spec.ts` files, not barrels), so no test runs a barrel
++  import. The barrel is consumed only by future application
++  code, not by the existing test fixtures.
++
++### Type-check (proves the barrels parse)
++
++`cd frontend && npx tsc --noEmit -p tsconfig.spec.json`
++
++- Exits 0. Both `index.ts` files compile; the `export type`
++  lines are well-formed; the imports resolve.
++
++### No new test (intentional)
++
++The barrel itself is one-line-per-entry; the kind of failure
++that a regression test would catch is "barrel is missing
++export X", which fails at TypeScript compile time. A spec
++that imports from the barrel would be testing TypeScript, not
++the application. **No spec added in this slice.**
++
++## Boundaries (never)
++
++- **No consumer migration.** Every page, every spec, every
++  existing deep-path import continues to work. The deep paths
++  are not deprecated by this slice — barrels are additive,
++  full stop. A future slice can migrate consumers at its own
++  pace.
++- **No `export *` shorthand.** Each entry is an explicit
++  named re-export (or `export type` for type-only entries).
++  See "Why selective" above.
++- **No new components in the barrel.** If a new atom or
++  molecule is added later, it must be added to the barrel
++  in the same slice that adds the component. This is
++  enforced by the test plan in the slice that adds the
++  component (a `grep` for the component name in
++  `index.ts`).
++- **No barrel for `organisms/` or `patterns/`.** The
++  deferred note scoped D6 to atoms and molecules. Organisms
++  (currently: `file-drop`) and patterns (currently:
++  `app-chrome`) are larger and have more cross-tier
++  dependencies; their barrel is a separate decision.
++- **No `index.ts` for `services/`, `models/`, `pages/`,
++  `guards/`, `utils/`.** Same scope reasoning.
++
++## Verification
++
++1. `cd frontend && npx tsc --noEmit -p tsconfig.spec.json` —
++   exits 0 (barrels parse).
++2. `cd frontend && npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox`
++   — **344/351** unchanged.
++3. `git diff --stat` — should show exactly:
++   - 2 new files (`components/atoms/index.ts` and
++     `components/molecules/index.ts`);
++   - 1 modified file (`_bmad-output/.../deferred-work.md`
++     for the D6 row close).
++4. `git diff frontend/src/app` (excluding the new
++   `index.ts` files) — should be empty. No existing file
++   was modified.
++
++## Commit
++
++Two commits, mirroring the D9 / D10 / D12 pattern:
++
++1. `feat(D6): barrel index.ts for components/atoms and components/molecules`
++   — the implementation (the two new `index.ts` files + the
++   `deferred-work.md` row close).
++2. `docs: D6 implementation diff snapshot` — the
++   `_bmad-output/d6.diff`.
++
++Both pushed to `origin/main`.
+diff --git a/frontend/src/app/components/atoms/index.ts b/frontend/src/app/components/atoms/index.ts
+new file mode 100644
+index 0000000..a95f5ba
+--- /dev/null
++++ b/frontend/src/app/components/atoms/index.ts
+@@ -0,0 +1,48 @@
++/**
++ * `components/atoms/` barrel — D6 slice.
++ *
++ * Selective re-export of the 13 atom components and their
++ * accompanying public types. **Additive only** — every existing
++ * deep import path (`./button/button.component`, etc.) keeps
++ * working unchanged. New consumers can write:
++ *
++ *   import {
++ *     ButtonComponent,
++ *     InputTextComponent,
++ *     SelectComponent,
++ *     SelectOption,
++ *   } from '../../components/atoms';
++ *
++ * instead of the full path. Each re-export is explicit (no
++ * `export *`) so:
++ *
++ *   1. A new atom added later doesn't accidentally leak into
++ *      a consumer's bundle via the barrel until someone adds
++ *      it to this file.
++ *   2. TypeScript's "value-only re-export" rule for `isolatedModules`
++ *      is satisfied for every line.
++ *   3. A future barrel that mixes `imports: [...]` arrays (which
++ *      need value re-exports) and type imports (which need
++ *      `export type`) doesn't silently drop a type or a value.
++ *
++ * No new pattern — this is the standard ES module barrel. See
++ * `_bmad-output/implementation-artifacts/spec-d6-component-barrels.md`
++ * for the slice spec and the close rationale.
++ */
++
++export { ButtonComponent } from './button/button.component';
++export { InputTextComponent } from './input-text/input-text.component';
++export { LinkComponent } from './link/link.component';
++export { ShowPasswordToggleComponent } from './show-password-toggle/show-password-toggle.component';
++export { TextareaComponent } from './textarea/textarea.component';
++export { SelectComponent } from './select/select.component';
++export type { SelectOption } from './select/select.component';
++export type { SelectPlaceholderOption } from './select/select.component';
++export { BadgePriorityComponent } from './badge-priority/badge-priority.component';
++export { BadgeRoleComponent } from './badge-role/badge-role.component';
++export { BadgeStatusComponent } from './badge-status/badge-status.component';
++export { CaretDownComponent } from './caret-down/caret-down.component';
++export { CheckCircleComponent } from './check-circle/check-circle.component';
++export type { CheckCircleSize } from './check-circle/check-circle.component';
++export { ChromeAvatarComponent } from './chrome-avatar/chrome-avatar.component';
++export { DividerHrComponent } from './divider-hr/divider-hr.component';
+diff --git a/frontend/src/app/components/molecules/index.ts b/frontend/src/app/components/molecules/index.ts
+new file mode 100644
+index 0000000..13b9a6e
+--- /dev/null
++++ b/frontend/src/app/components/molecules/index.ts
+@@ -0,0 +1,31 @@
++/**
++ * `components/molecules/` barrel — D6 slice.
++ *
++ * Selective re-export of the 9 molecule components and their
++ * accompanying public types. **Additive only** — every existing
++ * deep import path (`./dialog-modal/dialog-modal.component`,
++ * etc.) keeps working unchanged. New consumers can write:
++ *
++ *   import {
++ *     DialogModalComponent,
++ *     FormFieldComponent,
++ *   } from '../../components/molecules';
++ *
++ * instead of the full path. Each re-export is explicit (no
++ * `export *`) — same rationale as `components/atoms/index.ts`.
++ *
++ * No new pattern — this is the standard ES module barrel. See
++ * `_bmad-output/implementation-artifacts/spec-d6-component-barrels.md`
++ * for the slice spec.
++ */
++
++export { DialogModalComponent } from './dialog-modal/dialog-modal.component';
++export { DropdownPanelComponent } from './dropdown-panel/dropdown-panel.component';
++export { EmptyStateComponent } from './empty-state/empty-state.component';
++export { FormFieldComponent } from './form-field/form-field.component';
++export { HeaderChromeComponent } from './header-chrome/header-chrome.component';
++export { KanbanCardComponent } from './kanban-card/kanban-card.component';
++export { TicketRowComponent } from './ticket-row/ticket-row.component';
++export { TimelineEntryComponent } from './timeline-entry/timeline-entry.component';
++export type { ActorLookup } from './timeline-entry/timeline-entry.component';
++export { UserRowComponent } from './user-row/user-row.component';
