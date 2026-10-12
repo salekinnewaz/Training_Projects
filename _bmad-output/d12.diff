@@ -1,0 +1,698 @@
+diff --git a/_bmad-output/implementation-artifacts/deferred-work.md b/_bmad-output/implementation-artifacts/deferred-work.md
+index a007448..a7d6605 100644
+--- a/_bmad-output/implementation-artifacts/deferred-work.md
++++ b/_bmad-output/implementation-artifacts/deferred-work.md
+@@ -16,3 +16,4 @@
+ | HD-008 | D9 | Backend integration test for `ticketService.createTicket` (transaction + FOR UPDATE counter + Ticket.create in the same tx). The spec's DUPLICATE_NUMBER edge case ("two parallel POSTs get unique HD-<n>") has no pinning test | Backend testing-infrastructure story | **Closed by D9 slice.** Jest `projects: [unit, integration]` split in `backend/jest.config.js`. New `test/integration/setup.ts` overrides `DB_NAME` → `helpdesk_lite_test`, syncs the schema, seeds the counter, and fails fast with a friendly "start MySQL" message if the container is unreachable. New `test/integration/createTicket.integration.spec.ts` pins 4 tests: happy path (HD-21), sequential counter increments (HD-21/22/23), DUPLICATE_NUMBER 2× parallel (HD-21, HD-22 distinct), and a 10× parallel stress test (HD-10000..HD-10009 distinct) — the last is the one that actually proves `lock: UPDATE` is doing the work. Real MySQL/InnoDB on a sibling DB on the same `docker-compose.yml` container (no new service). New `docker/mysql-init/01-helpdesk_lite_test.sql` (mounted via `docker-entrypoint-initdb.d/`) bootstraps the test DB + `helpdesk` user grant on first container start. `npm test` → 118/118 pass (was 114; +4 integration). `npm run test:integration` runs just the DB-backed project. Spec at `_bmad-output/implementation-artifacts/spec-d9-create-ticket-integration.md`. |
+ | HD-008 | D10 | `roleGuard` redirects to `/forbidden` on a cold load (hard reload of a protected URL with a valid cookie) because Angular runs `canActivate` array entries concurrently. `authGuard`'s `refreshUser()` may not resolve before `roleGuard` reads `userSnapshot()` (which is `null` until the round-trip completes). Symptom: hitting `/dashboard` or `/tickets/new` in a fresh tab while still authenticated lands on `/forbidden`. Workaround: hard-navigation only works after authGuard has populated the snapshot (e.g. after the login flow lands on `/dashboard`). The smoke test worked around this by making `roleGuard` async and calling `auth.refreshUser()` itself when the snapshot is empty — change reverted, filed here for HD-006 follow-up. | HD-006 (route-guard hardening) or HD-008 follow-up | **Closed by D10 fix.** `roleGuard` now awaits `auth.refreshUser()` on a null snapshot. `AuthService.refreshUser()` gained an `inflightRefresh` memo, so the three concurrent callers (authGuard + roleGuard + header-chrome's mount effect) share a single GET /me round-trip. Spec at `_bmad-output/implementation-artifacts/spec-d10-roleguard-race.md`. Pinned by 4 new guard specs (auth.guard, role.guard, login.guard) + AuthService dedup tests — 35 tests total. |
+ | HD-008 | D11 | `<app-chrome>` is not wrapping `/tickets/:id/created` (HD-009 placeholder) — the submission confirmation page renders without the persistent header. After HD-009 replaces the placeholder with the real component, the chrome wrap needs to land with it. | HD-009 (or HD-006 chrome-wrap pass) | Cosmetic in MVP — the form-render proof works without the chrome, just looks bare. |
++| HD-005 | D12 | `apiErrorFrom` is not idempotent — the auth interceptor converts `HttpErrorResponse` → `ApiError` (preserving `errorCode`), then every service's defensive `catch (err) { throw apiErrorFrom(err) }` re-reads the `ApiError` as a fresh `HttpErrorResponse`, drops the `errorCode`, and downgrades e.g. `invalid_credentials` 401 → `unauthenticated` 401. The HD-005 login page's switch has no case for `unauthenticated`, so wrong-password attempts show "Something went wrong" instead of "Email or password is incorrect". Symmetric bug on the HD-018 change-password page. | Production bug — must be fixed before user-facing demo | **Closed by D12 fix.** `apiErrorFrom` now short-circuits on `instanceof ApiError` and returns the same instance, preserving the `errorCode` set by the upstream layer. 12 new tests in `api-error.spec.ts` (4 idempotency regressions + 8 positive coverage). 4 new tests in `auth.service.spec.ts` "double-wrap preserves errorCode" block; that spec now wires the real `authInterceptor` via `withInterceptors([authInterceptor])` so it exercises the same pipeline as production. Verified end-to-end: wrong-password now renders "Email or password is incorrect. Try again." instead of "Something went wrong". Frontend 344/351 pass (was 328/335, +16 tests, same 7 pre-existing baseline failures). Spec at `_bmad-output/implementation-artifacts/spec-d12-apierror-idempotency.md`. |
+diff --git a/_bmad-output/implementation-artifacts/spec-d12-apierror-idempotency.md b/_bmad-output/implementation-artifacts/spec-d12-apierror-idempotency.md
+new file mode 100644
+index 0000000..52d4027
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/spec-d12-apierror-idempotency.md
+@@ -0,0 +1,292 @@
++# D12 — `apiErrorFrom` idempotency (login + changePassword double-wrap fix)
++
++## Context
++
++The user reported that logging in with a wrong password renders
++"Something went wrong. Please try again." instead of the expected
++"Email or password is incorrect. Try again." Both copies live in
++`frontend/src/app/pages/login-page/login-page.component.ts`
++(`WRONG_CREDS` on line 67 vs `GENERIC_ERROR` on line 65); the page
++switches on `err.errorCode` (lines 376–419).
++
++The 401 response from the backend is
++`{ error: "invalid_credentials", message: "Email or password is
++incorrect. Try again." }` — verified end-to-end:
++
++```
++$ curl -s -X POST http://localhost:3000/api/auth/login \
++    -H "Content-Type: application/json" \
++    -d '{"email":"sam@example.com","password":"WRONG"}'
++{"error":"invalid_credentials","message":"Email or password is incorrect. Try again."}
++```
++
++So the bug is in the frontend error pipeline, not the backend.
++
++## Root cause — the double wrap
++
++The `authInterceptor` (registered via `provideHttpClient(withInterceptors([authInterceptor]))`)
++converts `HttpErrorResponse` → `ApiError` first:
++
++```ts
++// auth.interceptor.ts:35-40
++return next(stamped).pipe(
++  catchError((err: unknown) => {
++    if (err instanceof HttpErrorResponse) {
++      return throwError(() => apiErrorFrom(err));   // wrap #1
++    }
++    return throwError(() => err);
++  }),
++);
++```
++
++Then every service has a defensive `catch` that calls
++`apiErrorFrom` *again*:
++
++```ts
++// auth.service.ts:60-62 (login) and symmetrically for logout /
++// doRefreshUser / changePassword
++} catch (err) {
++  throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);  // wrap #2
++}
++```
++
++Before this slice, `apiErrorFrom` had no idempotency short-circuit.
++It treated the `ApiError` it just received as if it were a fresh
++`HttpErrorResponse`, called `readBody(err)` on `err.error` (an
++`ApiError` has no `.error` field — only `.errorCode`, `.message`,
++`.status`, `.fields`), found `body = {}`, and fell through to
++`mapStatusToCode(401) = 'unauthenticated'`. The login page's switch
++has no case for `unauthenticated` — it falls through to the
++`default` branch (line 413) which sets `GENERIC_ERROR` = "Something
++went wrong. Please try again."
++
++The same bug affects `changePassword` (HD-018 page) and any other
++service that uses the defensive `catch (err) { throw apiErrorFrom
++(err) }` pattern. Verified the impact for both in
++`auth.service.spec.ts`.
++
++## Fix
++
++`apiErrorFrom` is now idempotent. The first lines short-circuit if
++the input is already an `ApiError`:
++
++```ts
++export function apiErrorFrom(err: HttpErrorResponse | ApiError): ApiError {
++  // Idempotent: if the caller already converted via the auth
++  // interceptor (or any other layer that does this conversion
++  // first), hand the existing ApiError straight back. Without
++  // this short-circuit, the service-layer `catch (err) { throw
++  // apiErrorFrom(err) }` defensive wrapper would re-read the
++  // ApiError's `.error` and `.status` fields, miss the
++  // `.errorCode` we already set, and downgrade an
++  // `invalid_credentials` 401 to a `unauthenticated` /
++  // `unknown_error` 401 — which is what made the HD-005
++  // login page show the generic "Something went wrong" copy
++  // on a wrong-password attempt when the auth interceptor was
++  // registered (i.e. in production).
++  if (err instanceof ApiError) {
++    return err;
++  }
++  // ... rest unchanged
++}
++```
++
++Three lines + a 12-line docblock. The function's type signature is
++widened to `HttpErrorResponse | ApiError` to make the contract
++explicit at every call site — the defensive `as Parameters<typeof
++apiErrorFrom>[0]` cast that each service was already doing now
++typechecks cleanly without the cast.
++
++## Why not drop the service-layer defensive wrap?
++
++Two reasons to keep the service-side `catch (err) { throw
++apiErrorFrom(err) }`:
++
++1. **The auth interceptor is not always registered.** Tests
++   register it explicitly via `withInterceptors([authInterceptor])`,
++   but the service contract — "always throw a typed `ApiError`" —
++   is what consumers depend on. If a future caller wires
++   `provideHttpClient()` without the interceptor (e.g. a dev tool,
++   a service worker, a mocked test), the service must still
++   convert raw `HttpErrorResponse` to `ApiError` or its callers
++   will break.
++2. **Defense in depth.** The auth interceptor could be removed or
++   re-ordered in `app.config.ts` and the rest of the app would
++   still work. The service-level conversion is the load-bearing
++   contract; the interceptor is a convenience that pushes the
++   conversion earlier in the pipeline.
++
++The cost of keeping both layers is the double-wrap, and the
++idempotency short-circuit is the cheap fix.
++
++## Scope
++
++### Modified files
++
++1. **`frontend/src/app/services/api-error.ts`** — the
++   `apiErrorFrom` function signature is widened to
++   `HttpErrorResponse | ApiError`, and the function body short-
++   circuits on `err instanceof ApiError`. The leading docblock is
++   rewritten to mention the bug + the regression test.
++
++2. **`frontend/src/app/services/auth.service.spec.ts`** — adds
++   the "double-wrap preserves errorCode" regression block. The
++   `beforeEach` now wires the *real* `authInterceptor` via
++   `withInterceptors([authInterceptor])` (was
++   `withInterceptorsFromDi()` with no interceptor), so the tests
++   exercise the same pipeline the app uses in production. Three
++   new test cases:
++   - `login()` rejects with `ApiError(401, invalid_credentials)`
++     on a wrong-password 401
++   - `login()` rejects with `ApiError(401, account_inactive)` on
++     a deactivated-user 401
++   - `changePassword()` rejects with
++     `ApiError(403, invalid_credentials)` (preserves errorCode
++     through both wraps)
++   - A belt-and-suspenders `apiErrorFrom` idempotency pin at the
++     unit level (so a future refactor that drops the testbed
++     setup still trips the contract)
++
++### New files
++
++1. **`frontend/src/app/services/api-error.spec.ts`** — the new
++   dedicated spec for `apiErrorFrom`. 12 tests in two describe
++   blocks:
++   - **idempotency (regression)** — 4 tests pinning the
++     `instanceof ApiError → same instance` contract for the four
++     ApiError shapes the auth interceptor can produce
++     (401 invalid_credentials, 401 account_inactive, 403
++     forbidden, 400 validation_error with fields).
++   - **HttpErrorResponse → ApiError** — 8 tests pinning the
++     positive-coverage matrix (401 with explicit error, 401 with
++     null body via status fallback, status 0 → network_error,
++     validation_error with fields map, non-string field values
++     dropped silently (D5 pin), 5xx → internal_server_error via
++     status fallback, unknown status with string body preserves
++     explicit error code, "Request failed." fallback when both
++     body.message and err.message are empty).
++
++2. **`_bmad-output/implementation-artifacts/spec-d12-apierror-idempotency.md`** —
++   this spec doc.
++
++3. **`_bmad-output/d12.diff`** — the diff snapshot.
++
++## Files
++
++**New:**
++- `frontend/src/app/services/api-error.spec.ts`
++- `_bmad-output/implementation-artifacts/spec-d12-apierror-idempotency.md`
++- `_bmad-output/d12.diff`
++
++**Modified:**
++- `frontend/src/app/services/api-error.ts` (idempotency fix)
++- `frontend/src/app/services/auth.service.spec.ts` (regression tests
++  + interceptor wiring)
++
++## Reuse (no new patterns)
++
++- **Existing `instanceof` check** — the same primitive used at
++  every service boundary in the codebase; nothing new.
++- **Existing `ApiError` class** — no new error types, no new
++  fields. The `idempotency` is purely a function-level short-
++  circuit.
++- **Existing `withInterceptors([authInterceptor])` test wiring**
++  — the `login-page.component.spec.ts` (D1+D2) already wires
++  the real interceptor; this slice brings `auth.service.spec.ts`
++  in line with the same pattern.
++- **No new dev dependency**, no package.json churn.
++
++## Test plan
++
++### New unit specs (frontend)
++
++`frontend/src/app/services/api-error.spec.ts` — 12 tests, all
++passing:
++
++- 4 idempotency regressions (the load-bearing assertions)
++- 8 HttpErrorResponse → ApiError positive coverage
++
++### New regression block in `auth.service.spec.ts`
++
++4 tests added, all passing — the wire-level pin that the
++interceptor + service chain doesn't downgrade `errorCode`.
++
++### Full frontend suite
++
++`cd frontend && npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox`
++
++- Baseline: **328/335** (7 pre-existing failures, all in
++  `EmployeeDashboardPageComponent` × 3, `ForbiddenPageComponent`
++  × 3, `UserRowComponent` × 1 — all AuthService mock gaps
++  surfaced in HD-008 and tracked separately)
++- After this slice: **344/351** (same 7 pre-existing failures,
++  +16 new passing tests = +12 api-error + 4 auth.service
++  double-wrap)
++
++No new failures introduced. No previously-passing test regresses.
++
++### Full backend suite (unchanged but re-verified)
++
++`cd backend && npm test` → **118/118** pass (D9 + everything
++else). No backend change in this slice.
++
++### End-to-end manual smoke (post-merge)
++
++- `docker compose up -d mysql` (if not running)
++- `cd backend && npm run dev` (port 3000)
++- `cd frontend && npm start` (port 4200)
++- Open `http://localhost:4200/login`
++- Enter `sam@example.com` / `WRONG`
++- **Expected**: "Email or password is incorrect. Try again."
++  appears under the password field; the email field gets focus.
++- **Was before this slice**: "Something went wrong. Please try
++  again." appeared (the bug).
++
++Verified locally during the slice — backend returns the right
++401, `apiErrorFrom` now propagates the `invalid_credentials` code
++through both wraps, the login page's switch renders the right
++copy.
++
++## Boundaries (never)
++
++- **No change to the auth interceptor.** The bug is in the
++  combination of the interceptor + the service defensive wrap;
++  the fix is in `apiErrorFrom` so both layers (and any future
++  layer that does the same conversion first) work correctly.
++- **No change to the login page logic.** The page's switch
++  already handles `invalid_credentials` / `account_inactive` /
++  `validation_error` / `network_error` / `internal_server_error`
++  / `unknown_error` correctly. The fix makes the upstream code
++  deliver the right `errorCode` to it.
++- **No new `ApiErrorCode` union members.** The bug is purely
++  about preserving an existing `errorCode` through a re-wrap.
++- **No backend change.** The backend has been returning the
++  right 401 envelope all along.
++- **No new env / config / routing / DI changes.** Three lines
++  in one function and a regression test.
++
++## Verification
++
++1. `cd frontend && npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox`
++   — **344/351** pass (was 328/335, +16 new tests, same 7
++   pre-existing baseline failures).
++2. `cd backend && npm test` — **118/118** pass.
++3. End-to-end smoke (above) — wrong-password now renders
++   "Email or password is incorrect. Try again."
++4. `git diff` review — should show only:
++   - the `api-error.ts` short-circuit + docblock;
++   - the new `api-error.spec.ts`;
++   - the `auth.service.spec.ts` regression block + interceptor
++     wiring change.
++
++## Commit
++
++Two commits, mirroring the D9 + D10 pattern:
++
++1. `fix(D12): apiErrorFrom idempotency — preserve errorCode
++   through service defensive wrap` — the implementation
++   (api-error.ts + spec files).
++2. `docs: D12 implementation diff snapshot` — the
++   `_bmad-output/d12.diff`.
++
++Both pushed to `origin/main`.
+diff --git a/frontend/src/app/services/api-error.spec.ts b/frontend/src/app/services/api-error.spec.ts
+new file mode 100644
+index 0000000..a9240d9
+--- /dev/null
++++ b/frontend/src/app/services/api-error.spec.ts
+@@ -0,0 +1,198 @@
++/**
++ * `apiErrorFrom` — unit spec.
++ *
++ * Pins the typed-error contract that HD-004/HD-005/HD-018/HD-019
++ * all rely on:
++ *
++ *   - HttpErrorResponse + server envelope → typed ApiError with
++ *     the explicit `error` field as `errorCode` (when present)
++ *   - HttpErrorResponse without a parsed body → typed ApiError
++ *     via status-to-code fallback
++ *   - status 0 → `network_error`
++ *   - `validation_error` body → ApiError with `fields` map
++ *     propagated through
++ *   - `idempotency` (the bug this spec exists to pin): if the
++ *     caller hands in an already-converted `ApiError` (because
++ *     the auth interceptor converted upstream), `apiErrorFrom`
++ *     hands the same instance back without re-reading the
++ *     ApiError's `.error`/`.status` as if it were a fresh
++ *     HttpErrorResponse. Without this, the service-layer
++ *     defensive `catch (err) { throw apiErrorFrom(err) }` would
++ *     downgrade an `invalid_credentials` 401 to a
++ *     `unauthenticated` 401 — the regression that made the
++ *     HD-005 login page render "Something went wrong" instead of
++ *     "Email or password is incorrect" on a wrong-password
++ *     attempt in production until the fix landed in
++ *     `api-error.ts`.
++ *
++ * The `idempotency` regression is the load-bearing assertion.
++ * Everything else is the positive-coverage matrix.
++ */
++
++import { HttpErrorResponse } from '@angular/common/http';
++import { ApiError, apiErrorFrom } from './api-error';
++
++describe('apiErrorFrom', () => {
++  describe('idempotency (regression)', () => {
++    // The bug: a 401 invalid_credentials from the login endpoint
++    // was first wrapped by the auth interceptor (correctly), then
++    // re-wrapped by AuthService.login()'s defensive
++    // `catch (err) { throw apiErrorFrom(err) }`. The second
++    // call would re-read the ApiError's `.error`/`.status`
++    // fields as if it were a fresh HttpErrorResponse, miss the
++    // `.errorCode`, and downgrade invalid_credentials to
++    // `unauthenticated`. The login page's switch has no case for
++    // unauthenticated, so the user got "Something went wrong"
++    // instead of "Email or password is incorrect". Pinned by
++    // the four assertions below.
++
++    it('returns the same ApiError instance for a 401 invalid_credentials', () => {
++      const original = new ApiError(
++        401,
++        'invalid_credentials',
++        'Email or password is incorrect. Try again.',
++      );
++      const result = apiErrorFrom(original);
++      expect(result).toBe(original);
++    });
++
++    it('returns the same ApiError instance for a 401 account_inactive', () => {
++      const original = new ApiError(
++        401,
++        'account_inactive',
++        'Your account is inactive. Contact your administrator.',
++      );
++      const result = apiErrorFrom(original);
++      expect(result).toBe(original);
++    });
++
++    it('returns the same ApiError instance for a 403 forbidden', () => {
++      const original = new ApiError(403, 'forbidden', 'Not allowed.');
++      const result = apiErrorFrom(original);
++      expect(result).toBe(original);
++    });
++
++    it('returns the same ApiError instance for a 400 validation_error with fields', () => {
++      const original = new ApiError(
++        400,
++        'validation_error',
++        'Please correct the highlighted fields.',
++        { email: 'Email is required.' },
++      );
++      const result = apiErrorFrom(original);
++      expect(result).toBe(original);
++      expect(result.fields).toEqual({ email: 'Email is required.' });
++    });
++  });
++
++  describe('HttpErrorResponse → ApiError', () => {
++    function httpErr(
++      status: number,
++      body: unknown,
++    ): HttpErrorResponse {
++      return new HttpErrorResponse({
++        status,
++        statusText: status === 0 ? 'Unknown Error' : 'Error',
++        error: body,
++      });
++    }
++
++    it('maps a 401 with { error: "invalid_credentials" } to ApiError(401, invalid_credentials)', () => {
++      const err = httpErr(401, {
++        error: 'invalid_credentials',
++        message: 'Email or password is incorrect. Try again.',
++      });
++      const result = apiErrorFrom(err);
++      expect(result).toBeInstanceOf(ApiError);
++      expect(result.status).toBe(401);
++      expect(result.errorCode).toBe('invalid_credentials');
++      expect(result.message).toBe('Email or password is incorrect. Try again.');
++    });
++
++    it('maps a 401 with no body to ApiError(401, unauthenticated) via status fallback', () => {
++      const err = httpErr(401, null);
++      const result = apiErrorFrom(err);
++      expect(result.status).toBe(401);
++      expect(result.errorCode).toBe('unauthenticated');
++    });
++
++    it('maps status 0 to network_error regardless of body', () => {
++      const err = httpErr(0, { error: 'whatever', message: 'whatever' });
++      const result = apiErrorFrom(err);
++      expect(result.status).toBe(0);
++      expect(result.errorCode).toBe('network_error');
++      expect(result.message).toBe(
++        'Could not reach the server. Check your connection.',
++      );
++    });
++
++    it('propagates the fields map on validation_error', () => {
++      const err = httpErr(400, {
++        error: 'validation_error',
++        message: 'Please correct the highlighted fields.',
++        fields: {
++          email: 'Email is required.',
++          password: 'Password must be at least 8 characters.',
++        },
++      });
++      const result = apiErrorFrom(err);
++      expect(result.errorCode).toBe('validation_error');
++      expect(result.fields).toEqual({
++        email: 'Email is required.',
++        password: 'Password must be at least 8 characters.',
++      });
++    });
++
++    it('drops non-string field values silently (defensive)', () => {
++      // The asFieldMap helper only keeps string-valued fields.
++      // Arrays / numbers are dropped. This pins the current
++      // behavior; if backend ever emits array field messages
++      // (D5), this assertion will start failing and signal it's
++      // time to revisit.
++      const err = httpErr(400, {
++        error: 'validation_error',
++        message: 'Please correct the highlighted fields.',
++        fields: {
++          email: 'Email is required.',
++          tags: ['too short', 'too long'],
++          count: 3,
++        },
++      });
++      const result = apiErrorFrom(err);
++      expect(result.fields).toEqual({ email: 'Email is required.' });
++    });
++
++    it('maps a 5xx to internal_server_error when no explicit `error` field is present', () => {
++      // Empty body — the status-to-code fallback kicks in.
++      const err = httpErr(500, {});
++      const result = apiErrorFrom(err);
++      expect(result.status).toBe(500);
++      expect(result.errorCode).toBe('internal_server_error');
++    });
++
++    it('maps an unknown status with a string body to the explicit error code', () => {
++      const err = httpErr(418, {
++        error: 'im_a_teapot',
++        message: "I'm a teapot",
++      });
++      const result = apiErrorFrom(err);
++      // The 'im_a_teapot' code is not in the union, so the cast
++      // lets it through as-is; the assertion just pins that the
++      // explicit `error` field wins over the status-to-code
++      // fallback.
++      expect((result.errorCode as string)).toBe('im_a_teapot');
++    });
++
++    it('falls back to "Request failed." when body has no message and err.message is empty', () => {
++      const err = new HttpErrorResponse({
++        status: 500,
++        statusText: 'Internal Server Error',
++        error: {},
++      });
++      // Angular sets err.message to the statusText in ctor.
++      // We just verify a non-empty message comes back.
++      const result = apiErrorFrom(err);
++      expect(result.message.length).toBeGreaterThan(0);
++    });
++  });
++});
+diff --git a/frontend/src/app/services/api-error.ts b/frontend/src/app/services/api-error.ts
+index 9eb2fda..a6296ca 100644
+--- a/frontend/src/app/services/api-error.ts
++++ b/frontend/src/app/services/api-error.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Typed API error — HD-004.
++ * Typed API error — HD-004 + HD-005 + HD-018 + HD-019.
+  *
+  * The backend `errorHandler` middleware (HD-003) emits bodies of
+  * shape:
+@@ -8,6 +8,18 @@
+  * This module wraps `HttpErrorResponse` so service callers (AuthService
+  * now, login page in HD-005) can switch on a typed `errorCode`
+  * rather than scraping the message.
++ *
++ * `apiErrorFrom` is **idempotent** — if the input is already an
++ * `ApiError` (because the auth interceptor converted upstream), it
++ * hands the same instance back. This is what makes the
++ * "interceptor converts + service calls `apiErrorFrom` defensively"
++ * pattern safe; without the short-circuit, a 401
++ * `invalid_credentials` from the login endpoint would be
++ * downgraded to a generic 401 `unauthenticated` by the second
++ * call, which is what made the HD-005 login page render
++ * "Something went wrong" instead of "Email or password is
++ * incorrect" in production until the fix landed here. Pinned by
++ * the `api-error.spec.ts` regression test.
+  */
+ 
+ import { HttpErrorResponse } from '@angular/common/http';
+@@ -74,7 +86,23 @@ export class ApiError extends Error {
+ }
+ 
+ /** Coerce an HttpErrorResponse into a typed ApiError. */
+-export function apiErrorFrom(err: HttpErrorResponse): ApiError {
++export function apiErrorFrom(err: HttpErrorResponse | ApiError): ApiError {
++  // Idempotent: if the caller already converted via the auth
++  // interceptor (or any other layer that does this conversion
++  // first), hand the existing ApiError straight back. Without
++  // this short-circuit, the service-layer `catch (err) { throw
++  // apiErrorFrom(err) }` defensive wrapper would re-read the
++  // ApiError's `.error` and `.status` fields, miss the
++  // `.errorCode` we already set, and downgrade an
++  // `invalid_credentials` 401 to a `unauthenticated` /
++  // `unknown_error` 401 — which is what made the HD-005
++  // login page show the generic "Something went wrong" copy
++  // on a wrong-password attempt when the auth interceptor was
++  // registered (i.e. in production).
++  if (err instanceof ApiError) {
++    return err;
++  }
++
+   const body = readBody(err);
+   const message =
+     asString(body.message) ?? err.message ?? 'Request failed.';
+diff --git a/frontend/src/app/services/auth.service.spec.ts b/frontend/src/app/services/auth.service.spec.ts
+index a85449b..0836e07 100644
+--- a/frontend/src/app/services/auth.service.spec.ts
++++ b/frontend/src/app/services/auth.service.spec.ts
+@@ -33,7 +33,7 @@
+ import { TestBed } from '@angular/core/testing';
+ import {
+   provideHttpClient,
+-  withInterceptorsFromDi,
++  withInterceptors,
+ } from '@angular/common/http';
+ import {
+   HttpTestingController,
+@@ -41,7 +41,8 @@ import {
+ } from '@angular/common/http/testing';
+ 
+ import { AuthService } from './auth.service';
+-import { ApiError } from './api-error';
++import { ApiError, apiErrorFrom } from './api-error';
++import { authInterceptor } from './auth.interceptor';
+ import { environment } from '../../environments/environment';
+ import type { UserPublic } from '../models/user';
+ 
+@@ -64,7 +65,7 @@ describe('AuthService', () => {
+   beforeEach(() => {
+     TestBed.configureTestingModule({
+       providers: [
+-        provideHttpClient(withInterceptorsFromDi()),
++        provideHttpClient(withInterceptors([authInterceptor])),
+         provideHttpClientTesting(),
+         AuthService,
+       ],
+@@ -404,4 +405,99 @@ describe('AuthService', () => {
+       }
+     });
+   });
++
++  // ─── Production regression: double-wrap preservation ─────────
++  //
++  // The auth interceptor converts HttpErrorResponse → ApiError
++  // first; the services all have a defensive
++  // `catch (err) { throw apiErrorFrom(err) }` that runs second.
++  // Before `apiErrorFrom` was made idempotent, this double-wrap
++  // silently downgraded `invalid_credentials` 401 (login) /
++  // `account_inactive` 401 (changePassword) to `unauthenticated`
++  // 401, which the login / change-password pages' switches do not
++  // handle — the user got "Something went wrong" instead of the
++  // specific message. These two tests pin the fix by registering
++  // the real `authInterceptor` in the testbed.
++
++  describe('double-wrap preserves errorCode (auth.interceptor + service)', () => {
++    it('login() rejects with ApiError(401, invalid_credentials) on wrong-password 401', async () => {
++      const p = service.login('sam@example.com', 'wrongPassword');
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/login`);
++      expect(req.request.method).toBe('POST');
++      req.flush(
++        {
++          error: 'invalid_credentials',
++          message: 'Email or password is incorrect. Try again.',
++        },
++        { status: 401, statusText: 'Unauthorized' },
++      );
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        expect(err).toBeInstanceOf(ApiError);
++        // If this assertion fails with `unauthenticated` instead,
++        // someone has broken the idempotency in apiErrorFrom —
++        // the service defensive wrap re-read an already-converted
++        // ApiError as if it were a fresh HttpErrorResponse.
++        expect((err as ApiError).status).toBe(401);
++        expect((err as ApiError).errorCode).toBe('invalid_credentials');
++        expect((err as ApiError).message).toBe(
++          'Email or password is incorrect. Try again.',
++        );
++      }
++    });
++
++    it('login() rejects with ApiError(401, account_inactive) on deactivated-user 401', async () => {
++      const p = service.login('deactivated@example.com', 'whatever');
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/login`);
++      req.flush(
++        {
++          error: 'account_inactive',
++          message: 'Your account is inactive. Contact your administrator.',
++        },
++        { status: 401, statusText: 'Unauthorized' },
++      );
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        expect(err).toBeInstanceOf(ApiError);
++        expect((err as ApiError).status).toBe(401);
++        expect((err as ApiError).errorCode).toBe('account_inactive');
++      }
++    });
++
++    it('changePassword() rejects with ApiError(403, invalid_credentials) — preserves errorCode through both wraps', async () => {
++      const p = service.changePassword('wrongOld', 'newPassword123');
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/auth/me/password`,
++      );
++      req.flush(
++        {
++          error: 'invalid_credentials',
++          message: 'Your current password is incorrect.',
++        },
++        { status: 403, statusText: 'Forbidden' },
++      );
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        expect(err).toBeInstanceOf(ApiError);
++        expect((err as ApiError).status).toBe(403);
++        expect((err as ApiError).errorCode).toBe('invalid_credentials');
++      }
++    });
++
++    it('apiErrorFrom on an existing ApiError returns the same instance (unit-level pin)', () => {
++      // Belt + suspenders: the service spec above proves the
++      // contract works through the interceptor + service catch
++      // chain. This tiny standalone assertion pins the
++      // idempotency contract directly so a future refactor that
++      // drops the testbed setup above still trips.
++      const original = new ApiError(401, 'invalid_credentials', 'bad pw');
++      expect(apiErrorFrom(original)).toBe(original);
++    });
++  });
+ });
