@@ -13,7 +13,9 @@
  *   Closed      → --status-closed-bg / --status-closed-text
  *
  * The status literal is also rendered as text so screen readers
- * and color-blind users always get the label (WCAG 1.4.1).
+ * and color-blind users always get the label (WCAG 1.4.1). The
+ * pill is also paired with a leading icon glyph per DESIGN.md
+ * §"Status Pill" — color is never the sole signal.
  */
 
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
@@ -26,10 +28,38 @@ type StatusVariant = 'open' | 'in-progress' | 'resolved' | 'closed';
   selector: 'badge-status',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<span class="badge" [class]="variantClass()">{{ label() }}</span>`,
+  template: `
+    <span class="status-dot" [class]="variantClass()">
+      @switch (status()) {
+        @case ('Open') {
+          <svg class="status-glyph" viewBox="0 0 8 8" width="8" height="8" aria-hidden="true" focusable="false">
+            <circle cx="4" cy="4" r="3" fill="currentColor" />
+          </svg>
+        }
+        @case ('In Progress') {
+          <svg class="status-glyph" viewBox="0 0 8 8" width="8" height="8" aria-hidden="true" focusable="false">
+            <path d="M2 1.5 L6.5 4 L2 6.5 Z" fill="currentColor" />
+          </svg>
+        }
+        @case ('Resolved') {
+          <svg class="status-glyph" viewBox="0 0 8 8" width="8" height="8" aria-hidden="true" focusable="false">
+            <path d="M1.5 4.25 L3.25 6 L6.5 2.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        }
+        @case ('Closed') {
+          <svg class="status-glyph" viewBox="0 0 8 8" width="8" height="8" aria-hidden="true" focusable="false">
+            <path d="M2 2 L6 6 M6 2 L2 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        }
+      }
+      <span class="status-label">{{ label() }}</span>
+    </span>
+  `,
   styles: [`
-    .badge {
-      display: inline-block;
+    .status-dot {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
       min-height: 22px;
       padding: 0 10px;
       border-radius: 11px;
@@ -38,6 +68,10 @@ type StatusVariant = 'open' | 'in-progress' | 'resolved' | 'closed';
       line-height: 22px;
       white-space: nowrap;
       box-sizing: border-box;
+    }
+    .status-glyph {
+      flex-shrink: 0;
+      display: block;
     }
     .open {
       background: var(--status-open-bg);
