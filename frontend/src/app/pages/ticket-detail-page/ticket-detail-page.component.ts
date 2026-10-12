@@ -402,6 +402,8 @@ const COMMENT_MAX = 5000;
       max-width: 960px;
       margin: 0 auto;
     }
+    /* .breadcrumb and .header .back-link styles are in global
+       styles.css to keep this component's style budget under 4kB. */
     .error-toast {
       background: var(--color-surface);
       border: 1px solid var(--color-border);
@@ -786,6 +788,14 @@ export class TicketDetailPageComponent implements OnInit, OnDestroy {
   readonly isClosed = computed<boolean>(
     () => this.ticket()?.status === 'Closed',
   );
+
+  /**
+   * Back-target href for the breadcrumb + back-to-tickets link.
+   * Drives off the role-correct home path so an agent landing on
+   * a ticket detail page goes back to /queue, while a user goes
+   * back to /dashboard.
+   */
+  readonly backHref = computed<string>(() => this.authService.roleHomePath());
 
   readonly isSubmitter = computed<boolean>(() => {
     const u = this.currentUser();

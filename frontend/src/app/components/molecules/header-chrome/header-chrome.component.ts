@@ -1,7 +1,7 @@
 /**
  * header-chrome — molecule (HD-004 + HD-018).
  *
- * The 64px persistent chrome strip rendered above every post-login
+ * The persistent chrome strip rendered above every post-login
  * page. Three regions:
  *   1. Brand mark (left) — focusable button that routes to the
  *      role-correct dashboard via AuthService.roleHomePath().

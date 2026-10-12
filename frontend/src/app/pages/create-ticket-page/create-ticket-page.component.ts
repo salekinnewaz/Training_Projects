@@ -186,6 +186,9 @@ const PRIORITY_OPTIONS = [
               (valueChange)="onCategoryChange($event)"
             />
           </form-field>
+          <p class="form-helper" data-testid="category-helper">
+            Optional — helps agents route your ticket
+          </p>
 
           <form-field
             id="priority"
@@ -246,7 +249,7 @@ const PRIORITY_OPTIONS = [
       display: block;
     }
     .create-ticket {
-      max-width: 720px;
+      max-width: var(--form-max-width, 480px);
       margin: 0 auto;
       padding-bottom: 32px;
     }
@@ -292,6 +295,11 @@ const PRIORITY_OPTIONS = [
       color: var(--color-error);
       font-size: 14px;
       border-radius: 6px;
+    }
+    .form-helper {
+      margin: -16px 0 0;
+      color: var(--color-muted);
+      font-size: 13px;
     }
     .cancel-link {
       align-self: flex-start;

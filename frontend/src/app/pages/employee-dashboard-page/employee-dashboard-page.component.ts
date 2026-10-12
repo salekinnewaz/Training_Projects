@@ -30,6 +30,7 @@ import {
   Component,
   DestroyRef,
   OnInit,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -45,6 +46,15 @@ import { LoadingSkeletonComponent } from '../../components/patterns/loading-skel
 import type { Ticket } from '../../models/ticket';
 
 type RenderState = 'loading' | 'error' | 'empty' | 'list';
+
+type TicketStatusCount = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
+
+const STAT_CARDS: { status: TicketStatusCount; label: string }[] = [
+  { status: 'Open', label: 'Open' },
+  { status: 'In Progress', label: 'In Progress' },
+  { status: 'Resolved', label: 'Resolved' },
+  { status: 'Closed', label: 'Closed' },
+];
 
 const GENERIC_LOAD_ERROR = "Couldn't load your tickets. Refresh to try again.";
 const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
@@ -90,6 +100,22 @@ const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
             />
           }
           @case ('list') {
+            <div
+              class="stat-strip"
+              data-testid="stat-strip"
+              aria-label="Ticket status summary"
+            >
+              @for (card of statCards; track card.status) {
+                <div
+                  class="stat-card"
+                  [attr.data-status]="card.status"
+                  [attr.data-testid]="'stat-card-' + card.status"
+                >
+                  <span class="stat-label">{{ card.label }}</span>
+                  <span class="stat-count">{{ statusCounts()[card.status] }}</span>
+                </div>
+              }
+            </div>
             <ul class="ticket-list">
               @for (t of tickets(); track t.id) {
                 <ticket-row
@@ -148,6 +174,39 @@ const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
     .ticket-list > * {
       display: block;
     }
+    .stat-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 720px) {
+      .stat-strip {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    .stat-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .stat-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--color-muted);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .stat-count {
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--color-primary);
+      line-height: 1.2;
+    }
   `],
 })
 export class EmployeeDashboardPageComponent implements OnInit {
@@ -159,6 +218,25 @@ export class EmployeeDashboardPageComponent implements OnInit {
   readonly tickets = signal<Ticket[]>([]);
   readonly renderState = signal<RenderState>('loading');
   readonly errorMessage = signal<string | null>(null);
+
+  /** Per-status counts for the stat strip. */
+  readonly statusCounts = computed<Record<TicketStatusCount, number>>(() => {
+    const counts: Record<TicketStatusCount, number> = {
+      Open: 0,
+      'In Progress': 0,
+      Resolved: 0,
+      Closed: 0,
+    };
+    for (const t of this.tickets()) {
+      if (t.status in counts) {
+        counts[t.status as TicketStatusCount] += 1;
+      }
+    }
+    return counts;
+  });
+
+  /** Ordered list of stat cards (Open · In Progress · Resolved · Closed). */
+  readonly statCards = STAT_CARDS;
 
   ngOnInit(): void {
     void this.load();

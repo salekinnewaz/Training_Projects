@@ -164,11 +164,32 @@ const PASSWORD_REQUIRED = 'Enter your password.';
             [disabled]="!form.controls.email.value || !form.controls.password.value"
             [loading]="submitting()"
           >
-            {{ submitting() ? 'Logging in…' : 'Log in' }}
+            {{ submitting() ? 'Signing in…' : 'Sign in' }}
           </atom-button>
+
+          <div class="remember-row">
+            <input
+              type="checkbox"
+              id="remember-me"
+              data-testid="remember-me"
+              [checked]="rememberMe()"
+              (change)="onRememberMeChange($event)"
+              [disabled]="submitting()"
+            />
+            <label for="remember-me" class="remember-label">Remember me</label>
+          </div>
 
           <div class="forgot-row">
             <atom-link href="/forgot-password">Forgot password?</atom-link>
+          </div>
+
+          <div class="register-row">
+            <span class="register-copy">Don&apos;t have an account?</span>
+            <a
+              class="register-link"
+              href="/register"
+              data-testid="register-link"
+            >Register</a>
           </div>
         </form>
       </article>
@@ -247,6 +268,42 @@ const PASSWORD_REQUIRED = 'Enter your password.';
       margin-top: 16px;
       text-align: center;
     }
+    .remember-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .remember-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      cursor: pointer;
+    }
+    .remember-label {
+      font-size: 14px;
+      color: var(--color-label);
+      cursor: pointer;
+      user-select: none;
+    }
+    .register-row {
+      margin-top: 12px;
+      text-align: center;
+      font-size: 14px;
+      color: var(--color-muted);
+    }
+    .register-link {
+      color: var(--color-primary);
+      text-decoration: none;
+      font-weight: 500;
+      margin-left: 4px;
+    }
+    .register-link:hover {
+      text-decoration: underline;
+    }
+    .register-copy {
+      color: var(--color-muted);
+    }
   `],
 })
 export class LoginPageComponent implements AfterViewInit {
@@ -272,6 +329,15 @@ export class LoginPageComponent implements AfterViewInit {
   readonly emailFieldError = signal<string | null>(null);
   readonly passwordFieldError = signal<string | null>(null);
   readonly passwordVisible = signal(false);
+  /**
+   * Local-only "remember me" toggle. Per the MVP wireframe note,
+   * this is a UI affordance only — the actual cookie persistence
+   * behavior is unchanged (the JWT cookie is httpOnly and rides
+   * the same way regardless of this checkbox). We keep the state
+   * here so the checkbox renders deterministically through OnPush
+   * change detection.
+   */
+  readonly rememberMe = signal(false);
 
   @ViewChild('emailInput', { static: false })
   private readonly emailInput?: ElementRef<HTMLElement>;
@@ -327,6 +393,11 @@ export class LoginPageComponent implements AfterViewInit {
 
   togglePasswordVisibility(): void {
     this.passwordVisible.update((v) => !v);
+  }
+
+  onRememberMeChange(event: Event): void {
+    const target = event.target as HTMLInputElement | null;
+    this.rememberMe.set(target?.checked ?? false);
   }
 
   async onSubmit(): Promise<void> {

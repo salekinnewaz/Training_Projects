@@ -13,44 +13,45 @@
 
 :root {
   /* ── Type ─────────────────────────────────────────────────────── */
-  --font-stack: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-stack: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* ── Colors ─ surface ─────────────────────────────────────────── */
   --color-page-bg: #f8f9fa;
   --color-surface: #ffffff;
-  --color-surface-subtle: #f1f3f5;
-  --color-surface-muted: #e9ecef;
+  --color-surface-subtle: #F7F8FA;
+  --color-surface-muted: #EEF1F4;
 
   /* ── Colors ─ text ────────────────────────────────────────────── */
-  --color-primary: #212529;        /* button bg, headings, brand mark */
-  --color-label: #495057;         /* field labels, body text */
-  --color-muted: #868e96;         /* timestamps, captions, muted links */
+  --color-primary: #2563EB;        /* button bg, headings, brand mark */
+  --color-label: #52606D;         /* field labels, body text */
+  --color-muted: #7B8794;         /* timestamps, captions, muted links */
   --color-success: #2b8a3e;
-  --color-error: #c92a2a;
+  --color-error: #DC2626;
   --color-disabled: #adb5bd;
 
   /* ── Colors ─ borders ─────────────────────────────────────────── */
-  --color-border: #dee2e6;
-  --color-border-strong: #adb5bd;
+  --color-border: #E4E7EB;
+  --color-border-strong: #CBD2D9;
 
   /* ── Colors ─ status pills (Ticket Detail + Kanban) ───────────── */
-  --status-open-bg: #fff5d6;
-  --status-open-text: #7a5c00;
-  --status-in-progress-bg: #d0ebff;
-  --status-in-progress-text: #1864ab;
-  --status-resolved-bg: #d3f9d8;
-  --status-resolved-text: #2b8a3e;
-  --status-closed-bg: #e9ecef;
-  --status-closed-text: #495057;
+  --status-open-bg: #E5EDFC;
+  --status-open-text: #2563EB;
+  --status-in-progress-bg: #FDF3E1;
+  --status-in-progress-text: #D97706;
+  --status-resolved-bg: #DFF5E8;
+  --status-resolved-text: #059669;
+  --status-closed-bg: #E4E7EB;
+  --status-closed-text: #6B7280;
 
   /* ── Colors ─ priority pills ───────────────────────────────────── */
-  --priority-low-bg: #e9ecef;
-  --priority-low-text: #495057;
-  --priority-medium-bg: #fff5d6;
-  --priority-medium-text: #7a5c00;
-  --priority-high-bg: #ffe3e3;
-  --priority-high-text: #c92a2a;
+  --priority-low-bg: #E4E7EB;
+  --priority-low-text: #6B7280;
+  --priority-medium-bg: #FDF3E1;
+  --priority-medium-text: #D97706;
+  --priority-high-bg: #FCE8E8;
+  --priority-high-text: #DC2626;
 
   /* ── Colors ─ role borders (Ticket Detail comments + Kanban) ──── */
   --role-employee-border: #adb5bd;
@@ -68,10 +69,11 @@
   --button-md-height: 40px;     /* HD-007: header CTAs */
   --button-lg-height: 48px;     /* HD-007: empty-state CTA */
   --button-radius: 6px;
-  --content-column-width: 880px;
+  --content-column-width: 1280px;
+  --form-max-width: 480px;
 
   /* ── Geometry ─ chrome ────────────────────────────────────────── */
-  --chrome-height: 64px;
+  --chrome-height: 56px;
 
   /* ── Shadows ──────────────────────────────────────────────────── */
   --shadow-card-hover: 0 4px 8px rgba(33, 37, 41, 0.08);
@@ -111,7 +113,7 @@
 html, body {
   margin: 0;
   padding: 0;
-  font-family: var(--font-stack);
+  font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
   color: var(--color-label);
@@ -822,4 +824,44 @@ a.admin-card-row:focus-visible {
 .user-row-skel .bar-time {
   height: 12px;
   width: 60%;
+}
+
+/* ── Ticket Detail breadcrumb + back-link (wireframe gap) ────────
+   Per UX wireframe audit, ticket detail pages show a small
+   "Tickets · {status}" breadcrumb above the title, plus a
+   "← Back to tickets" link in the page header. Geometry kept
+   global so the per-page style budget stays under 4kB. */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-muted);
+  margin-bottom: 8px;
+}
+.breadcrumb-link {
+  color: var(--color-muted);
+  text-decoration: none;
+}
+.breadcrumb-link:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+.breadcrumb-sep {
+  color: var(--color-muted);
+}
+.breadcrumb-status {
+  color: var(--color-muted);
+  font-weight: 500;
+}
+.detail-page .header .back-link {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--color-muted);
+  text-decoration: none;
+  margin-bottom: 4px;
+}
+.detail-page .header .back-link:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
 }
