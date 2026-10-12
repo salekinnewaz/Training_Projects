@@ -41,8 +41,14 @@
  *
  * On any mutation that the backend accepts (200/201), the local
  * `ticket` signal is replaced with the response. The activity
- * timeline is NOT refetched; the spec says "no realtime updates"
- * and the page trusts the local signal until the user reloads.
+ * timeline is NOT refetched on most mutations (status / priority
+ * / category / assignee / reopen / close) — the spec says
+ * "no realtime updates" and the page trusts the local signal
+ * until the user reloads. **HD-017 exception**: after a
+ * successful `addComment`, the page refetches the activity
+ * timeline so the new "CommentAdded" entry shows up immediately.
+ * A refetch failure is non-blocking (the comment is already
+ * created; the timeline will lag until the user reloads).
  *
  * Lifecycle:
  *   - ngOnInit parses `:id`, navigates to `/dashboard` on NaN.
@@ -974,6 +980,22 @@ export class TicketDetailPageComponent implements OnInit {
       this.composerValue.set('');
       this.composerError.set(null);
       this.commentSubmitError.set(null);
+      // HD-017: refetch the activity timeline so the new
+      // "CommentAdded" entry shows up immediately. The comment
+      // was already created (201), so a refetch failure is
+      // non-blocking — the timeline will lag until the user
+      // reloads. Other mutations (status / priority / reopen /
+      // close) still do NOT refetch per the page's "no realtime"
+      // contract; this is a deliberate exception for comments
+      // because the timeline is the primary affordance for
+      // seeing new conversation.
+      try {
+        const refreshed = await this.ticketService.listActivity(t.id);
+        this.activity.set(refreshed);
+      } catch {
+        // Swallow — degraded state, not a user-facing error.
+        // The user can reload to see fresh activity.
+      }
     } catch (err) {
       if (err instanceof ApiError) {
         this.composerError.set(this.formatApiError(err, "Couldn't add your comment."));

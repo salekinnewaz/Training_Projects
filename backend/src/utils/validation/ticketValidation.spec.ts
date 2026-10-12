@@ -15,6 +15,7 @@
 import { HttpError } from '../errors';
 import {
   validateCreateTicketBody,
+  validateAddCommentBody,
   type CreateTicketInput,
 } from './ticketValidation';
 
@@ -298,6 +299,115 @@ describe('validateCreateTicketBody', () => {
         err.status === 400 &&
         err.errorCode === 'validation_error' &&
         err.fields?._body === 'Request body must be a JSON object.',
+    );
+  });
+});
+
+/**
+ * HD-017 — validateAddCommentBody unit spec.
+ *
+ * The comment write path was already shipped (HD-010), but the
+ * validator had no pinning spec. This closes the gap so the
+ * 1..5000 char cap and the unknown-key / non-string /
+ * whitespace-only rejection paths can't regress silently.
+ */
+describe('validateAddCommentBody', () => {
+  it('returns a normalized input on the happy path', () => {
+    const result = validateAddCommentBody({ body: 'Restarting the laptop now' });
+    expect(result).toEqual({ body: 'Restarting the laptop now' });
+  });
+
+  it('trims leading / trailing whitespace from the returned body', () => {
+    const result = validateAddCommentBody({ body: '  hello world  ' });
+    expect(result).toEqual({ body: 'hello world' });
+  });
+
+  it('rejects a non-object body (array) with fields._body = "Request body must be a JSON object."', () => {
+    expectHttpError(
+      () => validateAddCommentBody([]),
+      (err) =>
+        err.status === 400 &&
+        err.errorCode === 'validation_error' &&
+        err.fields?._body === 'Request body must be a JSON object.',
+    );
+  });
+
+  it('rejects a null body with fields._body = "Request body must be a JSON object."', () => {
+    expectHttpError(
+      () => validateAddCommentBody(null),
+      (err) =>
+        err.status === 400 &&
+        err.errorCode === 'validation_error' &&
+        err.fields?._body === 'Request body must be a JSON object.',
+    );
+  });
+
+  it('rejects a missing body key with fields.body = "Comment body is required."', () => {
+    expectHttpError(
+      () => validateAddCommentBody({}),
+      (err) =>
+        err.status === 400 &&
+        err.errorCode === 'validation_error' &&
+        err.fields?.body === 'Comment body is required.',
+    );
+  });
+
+  it('rejects a non-string body with fields.body = "Comment body is required."', () => {
+    expectHttpError(
+      () => validateAddCommentBody({ body: 42 }),
+      (err) =>
+        err.status === 400 &&
+        err.errorCode === 'validation_error' &&
+        err.fields?.body === 'Comment body is required.',
+    );
+  });
+
+  it('rejects an empty body with fields.body = "Comment body is required."', () => {
+    expectHttpError(
+      () => validateAddCommentBody({ body: '' }),
+      (err) =>
+        err.status === 400 &&
+        err.errorCode === 'validation_error' &&
+        err.fields?.body === 'Comment body is required.',
+    );
+  });
+
+  it('rejects a whitespace-only body with fields.body = "Comment body is required."', () => {
+    expectHttpError(
+      () => validateAddCommentBody({ body: '     ' }),
+      (err) =>
+        err.status === 400 &&
+        err.errorCode === 'validation_error' &&
+        err.fields?.body === 'Comment body is required.',
+    );
+  });
+
+  it('rejects a body over 5000 chars with the long-comment message', () => {
+    const long = 'a'.repeat(5001);
+    expectHttpError(
+      () => validateAddCommentBody({ body: long }),
+      (err) =>
+        err.status === 400 &&
+        err.errorCode === 'validation_error' &&
+        err.fields?.body === 'Comment is limited to 5000 characters.',
+    );
+  });
+
+  it('accepts a body at the 5000-char boundary (trimmed length is not what is checked)', () => {
+    // The cap is on the raw (untrimmed) input length — 5000 chars
+    // of 'a' is exactly at the boundary and should pass.
+    const at = 'a'.repeat(5000);
+    const result = validateAddCommentBody({ body: at });
+    expect(result.body.length).toBe(5000);
+  });
+
+  it('rejects an unknown extra key with fields._body = "Unknown field ..."', () => {
+    expectHttpError(
+      () => validateAddCommentBody({ body: 'hello', ticketId: 42 }),
+      (err) =>
+        err.status === 400 &&
+        err.errorCode === 'validation_error' &&
+        err.fields?._body === 'Unknown field "ticketId". Allowed: body.',
     );
   });
 });
