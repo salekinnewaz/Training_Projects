@@ -1,0 +1,1204 @@
+diff --git a/_bmad-output/implementation-artifacts/deferred-work.md b/_bmad-output/implementation-artifacts/deferred-work.md
+index 378c2b2..e8e0d78 100644
+--- a/_bmad-output/implementation-artifacts/deferred-work.md
++++ b/_bmad-output/implementation-artifacts/deferred-work.md
+@@ -14,5 +14,5 @@
+ | HD-005 | D7 | `dialog-modal` hand-rolls `.btn-primary` / `.btn-secondary` instead of using `<atom-button>` | Pattern-convergence slice (post-HD-016) | Per HD-004/HD-005 impl notes, convergence is deliberate non-goal. Land when dialogs gain a second use case (HD-008 create-ticket confirm). |
+ | HD-008 | D8 | Attachment upload endpoint (`POST /api/attachments`) + frontend wiring on `<file-drop>` (flip disabled → enabled, add upload on fileSelected, pass `attachmentId` to `POST /api/tickets`) | HD-011 (Attachments slice) or follow-up | HD-008 ships the Attachment field disabled with helper text "Attach a file (coming soon)" (per OQ-1 lock, choice A). The `<file-drop>` organism is fully built; HD-011 only needs the upload handler + 1-line disabled flip. |
+ | HD-008 | D9 | Backend integration test for `ticketService.createTicket` (transaction + FOR UPDATE counter + Ticket.create in the same tx). The spec's DUPLICATE_NUMBER edge case ("two parallel POSTs get unique HD-<n>") has no pinning test | Backend testing-infrastructure story | Repo has no in-memory DB (sqlite/memory) or sequelize-mock library; current pattern mocks services at the controller boundary rather than exercising real Sequelize transactions. Closing this needs a dedicated testing slice. |
+-| HD-008 | D10 | `roleGuard` redirects to `/forbidden` on a cold load (hard reload of a protected URL with a valid cookie) because Angular runs `canActivate` array entries concurrently. `authGuard`'s `refreshUser()` may not resolve before `roleGuard` reads `userSnapshot()` (which is `null` until the round-trip completes). Symptom: hitting `/dashboard` or `/tickets/new` in a fresh tab while still authenticated lands on `/forbidden`. Workaround: hard-navigation only works after authGuard has populated the snapshot (e.g. after the login flow lands on `/dashboard`). The smoke test worked around this by making `roleGuard` async and calling `auth.refreshUser()` itself when the snapshot is empty — change reverted, filed here for HD-006 follow-up. | HD-006 (route-guard hardening) or HD-008 follow-up | Two possible fixes: (1) make `roleGuard` async and call `auth.refreshUser()` itself on null snapshot (would duplicate a /me round-trip when authGuard runs first), or (2) chain `canActivate` guards via `concatMap` instead of `mergeMap` in the route config (Angular's API doesn't directly support this — would need a wrapping guard). Also affects `/queue`, `/admin`, `/users`, `/tickets/:id/created`, `/tickets/:id` — every role-guarded route. |
++| HD-008 | D10 | `roleGuard` redirects to `/forbidden` on a cold load (hard reload of a protected URL with a valid cookie) because Angular runs `canActivate` array entries concurrently. `authGuard`'s `refreshUser()` may not resolve before `roleGuard` reads `userSnapshot()` (which is `null` until the round-trip completes). Symptom: hitting `/dashboard` or `/tickets/new` in a fresh tab while still authenticated lands on `/forbidden`. Workaround: hard-navigation only works after authGuard has populated the snapshot (e.g. after the login flow lands on `/dashboard`). The smoke test worked around this by making `roleGuard` async and calling `auth.refreshUser()` itself when the snapshot is empty — change reverted, filed here for HD-006 follow-up. | HD-006 (route-guard hardening) or HD-008 follow-up | **Closed by D10 fix.** `roleGuard` now awaits `auth.refreshUser()` on a null snapshot. `AuthService.refreshUser()` gained an `inflightRefresh` memo, so the three concurrent callers (authGuard + roleGuard + header-chrome's mount effect) share a single GET /me round-trip. Spec at `_bmad-output/implementation-artifacts/spec-d10-roleguard-race.md`. Pinned by 4 new guard specs (auth.guard, role.guard, login.guard) + AuthService dedup tests — 35 tests total. |
+ | HD-008 | D11 | `<app-chrome>` is not wrapping `/tickets/:id/created` (HD-009 placeholder) — the submission confirmation page renders without the persistent header. After HD-009 replaces the placeholder with the real component, the chrome wrap needs to land with it. | HD-009 (or HD-006 chrome-wrap pass) | Cosmetic in MVP — the form-render proof works without the chrome, just looks bare. |
+diff --git a/_bmad-output/implementation-artifacts/spec-d10-roleguard-race.md b/_bmad-output/implementation-artifacts/spec-d10-roleguard-race.md
+new file mode 100644
+index 0000000..fff59e2
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/spec-d10-roleguard-race.md
+@@ -0,0 +1,263 @@
++# D10 — roleGuard cold-load race fix
++
++## Context
++
++`deferred-work.md` D10 documents a real bug in the route
++guard chain: every protected route (8 routes — `/dashboard`,
++`/tickets/new`, `/tickets/:id/created`, `/tickets/:id`,
++`/queue`, `/admin`, `/users`, plus `/forbidden`) wires
++`canActivate: [authGuard, roleGuard(...)]`. Angular runs the
++array entries concurrently (`mergeMap`-style, not `concatMap`),
++so `roleGuard` reads `userSnapshot()` **before** `authGuard`'s
++`await refreshUser()` has populated the BehaviorSubject. On a
++cold load (hard reload of a protected URL while still
++authenticated), the user lands on `/forbidden` instead of the
++intended page.
++
++The two proposed fixes in the deferred-work entry are:
++1. Make `roleGuard` async, call `auth.refreshUser()` itself
++   on null snapshot — but this duplicates a `/me` round-trip
++   when `authGuard` is also in the array.
++2. Chain guards via `concatMap` — Angular's API doesn't
++   directly support this.
++
++The cleanest fix is **#1 with an in-flight dedup** added to
++`AuthService.refreshUser()` so concurrent callers share a
++single `/me` request. This eliminates the duplication concern
++while keeping the public guard surface unchanged.
++
++There's a third concurrent caller: `header-chrome.component.ts:248-254`
++fires `refreshUser()` from an `effect()` on mount whenever
++`user$` is null — i.e. on every cold load of a protected
++page. The dedup covers this too: 3 concurrent callers share
++1 HTTP request.
++
++The previous plans in this file were HD-014/HD-015/HD-016
++(all shipped) and the D1+D2 testing slice (shipped). This
++plan replaces them.
++
++## Scope
++
++### Frontend — production
++
++1. **Edit `frontend/src/app/services/auth.service.ts`** —
++   add in-flight promise dedup to `refreshUser()`:
++   ```ts
++   private inflightRefresh: Promise<void> | null = null;
++
++   refreshUser(): Promise<void> {
++     if (this.inflightRefresh) {
++       return this.inflightRefresh;
++     }
++     this.inflightRefresh = this.doRefreshUser().finally(() => {
++       this.inflightRefresh = null;
++     });
++     return this.inflightRefresh;
++   }
++
++   private async doRefreshUser(): Promise<void> {
++     // ... existing refreshUser body, unchanged ...
++   }
++   ```
++   The dedup is transparent to all 3 callers
++   (`auth.guard.ts:33`, `login.guard.ts:25`,
++   `header-chrome.component.ts:250`) — no call-site changes
++   needed. The `finally` block clears the cache so the next
++   cold load still hits the network.
++
++2. **Edit `frontend/src/app/guards/role.guard.ts`** — convert
++   to async and call `refreshUser()` when snapshot is null:
++   ```ts
++   return async (_route, state): Promise<boolean | UrlTree> => {
++     const auth = inject(AuthService);
++     const router = inject(Router);
++
++     let user = auth.userSnapshot();
++     if (!user) {
++       try {
++         await auth.refreshUser();
++       } catch { /* network / 5xx */ }
++       user = auth.userSnapshot();
++     }
++
++     if (!user || !allowedRoles.includes(user.role)) {
++       return router.parseUrl(`/forbidden?denied_from=${encodeURIComponent(state.url)}`);
++     }
++     return true;
++   };
++   ```
++   No changes to `app.routes.ts` — the guard factory signature
++   is unchanged; only the inner function is now async.
++
++3. **No change** to `auth.guard.ts` or `login.guard.ts` — both
++   already await `refreshUser()`. With the dedup, even if
++   `roleGuard` fires a `refreshUser()` in parallel, the
++   second call short-circuits to the in-flight promise.
++
++### Frontend — tests (4 new spec files, 35 new tests)
++
++4. **NEW `frontend/src/app/services/auth.service.spec.ts`** —
++   pins the dedup behavior + the existing 401-silently-becomes-null
++   contract:
++   - `refreshUser()` calls `GET /api/auth/me` once with
++     `withCredentials: true`.
++   - 200 response → `user$` emits the user, `userSnapshot()`
++     returns it.
++   - 401 response → `user$` emits null (silently, no throw).
++   - 5xx / network → `refreshUser()` rejects with `ApiError`.
++   - **Concurrent `refreshUser()` calls share one HTTP
++     request** (the new dedup test — fire 3 calls without
++     awaiting, assert exactly 1 HTTP request was made).
++   - After the in-flight request settles (success OR error),
++     the next `refreshUser()` fires a fresh request.
++   - Concurrent callers share rejections too (no double /me
++     on a 5xx).
++   - `roleHomePath()` returns the role-correct path for each
++     role + `/login` when null.
++
++5. **NEW `frontend/src/app/guards/auth.guard.spec.ts`** —
++   pins the guard's contract:
++   - Cached user → returns `true`, `refreshUser()` NOT called.
++   - Null snapshot + `refreshUser()` resolves to user →
++     returns `true`.
++   - Null snapshot + `refreshUser()` resolves to null (401) →
++     returns UrlTree to `/login?return_to=<state.url>`.
++   - Null snapshot + `refreshUser()` rejects (5xx) → returns
++     UrlTree to `/login?return_to=<state.url>`.
++   - URL with query params is preserved in `return_to`.
++
++6. **NEW `frontend/src/app/guards/role.guard.spec.ts`** —
++   pins the guard's contract including the **race fix**:
++   - Cached user with allowed role → `true`, no refresh.
++   - Cached user with disallowed role → UrlTree to
++     `/forbidden?denied_from=<state.url>`, no refresh.
++   - **Null snapshot + `refreshUser()` resolves to a user
++     with allowed role → `true` (the race fix)**.
++   - Null snapshot + `refreshUser()` resolves to null →
++     UrlTree to `/forbidden?denied_from=<state.url>`.
++   - Null snapshot + `refreshUser()` rejects (5xx) → UrlTree
++     to `/forbidden?denied_from=<state.url>`.
++   - Null snapshot + `refreshUser()` resolves to user with
++     disallowed role → UrlTree to
++     `/forbidden?denied_from=<state.url>` (defensive — stale
++     /me after a role change).
++   - URL with query params is preserved in `denied_from`.
++
++7. **NEW `frontend/src/app/guards/login.guard.spec.ts`** —
++   pins the inverse guard's contract:
++   - Null snapshot + `refreshUser()` resolves to null →
++     `true` (form renders, 401 = no auth = form OK).
++   - Null snapshot + `refreshUser()` rejects (5xx) → `true`
++     (form renders; we never block on a network error).
++   - Cached user → UrlTree to `auth.roleHomePath()`, no
++     refresh.
++   - Null snapshot + `refreshUser()` resolves to a user →
++     UrlTree to `auth.roleHomePath()` (cold-load authed
++     user bounce).
++
++### Documentation
++
++8. **Edit `_bmad-output/implementation-artifacts/deferred-work.md`**
++   — mark D10 closed.
++
++9. **NEW `_bmad-output/implementation-artifacts/spec-d10-roleguard-race.md`**
++   — this spec artifact, following the HD-013/HD-014/HD-015/
++   HD-016/D1+D2 pattern.
++
++10. **NEW `_bmad-output/d10.diff`** — diff snapshot for the
++    story.
++
++## Files
++
++**New:**
++- `frontend/src/app/services/auth.service.spec.ts`
++- `frontend/src/app/guards/auth.guard.spec.ts`
++- `frontend/src/app/guards/role.guard.spec.ts`
++- `frontend/src/app/guards/login.guard.spec.ts`
++- `_bmad-output/implementation-artifacts/spec-d10-roleguard-race.md`
++- `_bmad-output/d10.diff`
++
++**Modified:**
++- `frontend/src/app/services/auth.service.ts` (in-flight dedup in `refreshUser`)
++- `frontend/src/app/guards/role.guard.ts` (async + refreshUser fallback)
++- `_bmad-output/implementation-artifacts/deferred-work.md` (close D10)
++
++## Reuse (no new patterns)
++
++- **In-flight promise memoization** — the standard
++  `private inflight: Promise | null` pattern; identical to
++  HTTP-client request dedup libraries use. No new dep.
++- **`TestBed.runInInjectionContext(() => guard(routeStub, stateStub))`**
++  — the canonical Angular 17 way to test functional
++  `CanActivateFn` guards without standing up a full router.
++  The `routeStub` and `stateStub` are plain `{ url: '/x' }`
++  literals; we only read `state.url` in the guard bodies.
++- **HttpClient stubbing via `provideHttpClientTesting` +
++  `HttpTestingController`** — already used by
++  `user.service.spec.ts` (D1+D2 reference); no new infra.
++  The `authInterceptor` is registered via `withInterceptors`
++  (matches the real app config) so the spec exercises the
++  same `HttpErrorResponse → ApiError` conversion path.
++
++## Boundaries (never)
++
++- No change to `app.routes.ts` (the public guard API is
++  unchanged; only the inner function is async).
++- No change to `auth.guard.ts` or `login.guard.ts` (both
++  already async; dedup makes the duplication concern moot).
++- No concatMap wrapping of canActivate arrays (the deferred
++  fix proposal #2 — Angular's API doesn't natively support
++  this, would require a wrapper guard, more complex than
++  the in-flight dedup).
++- No change to the chrome's `refreshUser()` call in
++  `header-chrome.component.ts` (the dedup makes the
++  concurrent call a no-op).
++- No "wait for the user$ Observable to emit" pattern via
++  `firstValueFrom(this.auth.user$)` — that would not
++  actually wait for /me to complete if the BehaviorSubject
++  starts at null and never emits (it stays null until
++  refreshUser resolves). The dedup is the right primitive.
++- No changes to backend (this is a frontend-only fix).
++
++## Verification
++
++1. `cd frontend && npx ng test --watch=false
++   --browsers=ChromeHeadlessNoSandbox` — all new specs pass
++   (target: 35 new tests across 4 files). Final result:
++   **304/311 pass**. The 6 pre-existing failures
++   (3 EmployeeDashboard + 3 ForbiddenPage) remain unchanged
++   from the D1+D2 baseline. The 1 additional "FAILURE" in the
++   summary is a Jasmine afterAll global-error, not a real
++   test failure.
++2. `cd frontend && npx ng build --configuration=development`
++   — exits 0.
++3. Browser smoke (manual, mirrors the D10 entry):
++   - Log in as `user@company.com`, land on `/dashboard`.
++   - Open a new tab, type `/dashboard` directly, hit Enter.
++     **Before fix**: lands on `/forbidden?denied_from=%2Fdashboard`.
++     **After fix**: lands on `/dashboard`.
++   - Repeat for `/tickets/new` and `/tickets/1` (different
++     `allowedRoles` to ensure the matrix is exercised).
++   - Open a new tab, type `/admin` (User role can't access
++     Admin). **After fix**: lands on
++     `/forbidden?denied_from=%2Fadmin` (right answer, correct
++     reason — `authGuard` resolves to user, `roleGuard`
++     checks role and rejects).
++   - Open a new tab, type `/dashboard` with no cookie at all.
++     **After fix**: lands on
++     `/login?return_to=%2Fdashboard` (not `/forbidden`).
++   - Open DevTools Network tab; reload `/dashboard` while
++     authed. Observe **exactly one** GET `/api/auth/me`
++     request, not three (the dedup in action).
++
++## Commit
++
++Two commits, mirroring the HD-013/HD-014/HD-015/HD-016/D1+D2
++pattern:
++
++1. `fix(D10): roleGuard cold-load race — async + /me dedup`
++   — the implementation.
++2. `docs: D10 implementation diff snapshot` — the
++   `_bmad-output/d10.diff`.
++
++Both pushed to `origin/main`.
+diff --git a/frontend/src/app/guards/auth.guard.spec.ts b/frontend/src/app/guards/auth.guard.spec.ts
+new file mode 100644
+index 0000000..2b7f3d0
+--- /dev/null
++++ b/frontend/src/app/guards/auth.guard.spec.ts
+@@ -0,0 +1,141 @@
++/**
++ * authGuard — guard spec.
++ *
++ * Pins the public contract:
++ *
++ *   - userSnapshot() returns a user → guard returns true,
++ *     refreshUser() is NOT called (no needless /me round-trip
++ *     on hot navigations).
++ *   - userSnapshot() is null + refreshUser() resolves to a
++ *     user → guard returns true (the cold-load happy path).
++ *   - userSnapshot() is null + refreshUser() resolves to null
++ *     (401) → guard returns UrlTree to
++ *     /login?return_to=<state.url>.
++ *   - userSnapshot() is null + refreshUser() rejects
++ *     (5xx / network) → guard returns UrlTree to
++ *     /login?return_to=<state.url> (treats as unauthenticated).
++ *
++ * The guard is a functional CanActivateFn; we exercise it via
++ * TestBed.runInInjectionContext (the canonical Angular 17
++ * pattern — no full Router required).
++ */
++
++import { TestBed } from '@angular/core/testing';
++import {
++  ActivatedRouteSnapshot,
++  Router,
++  RouterStateSnapshot,
++  UrlTree,
++  provideRouter,
++} from '@angular/router';
++
++import { authGuard } from './auth.guard';
++import { AuthService } from '../services/auth.service';
++import type { UserPublic } from '../models/user';
++
++const baseUser = (overrides: Partial<UserPublic> = {}): UserPublic => ({
++  id: 1,
++  email: 'sam@example.com',
++  displayName: 'Sam',
++  role: 'User',
++  isActive: true,
++  lastActiveAt: null,
++  createdAt: '2026-01-01T00:00:00.000Z',
++  updatedAt: '2026-01-01T00:00:00.000Z',
++  ...overrides,
++});
++
++interface AuthServiceStub {
++  userSnapshot: jasmine.Spy<() => UserPublic | null>;
++  refreshUser: jasmine.Spy<() => Promise<void>>;
++}
++
++describe('authGuard', () => {
++  let auth: AuthServiceStub;
++  let router: Router;
++
++  const state = { url: '/dashboard' } as RouterStateSnapshot;
++  const route = {} as ActivatedRouteSnapshot;
++
++  beforeEach(async () => {
++    auth = {
++      userSnapshot: jasmine.createSpy('userSnapshot'),
++      refreshUser: jasmine.createSpy('refreshUser'),
++    };
++    await TestBed.configureTestingModule({
++      providers: [
++        provideRouter([]),
++        { provide: AuthService, useValue: auth },
++      ],
++    }).compileComponents();
++    router = TestBed.inject(Router);
++  });
++
++  function run(): Promise<boolean | UrlTree> {
++    return TestBed.runInInjectionContext(
++      () => authGuard(route, state) as Promise<boolean | UrlTree>,
++    );
++  }
++
++  it('returns true when the snapshot already has a user (no refreshUser call)', async () => {
++    auth.userSnapshot.and.returnValue(baseUser());
++
++    const result = await run();
++
++    expect(result).toBeTrue();
++    expect(auth.refreshUser).not.toHaveBeenCalled();
++  });
++
++  it('calls refreshUser when the snapshot is null and resolves true on a successful load', async () => {
++    const user = baseUser({ id: 7, role: 'Admin' });
++    auth.userSnapshot.and.callFake(() => {
++      // First call: null (before refresh). Second call: user
++      // (after refresh resolves).
++      if (auth.refreshUser.calls.count() === 0) return null;
++      return user;
++    });
++    auth.refreshUser.and.resolveTo();
++
++    const result = await run();
++
++    expect(auth.refreshUser).toHaveBeenCalledTimes(1);
++    expect(result).toBeTrue();
++  });
++
++  it('redirects to /login?return_to=<url> when refreshUser leaves the snapshot null (401)', async () => {
++    auth.userSnapshot.and.returnValue(null);
++    auth.refreshUser.and.resolveTo();
++
++    const result = await run();
++
++    expect(result).toBeInstanceOf(UrlTree);
++    const url = (result as UrlTree).toString();
++    expect(url).toBe('/login?return_to=%2Fdashboard');
++  });
++
++  it('redirects to /login?return_to=<url> when refreshUser rejects (5xx / network)', async () => {
++    auth.userSnapshot.and.returnValue(null);
++    auth.refreshUser.and.rejectWith(new Error('boom'));
++
++    const result = await run();
++
++    expect(result).toBeInstanceOf(UrlTree);
++    expect((result as UrlTree).toString()).toBe('/login?return_to=%2Fdashboard');
++  });
++
++  it('preserves the original URL (with query params) in return_to', async () => {
++    const queryState = { url: '/tickets/42?foo=bar' } as RouterStateSnapshot;
++
++    auth.userSnapshot.and.returnValue(null);
++    auth.refreshUser.and.resolveTo();
++
++    const result = (await TestBed.runInInjectionContext(
++      () => authGuard(route, queryState) as Promise<boolean | UrlTree>,
++    )) as UrlTree;
++
++    expect(result.toString()).toBe('/login?return_to=%2Ftickets%2F42%3Ffoo%3Dbar');
++    // Sanity: the parseUrl path matches a manual URL.
++    const parsed = router.parseUrl(result.toString());
++    expect(parsed.queryParams['return_to']).toBe('/tickets/42?foo=bar');
++  });
++});
+diff --git a/frontend/src/app/guards/login.guard.spec.ts b/frontend/src/app/guards/login.guard.spec.ts
+new file mode 100644
+index 0000000..927929e
+--- /dev/null
++++ b/frontend/src/app/guards/login.guard.spec.ts
+@@ -0,0 +1,138 @@
++/**
++ * loginGuard — guard spec.
++ *
++ * Pins the inverse-of-authGuard contract:
++ *
++ *   - Snapshot is null → guard returns true (login form
++ *     renders).
++ *   - Snapshot is null + refreshUser resolves to null → guard
++ *     returns true (still null, form still renders).
++ *   - Snapshot is null + refreshUser rejects (5xx / network)
++ *     → guard returns true (form renders; we never block on
++ *     a network error).
++ *   - Snapshot is null + refreshUser resolves to a user →
++ *     guard returns UrlTree to auth.roleHomePath() (bounce
++ *     the already-authed user to their dashboard).
++ *   - Snapshot already has a user → guard returns UrlTree to
++ *     auth.roleHomePath() (no refresh, hot-path fast bounce).
++ */
++
++import { TestBed } from '@angular/core/testing';
++import {
++  ActivatedRouteSnapshot,
++  Router,
++  RouterStateSnapshot,
++  UrlTree,
++  provideRouter,
++} from '@angular/router';
++
++import { loginGuard } from './login.guard';
++import { AuthService } from '../services/auth.service';
++import type { UserPublic } from '../models/user';
++
++const baseUser = (overrides: Partial<UserPublic> = {}): UserPublic => ({
++  id: 1,
++  email: 'sam@example.com',
++  displayName: 'Sam',
++  role: 'User',
++  isActive: true,
++  lastActiveAt: null,
++  createdAt: '2026-01-01T00:00:00.000Z',
++  updatedAt: '2026-01-01T00:00:00.000Z',
++  ...overrides,
++});
++
++interface AuthServiceStub {
++  userSnapshot: jasmine.Spy<() => UserPublic | null>;
++  refreshUser: jasmine.Spy<() => Promise<void>>;
++  roleHomePath: jasmine.Spy<() => string>;
++}
++
++describe('loginGuard', () => {
++  let auth: AuthServiceStub;
++  let router: Router;
++
++  const state = { url: '/login' } as RouterStateSnapshot;
++  const route = {} as ActivatedRouteSnapshot;
++
++  beforeEach(async () => {
++    auth = {
++      userSnapshot: jasmine.createSpy('userSnapshot'),
++      refreshUser: jasmine.createSpy('refreshUser'),
++      roleHomePath: jasmine.createSpy('roleHomePath').and.returnValue('/dashboard'),
++    };
++    await TestBed.configureTestingModule({
++      providers: [
++        provideRouter([]),
++        { provide: AuthService, useValue: auth },
++      ],
++    }).compileComponents();
++    router = TestBed.inject(Router);
++  });
++
++  function run(): Promise<boolean | UrlTree> {
++    return TestBed.runInInjectionContext(
++      () => loginGuard(route, state) as Promise<boolean | UrlTree>,
++    );
++  }
++
++  it('returns true when the snapshot is null and refreshUser resolves to null (cold-load no auth)', async () => {
++    // The guard always tries a refresh on a null snapshot —
++    // this is the "did the user arrive here with a valid
++    // cookie we haven't read yet?" check. If /me 401s (cookie
++    // missing or expired), the snapshot stays null and the
++    // form renders.
++    let postRefresh: UserPublic | null = null;
++    auth.userSnapshot.and.callFake(() => {
++      if (auth.refreshUser.calls.count() === 0) return null;
++      return postRefresh;
++    });
++    auth.refreshUser.and.callFake(async () => {
++      postRefresh = null;
++    });
++
++    const result = await run();
++
++    expect(auth.refreshUser).toHaveBeenCalledTimes(1);
++    expect(result).toBeTrue();
++  });
++
++  it('returns true when the snapshot is null + refreshUser rejects (5xx / network)', async () => {
++    auth.userSnapshot.and.returnValue(null);
++    auth.refreshUser.and.rejectWith(new Error('boom'));
++
++    const result = await run();
++
++    expect(auth.refreshUser).toHaveBeenCalledTimes(1);
++    expect(result).toBeTrue();
++  });
++
++  it('redirects to roleHomePath when the snapshot already has a user (hot path, no refresh)', async () => {
++    auth.userSnapshot.and.returnValue(baseUser({ role: 'Admin' }));
++    auth.roleHomePath.and.returnValue('/admin');
++
++    const result = await run();
++
++    expect(result).toBeInstanceOf(UrlTree);
++    expect((result as UrlTree).toString()).toBe('/admin');
++    expect(auth.refreshUser).not.toHaveBeenCalled();
++  });
++
++  it('redirects to roleHomePath when refreshUser resolves to a user (cold-load authed user)', async () => {
++    let postRefresh: UserPublic | null = null;
++    auth.userSnapshot.and.callFake(() => {
++      if (auth.refreshUser.calls.count() === 0) return null;
++      return postRefresh;
++    });
++    auth.refreshUser.and.callFake(async () => {
++      postRefresh = baseUser({ role: 'Support Agent' });
++    });
++    auth.roleHomePath.and.returnValue('/queue');
++
++    const result = await run();
++
++    expect(auth.refreshUser).toHaveBeenCalledTimes(1);
++    expect(result).toBeInstanceOf(UrlTree);
++    expect((result as UrlTree).toString()).toBe('/queue');
++  });
++});
+diff --git a/frontend/src/app/guards/role.guard.spec.ts b/frontend/src/app/guards/role.guard.spec.ts
+new file mode 100644
+index 0000000..35397f5
+--- /dev/null
++++ b/frontend/src/app/guards/role.guard.spec.ts
+@@ -0,0 +1,207 @@
++/**
++ * roleGuard — guard spec (HD-006, D10 fix).
++ *
++ * Pins the public contract including the D10 cold-load race
++ * fix:
++ *
++ *   - Hot path: snapshot has a user with an allowed role →
++ *     guard returns true, refreshUser() is NOT called.
++ *   - Hot path: snapshot has a user with a DISALLOWED role →
++ *     guard returns UrlTree to /forbidden?denied_from=<url>.
++ *   - **Cold-load happy path (D10 fix)**: snapshot is null,
++ *     refreshUser() resolves to a user with an allowed role →
++ *     guard returns true. Before the fix this branch went to
++ *     /forbidden because the synchronous read happened before
++ *     the async /me round-trip completed.
++ *   - Cold-load null user: snapshot is null, refreshUser()
++ *     resolves to null → guard returns UrlTree to
++ *     /forbidden?denied_from=<url>.
++ *   - Cold-load 5xx: snapshot is null, refreshUser() rejects
++ *     → guard returns UrlTree to /forbidden?denied_from=<url>
++ *     (no need to fall through to /login — the roleGuard only
++ *     enforces role, not auth).
++ *
++ * The functional CanActivateFn is invoked via
++ * TestBed.runInInjectionContext (canonical Angular 17 pattern).
++ */
++
++import { TestBed } from '@angular/core/testing';
++import {
++  ActivatedRouteSnapshot,
++  Router,
++  RouterStateSnapshot,
++  UrlTree,
++  provideRouter,
++} from '@angular/router';
++
++import { roleGuard } from './role.guard';
++import { AuthService } from '../services/auth.service';
++import type { UserPublic } from '../models/user';
++import type { UserRole } from '../models/enums';
++
++const baseUser = (overrides: Partial<UserPublic> = {}): UserPublic => ({
++  id: 1,
++  email: 'sam@example.com',
++  displayName: 'Sam',
++  role: 'User',
++  isActive: true,
++  lastActiveAt: null,
++  createdAt: '2026-01-01T00:00:00.000Z',
++  updatedAt: '2026-01-01T00:00:00.000Z',
++  ...overrides,
++});
++
++interface AuthServiceStub {
++  userSnapshot: jasmine.Spy<() => UserPublic | null>;
++  refreshUser: jasmine.Spy<() => Promise<void>>;
++}
++
++describe('roleGuard', () => {
++  let auth: AuthServiceStub;
++  let router: Router;
++
++  const state = { url: '/dashboard' } as RouterStateSnapshot;
++  const route = {} as ActivatedRouteSnapshot;
++
++  beforeEach(async () => {
++    auth = {
++      userSnapshot: jasmine.createSpy('userSnapshot'),
++      refreshUser: jasmine.createSpy('refreshUser'),
++    };
++    await TestBed.configureTestingModule({
++      providers: [
++        provideRouter([]),
++        { provide: AuthService, useValue: auth },
++      ],
++    }).compileComponents();
++    router = TestBed.inject(Router);
++  });
++
++  function run(allowed: UserRole[]): Promise<boolean | UrlTree> {
++    const guard = roleGuard(allowed);
++    return TestBed.runInInjectionContext(
++      () => guard(route, state) as Promise<boolean | UrlTree>,
++    );
++  }
++
++  describe('hot path (snapshot populated)', () => {
++    it('returns true when the user role is in allowedRoles', async () => {
++      auth.userSnapshot.and.returnValue(baseUser({ role: 'User' }));
++
++      const result = await run(['User', 'Support Agent']);
++
++      expect(result).toBeTrue();
++      expect(auth.refreshUser).not.toHaveBeenCalled();
++    });
++
++    it('redirects to /forbidden?denied_from=<url> when the role is disallowed', async () => {
++      auth.userSnapshot.and.returnValue(baseUser({ role: 'User' }));
++
++      const result = await run(['Admin']);
++
++      expect(result).toBeInstanceOf(UrlTree);
++      expect((result as UrlTree).toString()).toBe(
++        '/forbidden?denied_from=%2Fdashboard',
++      );
++      expect(auth.refreshUser).not.toHaveBeenCalled();
++    });
++
++    it('does NOT call refreshUser even when a refresh would resolve a permitted role (no needless /me)', async () => {
++      // Even though calling refreshUser() with this stub would
++      // resolve to the same user, the guard must short-circuit
++      // on the populated snapshot.
++      auth.userSnapshot.and.returnValue(baseUser({ role: 'Support Agent' }));
++      auth.refreshUser.and.resolveTo();
++
++      const result = await run(['Support Agent', 'Admin']);
++
++      expect(result).toBeTrue();
++      expect(auth.refreshUser).not.toHaveBeenCalled();
++    });
++  });
++
++  describe('cold-load race (D10 fix)', () => {
++    it('awaits refreshUser and returns true when the loaded user is allowed', async () => {
++      // Snapshot starts null; the stub's callFake mimics the
++      // real AuthService: null before refresh, populated after.
++      let postRefresh: UserPublic | null = null;
++      auth.userSnapshot.and.callFake(() => {
++        if (auth.refreshUser.calls.count() === 0) return null;
++        return postRefresh;
++      });
++      auth.refreshUser.and.callFake(async () => {
++        postRefresh = baseUser({ id: 7, role: 'User' });
++      });
++
++      const result = await run(['User']);
++
++      expect(auth.refreshUser).toHaveBeenCalledTimes(1);
++      expect(result).toBeTrue();
++    });
++
++    it('redirects to /forbidden when refreshUser leaves the snapshot null (401)', async () => {
++      auth.userSnapshot.and.returnValue(null);
++      auth.refreshUser.and.resolveTo();
++
++      const result = await run(['User']);
++
++      expect(auth.refreshUser).toHaveBeenCalledTimes(1);
++      expect(result).toBeInstanceOf(UrlTree);
++      expect((result as UrlTree).toString()).toBe(
++        '/forbidden?denied_from=%2Fdashboard',
++      );
++    });
++
++    it('redirects to /forbidden when refreshUser rejects (5xx / network)', async () => {
++      auth.userSnapshot.and.returnValue(null);
++      auth.refreshUser.and.rejectWith(new Error('boom'));
++
++      const result = await run(['User']);
++
++      expect(auth.refreshUser).toHaveBeenCalledTimes(1);
++      expect(result).toBeInstanceOf(UrlTree);
++      expect((result as UrlTree).toString()).toBe(
++        '/forbidden?denied_from=%2Fdashboard',
++      );
++    });
++
++    it('redirects to /forbidden when refreshUser resolves to a user with a disallowed role', async () => {
++      // Defensive: even if /me returns a user, if their role
++      // does not match, the guard still rejects. This guards
++      // against a stale /me response after a role change.
++      let postRefresh: UserPublic | null = null;
++      auth.userSnapshot.and.callFake(() => {
++        if (auth.refreshUser.calls.count() === 0) return null;
++        return postRefresh;
++      });
++      auth.refreshUser.and.callFake(async () => {
++        postRefresh = baseUser({ id: 7, role: 'User' });
++      });
++
++      const result = await run(['Admin']);
++
++      expect(result).toBeInstanceOf(UrlTree);
++      expect((result as UrlTree).toString()).toBe(
++        '/forbidden?denied_from=%2Fdashboard',
++      );
++    });
++  });
++
++  describe('denied_from encoding', () => {
++    it('preserves the original URL (with query params) in denied_from', async () => {
++      auth.userSnapshot.and.returnValue(baseUser({ role: 'User' }));
++      const queryState = { url: '/tickets/42?foo=bar' } as RouterStateSnapshot;
++      const guard = roleGuard(['Admin']);
++
++      const result = (await TestBed.runInInjectionContext(
++        () => guard(route, queryState) as Promise<boolean | UrlTree>,
++      )) as UrlTree;
++
++      expect(result.toString()).toBe(
++        '/forbidden?denied_from=%2Ftickets%2F42%3Ffoo%3Dbar',
++      );
++      const parsed = router.parseUrl(result.toString());
++      expect(parsed.queryParams['denied_from']).toBe('/tickets/42?foo=bar');
++    });
++  });
++});
+diff --git a/frontend/src/app/guards/role.guard.ts b/frontend/src/app/guards/role.guard.ts
+index 2c6c459..8811c37 100644
+--- a/frontend/src/app/guards/role.guard.ts
++++ b/frontend/src/app/guards/role.guard.ts
+@@ -1,15 +1,28 @@
+ /**
+- * roleGuard — HD-006.
++ * roleGuard — HD-006, D10 fix.
+  *
+  * Functional CanActivateFn factory. Returns a guard that allows entry
+  * only when the current user's role is in `allowedRoles`. Auth is
+  * expected to have been verified by `authGuard` running first in the
+- * `canActivate` array; this guard does NOT re-fetch `/me`.
++ * `canActivate` array; this guard does NOT re-fetch `/me` when the
++ * snapshot is already populated.
++ *
++ * **Cold-load race fix (D10)**: the previous synchronous body read
++ * `userSnapshot()` immediately. Angular runs the `canActivate` array
++ * entries concurrently, so `roleGuard` could observe a null
++ * snapshot on a hard-reload of a protected URL while still
++ * authenticated — `authGuard`'s `await refreshUser()` had not yet
++ * resolved. The fix makes `roleGuard` async and awaits
++ * `refreshUser()` itself when the snapshot is null. `AuthService`
++ * dedups concurrent `/me` calls via `inflightRefresh`, so the
++ * duplication is bounded to a single in-flight HTTP request even
++ * when `authGuard` is also in the array.
+  *
+  * On role mismatch (or no user — defensive — e.g. if a page wires
+- * `roleGuard` without `authGuard`), the guard redirects to
+- * `/forbidden?denied_from=<currentUrl>` so the 403 page can render a
+- * breadcrumb of where the user was trying to go.
++ * `roleGuard` without `authGuard`, or `refreshUser` rejects), the
++ * guard redirects to `/forbidden?denied_from=<currentUrl>` so the
++ * 403 page can render a breadcrumb of where the user was trying
++ * to go.
+  */
+ 
+ import { inject } from '@angular/core';
+@@ -19,11 +32,25 @@ import { AuthService } from '../services/auth.service';
+ import { UserRole } from '../models/enums';
+ 
+ export function roleGuard(allowedRoles: UserRole[]): CanActivateFn {
+-  return (_route, state): boolean | UrlTree => {
++  return async (_route, state): Promise<boolean | UrlTree> => {
+     const auth = inject(AuthService);
+     const router = inject(Router);
+ 
+-    const user = auth.userSnapshot();
++    let user = auth.userSnapshot();
++    if (!user) {
++      // Cold-load case (D10): the snapshot is null because no
++      // /me round-trip has completed yet. authGuard may be
++      // racing us in the canActivate array; AuthService's
++      // inflightRefresh dedup means we share its request.
++      try {
++        await auth.refreshUser();
++      } catch {
++        // Network / 5xx — treat as no user and fall through to
++        // the forbidden redirect.
++      }
++      user = auth.userSnapshot();
++    }
++
+     if (!user || !allowedRoles.includes(user.role)) {
+       const deniedFrom = encodeURIComponent(state.url);
+       return router.parseUrl(`/forbidden?denied_from=${deniedFrom}`);
+diff --git a/frontend/src/app/services/auth.service.spec.ts b/frontend/src/app/services/auth.service.spec.ts
+new file mode 100644
+index 0000000..78f5717
+--- /dev/null
++++ b/frontend/src/app/services/auth.service.spec.ts
+@@ -0,0 +1,305 @@
++/**
++ * AuthService — service spec.
++ *
++ * Pins the public contract:
++ *
++ *   - refreshUser() calls GET /api/auth/me with withCredentials
++ *   - 200 response → user$ emits the response body
++ *   - 401 response → user$ emits null (silently, no throw)
++ *   - 5xx / network error → refreshUser() rejects
++ *
++ * And the D10 dedup contract:
++ *
++ *   - Concurrent refreshUser() calls share a single in-flight
++ *     HTTP request (authGuard + roleGuard + header-chrome's
++ *     mount effect all fire on a cold load — only one /me
++ *     round-trip should hit the network)
++ *   - After the in-flight request settles (success OR error),
++ *     the next refreshUser() call fires a fresh request
++ *
++ * The auth interceptor is registered via `withInterceptors`
++ * (matches the real app config) so the spec exercises the
++ * same error-conversion path the app does.
++ */
++
++import { TestBed } from '@angular/core/testing';
++import {
++  HttpClient,
++  provideHttpClient,
++  withInterceptors,
++} from '@angular/common/http';
++import {
++  HttpTestingController,
++  provideHttpClientTesting,
++} from '@angular/common/http/testing';
++
++import { AuthService } from './auth.service';
++import { authInterceptor } from './auth.interceptor';
++import { ApiError } from './api-error';
++import { environment } from '../../environments/environment';
++import type { UserPublic } from '../models/user';
++
++const baseUser = (overrides: Partial<UserPublic> = {}): UserPublic => ({
++  id: 1,
++  email: 'sam@example.com',
++  displayName: 'Sam',
++  role: 'User',
++  isActive: true,
++  lastActiveAt: null,
++  createdAt: '2026-01-01T00:00:00.000Z',
++  updatedAt: '2026-01-01T00:00:00.000Z',
++  ...overrides,
++});
++
++describe('AuthService', () => {
++  let service: AuthService;
++  let httpMock: HttpTestingController;
++
++  beforeEach(() => {
++    TestBed.configureTestingModule({
++      providers: [
++        provideHttpClient(withInterceptors([authInterceptor])),
++        provideHttpClientTesting(),
++        AuthService,
++      ],
++    });
++    service = TestBed.inject(AuthService);
++    httpMock = TestBed.inject(HttpTestingController);
++  });
++
++  afterEach(() => {
++    httpMock.verify();
++  });
++
++  describe('userSnapshot', () => {
++    it('returns null before any refreshUser() call', () => {
++      expect(service.userSnapshot()).toBeNull();
++    });
++  });
++
++  describe('user$', () => {
++    it('emits the current user after a successful refreshUser()', async () => {
++      // Collect emissions from the moment we subscribe; the
++      // BehaviorSubject's first value is null (initial), then
++      // refreshUser pushes the loaded user. We assert on the
++      // last emission.
++      const emissions: Array<UserPublic | null> = [];
++      const sub = service.user$.subscribe((u) => emissions.push(u));
++      try {
++        const user = baseUser();
++        const p = service.refreshUser();
++        const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++        req.flush({ user });
++        await p;
++        expect(emissions).toEqual([null, user]);
++      } finally {
++        sub.unsubscribe();
++      }
++    });
++
++    it('emits null after a 401 refreshUser()', async () => {
++      const emissions: Array<UserPublic | null> = [];
++      const sub = service.user$.subscribe((u) => emissions.push(u));
++      try {
++        const p = service.refreshUser();
++        const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++        req.flush(
++          { error: 'unauthenticated', message: 'No session.' },
++          { status: 401, statusText: 'Unauthorized' },
++        );
++        await p;
++        // Initial null, then null again after the 401 mapping.
++        expect(emissions).toEqual([null, null]);
++      } finally {
++        sub.unsubscribe();
++      }
++    });
++  });
++
++  describe('refreshUser', () => {
++    it('GETs /api/auth/me with withCredentials on a 200', async () => {
++      const user = baseUser({ id: 7, role: 'Support Agent' });
++      const p = service.refreshUser();
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++      expect(req.request.method).toBe('GET');
++      expect(req.request.withCredentials).toBe(true);
++      req.flush({ user });
++      await p;
++      expect(service.userSnapshot()).toEqual(user);
++    });
++
++    it('silently sets user$ to null on a 401 (no throw)', async () => {
++      const p = service.refreshUser();
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++      req.flush(
++        { error: 'unauthenticated', message: 'No session.' },
++        { status: 401, statusText: 'Unauthorized' },
++      );
++      await p;
++      expect(service.userSnapshot()).toBeNull();
++    });
++
++    it('rejects with ApiError on a 5xx', async () => {
++      const p = service.refreshUser();
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++      req.flush(
++        { error: 'internal_server_error', message: 'boom' },
++        { status: 500, statusText: 'Internal Server Error' },
++      );
++      await expectAsync(p).toBeRejectedWith(jasmine.any(ApiError));
++      // Snapshot stays at its prior value (null) on a 5xx — the
++      // service only emits null on a confirmed 401.
++      expect(service.userSnapshot()).toBeNull();
++    });
++
++    it('rejects with ApiError on a network failure (status 0)', async () => {
++      const p = service.refreshUser();
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++      req.error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
++      await expectAsync(p).toBeRejectedWith(jasmine.any(ApiError));
++    });
++  });
++
++  describe('refreshUser — D10 in-flight dedup', () => {
++    it('shares a single GET /me across 3 concurrent callers', async () => {
++      // Fire three refreshUser() calls without awaiting — the
++      // spec proves the dedup pattern by ensuring httpMock
++      // records exactly one in-flight request, not three.
++      const p1 = service.refreshUser();
++      const p2 = service.refreshUser();
++      const p3 = service.refreshUser();
++      const reqs = httpMock.match(`${environment.apiBaseUrl}/auth/me`);
++      expect(reqs.length).toBe(1);
++
++      const user = baseUser({ id: 11 });
++      reqs[0].flush({ user });
++
++      await Promise.all([p1, p2, p3]);
++      expect(service.userSnapshot()).toEqual(user);
++    });
++
++    it('lets a new refreshUser() fire after the in-flight one resolves', async () => {
++      const first = service.refreshUser();
++      const req1 = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++      const user1 = baseUser({ id: 11, displayName: 'First' });
++      req1.flush({ user: user1 });
++      await first;
++
++      // After the first resolves, the inflight cache is cleared —
++      // a new call should fire its own GET.
++      const second = service.refreshUser();
++      const req2 = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++      const user2 = baseUser({ id: 22, displayName: 'Second' });
++      req2.flush({ user: user2 });
++      await second;
++
++      expect(service.userSnapshot()).toEqual(user2);
++    });
++
++    it('lets a new refreshUser() fire after the in-flight one rejects', async () => {
++      // First call rejects with 5xx — the dedup cache must be
++      // cleared so the next call hits the network instead of
++      // returning the same rejected promise.
++      const first = service.refreshUser();
++      const req1 = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++      req1.flush(
++        { error: 'internal_server_error', message: 'boom' },
++        { status: 500, statusText: 'Internal Server Error' },
++      );
++      await expectAsync(first).toBeRejectedWith(jasmine.any(ApiError));
++
++      const second = service.refreshUser();
++      const req2 = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++      const user = baseUser({ id: 33 });
++      req2.flush({ user });
++      await second;
++      expect(service.userSnapshot()).toEqual(user);
++    });
++
++    it('shares the rejection with concurrent callers (no double /me)', async () => {
++      const p1 = service.refreshUser();
++      const p2 = service.refreshUser();
++      const reqs = httpMock.match(`${environment.apiBaseUrl}/auth/me`);
++      expect(reqs.length).toBe(1);
++      reqs[0].flush(
++        { error: 'internal_server_error', message: 'boom' },
++        { status: 500, statusText: 'Internal Server Error' },
++      );
++      await expectAsync(p1).toBeRejectedWith(jasmine.any(ApiError));
++      await expectAsync(p2).toBeRejectedWith(jasmine.any(ApiError));
++    });
++  });
++
++  describe('logout', () => {
++    it('POSTs /api/auth/logout and clears the snapshot', async () => {
++      // Prime the snapshot.
++      const primed = service.refreshUser();
++      const reqMe = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++      reqMe.flush({ user: baseUser() });
++      await primed;
++      expect(service.userSnapshot()).not.toBeNull();
++
++      const p = service.logout();
++      const reqLogout = httpMock.expectOne(`${environment.apiBaseUrl}/auth/logout`);
++      expect(reqLogout.request.method).toBe('POST');
++      reqLogout.flush({});
++      await p;
++      expect(service.userSnapshot()).toBeNull();
++    });
++
++    it('treats a 401 on logout as success (cookie already gone)', async () => {
++      const p = service.logout();
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/logout`);
++      req.flush(
++        { error: 'unauthenticated', message: 'No session.' },
++        { status: 401, statusText: 'Unauthorized' },
++      );
++      // logout() swallows 401 → resolves cleanly.
++      await expectAsync(p).toBeResolved();
++      expect(service.userSnapshot()).toBeNull();
++    });
++
++    it('rethrows on a non-401 logout error', async () => {
++      const p = service.logout();
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/logout`);
++      req.flush(
++        { error: 'internal_server_error', message: 'boom' },
++        { status: 500, statusText: 'Internal Server Error' },
++      );
++      await expectAsync(p).toBeRejectedWith(jasmine.any(ApiError));
++    });
++  });
++
++  describe('roleHomePath', () => {
++    it('returns /admin for an Admin snapshot', () => {
++      const p = service.refreshUser();
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++      req.flush({ user: baseUser({ role: 'Admin' }) });
++      return p.then(() => {
++        expect(service.roleHomePath()).toBe('/admin');
++      });
++    });
++
++    it('returns /queue for a Support Agent snapshot', () => {
++      const p = service.refreshUser();
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++      req.flush({ user: baseUser({ role: 'Support Agent' }) });
++      return p.then(() => {
++        expect(service.roleHomePath()).toBe('/queue');
++      });
++    });
++
++    it('returns /dashboard for a User snapshot', () => {
++      const p = service.refreshUser();
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
++      req.flush({ user: baseUser({ role: 'User' }) });
++      return p.then(() => {
++        expect(service.roleHomePath()).toBe('/dashboard');
++      });
++    });
++
++    it('returns /login when the snapshot is null', () => {
++      expect(service.roleHomePath()).toBe('/login');
++    });
++  });
++});
+diff --git a/frontend/src/app/services/auth.service.ts b/frontend/src/app/services/auth.service.ts
+index fd0a304..0abe75c 100644
+--- a/frontend/src/app/services/auth.service.ts
++++ b/frontend/src/app/services/auth.service.ts
+@@ -89,13 +89,37 @@ export class AuthService {
+     }
+   }
+ 
++  /**
++   * In-flight memo for `refreshUser()`. When three callers race
++   * (authGuard + roleGuard + header-chrome's mount effect all
++   * fire on a cold load), this lets them share a single GET
++   * /me round-trip instead of three. Cleared in `finally` so
++   * the next cold load still hits the network.
++   *
++   * D10 fix — see `_bmad-output/implementation-artifacts/spec-d10-roleguard-race.md`.
++   */
++  private inflightRefresh: Promise<void> | null = null;
++
+   /**
+    * GET /api/auth/me. Fills user$ from the response body.
+    *
+    * 401 is silently swallowed → user$ = null (no redirect, no error).
+    * Any other non-2xx is surfaced as ApiError so callers can react.
++   *
++   * Concurrent callers share a single in-flight request via
++   * `inflightRefresh` — see field doc above.
+    */
+-  async refreshUser(): Promise<void> {
++  refreshUser(): Promise<void> {
++    if (this.inflightRefresh) {
++      return this.inflightRefresh;
++    }
++    this.inflightRefresh = this.doRefreshUser().finally(() => {
++      this.inflightRefresh = null;
++    });
++    return this.inflightRefresh;
++  }
++
++  private async doRefreshUser(): Promise<void> {
+     try {
+       const res = await firstValueFrom(
+         this.http.get<{ user: UserPublic }>(
