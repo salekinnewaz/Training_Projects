@@ -51,6 +51,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  OnDestroy,
   OnInit,
   computed,
   inject,
@@ -90,6 +91,14 @@ const PRIORITY_OPTIONS: SelectOption[] = [
   { value: 'High', label: 'High' },
   { value: 'Medium', label: 'Medium' },
   { value: 'Low', label: 'Low' },
+];
+
+const STATUS_OPTIONS: SelectOption[] = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'Open', label: 'Open' },
+  { value: 'In Progress', label: 'In Progress' },
+  { value: 'Resolved', label: 'Resolved' },
+  { value: 'Closed', label: 'Closed' },
 ];
 
 const CATEGORY_OPTIONS: SelectOption[] = [
@@ -138,6 +147,15 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
   template: `
     <app-chrome>
       <section class="kanban-page">
+        <!-- Screen-reader live region for keyboard move-mode prompts.
+             Visually hidden but exposed to AT. -->
+        <div
+          class="sr-only"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="move-mode-live"
+        >{{ moveModeAnnouncement() }}</div>
+
         <header class="kanban-header">
           <h1>Queue</h1>
           <atom-button
@@ -178,6 +196,17 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
               [options]="priorityOptions"
               [disabled]="renderState() === 'loading'"
               (valueChange)="onPriorityChange($event)"
+            />
+          </label>
+
+          <label class="filter-cell">
+            <span class="filter-label">Status</span>
+            <atom-select
+              id="filter-status"
+              [value]="statusFilter()"
+              [options]="statusOptions"
+              [disabled]="renderState() === 'loading'"
+              (valueChange)="onStatusChange($event)"
             />
           </label>
 
@@ -233,9 +262,11 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
               @for (status of columns; track status) {
                 <section
                   class="column"
+                  [class.column-targeted]="isColumnTargeted(status)"
                   [attr.data-status]="status"
                   [attr.data-empty]="columnsByStatus()[status].length === 0 ? 'true' : 'false'"
                   [attr.data-readonly]="isReadOnlyColumn(status) ? 'true' : 'false'"
+                  [attr.data-targeted]="isColumnTargeted(status) ? 'true' : 'false'"
                   data-testid="kanban-column"
                 >
                   <header class="column-header">
@@ -265,10 +296,20 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
                       @for (t of columnsByStatus()[status]; track t.id) {
                         <div
                           class="card-slot"
+                          [class.card-slot--moving]="isCardInMoveMode(t.id)"
                           [attr.data-ticket-id]="t.id"
+                          [attr.data-moving]="isCardInMoveMode(t.id) ? 'true' : 'false'"
+                          [attr.tabindex]="0"
+                          [attr.role]="'button'"
+                          [attr.aria-label]="
+                            'Ticket ' + t.number + ', ' + t.title +
+                            ', status ' + t.status + ', priority ' + t.priority +
+                            '. Press M to move.'
+                          "
                           (dragstart)="onDragStart($event, t)"
                           (dragend)="onDragEnd()"
                           (click)="onCardClick(t)"
+                          (keydown)="onKeydown($event, t.id)"
                         >
                           <kanban-card
                             [ticket]="t"
@@ -279,6 +320,15 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
                       }
                     }
                   </div>
+                  @if (status === 'Closed' && columnsByStatus()[status].length > 0 && statusFilter() === 'all') {
+                    <footer class="column-footer" data-testid="closed-view-list">
+                      <a
+                        class="view-list-link"
+                        href="/tickets?status=Closed"
+                        data-testid="closed-view-list-link"
+                      >View list →</a>
+                    </footer>
+                  }
                 </section>
               }
             </div>
@@ -386,9 +436,58 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
     .card-slot {
       cursor: pointer;
     }
+    .column-footer {
+      padding: 8px 12px;
+      border-top: 1px solid var(--color-border);
+      text-align: center;
+    }
+    .view-list-link {
+      color: var(--color-primary);
+      font-size: 12px;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .view-list-link:hover {
+      text-decoration: underline;
+    }
+    /* Keyboard move-mode — give the focused/active card a subtle
+       outline + crosshair so it's visible which card the keys
+       are operating on. */
+    .card-slot--moving {
+      outline: 2px dashed var(--color-primary);
+      outline-offset: 4px;
+      border-radius: 6px;
+      cursor: crosshair;
+    }
+    .card-slot--moving:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 4px;
+    }
+    /* When a column is the current keyboard-move target, paint
+       a soft tint so the user knows where Enter will land. */
+    .column-targeted > .column-header {
+      background: var(--color-kanban-orphan-tint, rgba(15, 23, 42, 0.04));
+      border-radius: 4px;
+    }
+    .column-targeted > .column-body {
+      box-shadow: inset 0 0 0 2px var(--color-primary);
+      border-radius: 6px;
+    }
+    /* Visually hidden but available to assistive tech. */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
   `],
 })
-export class AgentKanbanPageComponent implements OnInit {
+export class AgentKanbanPageComponent implements OnInit, OnDestroy {
   private readonly ticketService = inject(TicketService);
   private readonly authService = inject(AuthService);
   private readonly userService = inject(UserService);
@@ -399,6 +498,7 @@ export class AgentKanbanPageComponent implements OnInit {
   readonly columns = COLUMNS;
   readonly priorityOptions = PRIORITY_OPTIONS;
   readonly categoryOptions = CATEGORY_OPTIONS;
+  readonly statusOptions = STATUS_OPTIONS;
 
   // Render-state machine.
   readonly renderState = signal<RenderState>('loading');
@@ -414,6 +514,7 @@ export class AgentKanbanPageComponent implements OnInit {
   readonly priorityFilter = signal<'all' | TicketPriority>('all');
   readonly categoryFilter = signal<'all' | TicketCategory>('all');
   readonly ownerFilter = signal<OwnerFilter>('all');
+  readonly statusFilter = signal<'all' | TicketStatus>('all');
 
   // Drag-state.
   private draggingTicket: Ticket | null = null;
@@ -423,6 +524,35 @@ export class AgentKanbanPageComponent implements OnInit {
 
   // Search debounce.
   private searchDebounceTimer?: ReturnType<typeof setTimeout>;
+
+  // System-error toast (auto-dismiss after 5s per EXPERIENCE.md).
+  private errorTimer?: ReturnType<typeof setTimeout>;
+
+  // Keyboard move-mode (accessibility fallback for drag-and-drop).
+  // When set, the matching card is in "move mode" — the user picks
+  // a target column via 1-4 / arrow keys, then Enter to commit,
+  // Esc to cancel. The aria-live region announces the prompt.
+  readonly movingTicketId = signal<number | null>(null);
+  readonly moveTargetStatus = signal<TicketStatus | null>(null);
+  readonly moveModeAnnouncement = signal<string>('');
+
+  /**
+   * Set the system-error toast message. The toast auto-dismisses
+   * after 5s; subsequent setError() calls cancel the prior timer
+   * so the latest message gets a fresh 5s window.
+   */
+  setError(msg: string): void {
+    this.moveError.set(msg);
+    if (this.errorTimer) clearTimeout(this.errorTimer);
+    this.errorTimer = setTimeout(() => {
+      this.moveError.set(null);
+      this.errorTimer = undefined;
+    }, 5000);
+  }
+
+  ngOnDestroy(): void {
+    if (this.errorTimer) clearTimeout(this.errorTimer);
+  }
 
   /**
    * All tickets that pass every active filter, partitioned into
@@ -486,7 +616,8 @@ export class AgentKanbanPageComponent implements OnInit {
       this.searchValue().trim() !== '' ||
       this.priorityFilter() !== 'all' ||
       this.categoryFilter() !== 'all' ||
-      this.ownerFilter() !== 'all'
+      this.ownerFilter() !== 'all' ||
+      this.statusFilter() !== 'all'
     );
   });
 
@@ -497,6 +628,7 @@ export class AgentKanbanPageComponent implements OnInit {
     const priority = params.get('priority');
     const category = params.get('category');
     const owner = params.get('owner');
+    const status = params.get('status');
     if (q !== null) this.searchValue.set(q);
     if (priority === 'High' || priority === 'Medium' || priority === 'Low') {
       this.priorityFilter.set(priority);
@@ -511,6 +643,14 @@ export class AgentKanbanPageComponent implements OnInit {
     }
     if (owner === 'me' || owner === 'unassigned' || /^\d+$/.test(owner ?? '')) {
       this.ownerFilter.set(owner as OwnerFilter);
+    }
+    if (
+      status === 'Open' ||
+      status === 'In Progress' ||
+      status === 'Resolved' ||
+      status === 'Closed'
+    ) {
+      this.statusFilter.set(status);
     }
 
     void this.load();
@@ -596,16 +736,29 @@ export class AgentKanbanPageComponent implements OnInit {
     void this.syncFiltersToUrl({ owner: param });
   }
 
+  onStatusChange(value: string): void {
+    const next: 'all' | TicketStatus =
+      value === 'Open' || value === 'In Progress' || value === 'Resolved' || value === 'Closed'
+        ? value
+        : 'all';
+    this.statusFilter.set(next);
+    void this.syncFiltersToUrl({
+      status: next === 'all' ? null : next,
+    });
+  }
+
   clearFilters(): void {
     this.searchValue.set('');
     this.priorityFilter.set('all');
     this.categoryFilter.set('all');
     this.ownerFilter.set('all');
+    this.statusFilter.set('all');
     void this.syncFiltersToUrl({
       q: null,
       priority: null,
       category: null,
       owner: null,
+      status: null,
     });
   }
 
@@ -614,12 +767,14 @@ export class AgentKanbanPageComponent implements OnInit {
     priority?: string | null;
     category?: string | null;
     owner?: string | null;
+    status?: string | null;
   }): Promise<void> {
     const queryParams: Record<string, string | null> = {};
     if (updates.q !== undefined) queryParams['q'] = updates.q;
     if (updates.priority !== undefined) queryParams['priority'] = updates.priority;
     if (updates.category !== undefined) queryParams['category'] = updates.category;
     if (updates.owner !== undefined) queryParams['owner'] = updates.owner;
+    if (updates.status !== undefined) queryParams['status'] = updates.status;
     await this.router.navigate([], {
       relativeTo: this.route,
       queryParams,
@@ -634,11 +789,13 @@ export class AgentKanbanPageComponent implements OnInit {
     const priority = this.priorityFilter();
     const category = this.categoryFilter();
     const owner = this.ownerFilter();
+    const status = this.statusFilter();
     const meId = this.authService.userSnapshot()?.id;
 
     return input.filter((t) => {
       if (priority !== 'all' && t.priority !== priority) return false;
       if (category !== 'all' && t.category !== category) return false;
+      if (status !== 'all' && t.status !== status) return false;
       if (owner === 'unassigned' && t.owner !== null) return false;
       if (owner === 'me') {
         if (meId === undefined || t.owner?.id !== meId) return false;
@@ -768,7 +925,7 @@ export class AgentKanbanPageComponent implements OnInit {
       this.replaceTicketLocally(updated);
     } catch {
       this.moveTicketLocally(ticket.id, fromStatus);
-      this.moveError.set(GENERIC_MOVE_ERROR);
+      this.setError(GENERIC_MOVE_ERROR);
     }
   }
 
@@ -794,6 +951,169 @@ export class AgentKanbanPageComponent implements OnInit {
   private replaceTicketLocally(updated: Ticket): void {
     const next = this.tickets().map((t) => (t.id === updated.id ? updated : t));
     this.tickets.set(next);
+  }
+
+  // ─── Keyboard move-mode (a11y fallback for drag-and-drop) ─────────
+
+  /**
+   * Mapped from a 1-based column index to its status. The order
+   * matches `COLUMNS` so screen-reader / keyboard users get a
+   * predictable, column-ordered enumeration (Open = 1, Closed = 4).
+   */
+  private readonly columnByIndex: TicketStatus[] = COLUMNS;
+
+  /**
+   * Per EXPERIENCE.md §"Accessibility Floor":
+   *   "Drag-and-drop has a keyboard fallback: select card,
+   *    press M to move, arrow keys to choose column, Enter to
+   *    confirm."
+   *
+   * Key map:
+   *   M       → open move mode (only when not already in it)
+   *   1-4     → pick target column by index
+   *   ←/→     → cycle target column left/right
+   *   Enter   → commit the move (same code path as a successful drop)
+   *   Esc     → cancel and exit move mode
+   */
+  onKeydown(event: KeyboardEvent, ticketId: number): void {
+    const key = event.key;
+    // Don't intercept while a modifier is held — let the browser
+    // do its normal thing (Cmd+R, Ctrl+M, etc.).
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+    const inMoveMode = this.movingTicketId() === ticketId;
+
+    if (!inMoveMode) {
+      if (key === 'm' || key === 'M') {
+        event.preventDefault();
+        this.enterMoveMode(ticketId);
+      }
+      return;
+    }
+
+    // Inside move mode — every relevant key consumes the event so
+    // the browser doesn't fire a stray click / submit.
+    event.preventDefault();
+
+    if (key === 'Escape') {
+      this.exitMoveMode();
+      return;
+    }
+
+    if (key === 'Enter') {
+      void this.commitKeyboardMove(ticketId);
+      return;
+    }
+
+    if (key >= '1' && key <= '4') {
+      const idx = parseInt(key, 10) - 1;
+      const target = this.columnByIndex[idx];
+      if (target) this.setMoveTarget(ticketId, target);
+      return;
+    }
+
+    if (key === 'ArrowLeft' || key === 'ArrowRight') {
+      const current = this.moveTargetStatus();
+      const currentIdx = current
+        ? this.columnByIndex.indexOf(current)
+        : 0;
+      const delta = key === 'ArrowRight' ? 1 : -1;
+      const nextIdx =
+        (currentIdx + delta + this.columnByIndex.length) %
+        this.columnByIndex.length;
+      const target = this.columnByIndex[nextIdx]!;
+      this.setMoveTarget(ticketId, target);
+      return;
+    }
+  }
+
+  /** True when the given card is currently the one in move mode. */
+  isCardInMoveMode(ticketId: number): boolean {
+    return this.movingTicketId() === ticketId;
+  }
+
+  /** True when the given column is the currently selected target. */
+  isColumnTargeted(status: TicketStatus): boolean {
+    return (
+      this.movingTicketId() !== null &&
+      this.moveTargetStatus() === status
+    );
+  }
+
+  /** True when a move-mode session is in progress on this card. */
+  isMoveModeActiveFor(ticketId: number): boolean {
+    return this.movingTicketId() === ticketId;
+  }
+
+  private enterMoveMode(ticketId: number): void {
+    const ticket = this.tickets().find((t) => t.id === ticketId);
+    if (!ticket) return;
+    this.movingTicketId.set(ticketId);
+    // Default the target to the first legal transition; if none,
+    // default to the next column in the cycle so a power-user
+    // can still pick a target manually.
+    const legal = LEGAL_TRANSITIONS[ticket.status] ?? [];
+    const initialTarget =
+      legal[0] ?? this.nextColumnOf(ticket.status) ?? ticket.status;
+    this.setMoveTarget(ticketId, initialTarget);
+  }
+
+  private setMoveTarget(ticketId: number, target: TicketStatus): void {
+    this.moveTargetStatus.set(target);
+    const ticket = this.tickets().find((t) => t.id === ticketId);
+    if (!ticket) return;
+    const legal = this.isLegalTransition(ticket.status, target);
+    const suffix = legal
+      ? `Target ${target} selected.`
+      : `Target ${target} is not a legal transition from ${ticket.status}.`;
+    this.moveModeAnnouncement.set(
+      `Move mode active for ticket ${ticket.number}. ` +
+        `Press 1 for Open, 2 for In Progress, 3 for Resolved, 4 for Closed. ` +
+        `Enter to confirm, Esc to cancel. ${suffix}`,
+    );
+  }
+
+  private exitMoveMode(): void {
+    this.movingTicketId.set(null);
+    this.moveTargetStatus.set(null);
+    this.moveModeAnnouncement.set('Move mode cancelled.');
+  }
+
+  private nextColumnOf(status: TicketStatus): TicketStatus | null {
+    const i = this.columnByIndex.indexOf(status);
+    if (i < 0) return null;
+    return this.columnByIndex[(i + 1) % this.columnByIndex.length] ?? null;
+  }
+
+  /** Same optimistic-move + PATCH + revert pipeline as a drop event. */
+  private async commitKeyboardMove(ticketId: number): Promise<void> {
+    const ticket = this.tickets().find((t) => t.id === ticketId);
+    const target = this.moveTargetStatus();
+    if (!ticket || !target) {
+      this.exitMoveMode();
+      return;
+    }
+    this.exitMoveMode();
+
+    if (ticket.status === target) return;
+    if (!this.isLegalTransition(ticket.status, target)) {
+      this.setError(
+        `Can't move ticket from ${ticket.status} to ${target}.`,
+      );
+      return;
+    }
+
+    const fromStatus = ticket.status;
+    this.moveTicketLocally(ticket.id, target);
+    try {
+      const updated = await this.ticketService.patch(ticket.id, {
+        status: target,
+      });
+      this.replaceTicketLocally(updated);
+    } catch {
+      this.moveTicketLocally(ticket.id, fromStatus);
+      this.setError(GENERIC_MOVE_ERROR);
+    }
   }
 
   // ─── Card click ──────────────────────────────────────────────────

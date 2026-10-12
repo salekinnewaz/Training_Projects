@@ -66,6 +66,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  OnDestroy,
   OnInit,
   computed,
   inject,
@@ -157,7 +158,24 @@ const COMMENT_MAX = 5000;
           }
           @case ('success') {
             @if (ticket(); as t) {
+              <nav class="breadcrumb" aria-label="Breadcrumb" data-testid="breadcrumb">
+                <a
+                  class="breadcrumb-link"
+                  [href]="backHref()"
+                  data-testid="breadcrumb-tickets"
+                >Tickets</a>
+                <span class="breadcrumb-sep" aria-hidden="true">·</span>
+                <span class="breadcrumb-status" data-testid="breadcrumb-status">
+                  {{ t.status }}
+                </span>
+              </nav>
+
               <header class="header" data-testid="detail-header">
+                <a
+                  class="back-link"
+                  [href]="backHref()"
+                  data-testid="back-link"
+                >← Back to tickets</a>
                 <h1 class="title-text">{{ t.title }}</h1>
                 <span class="ticket-number">#{{ t.number }}</span>
               </header>
@@ -638,7 +656,7 @@ const COMMENT_MAX = 5000;
     }
   `],
 })
-export class TicketDetailPageComponent implements OnInit {
+export class TicketDetailPageComponent implements OnInit, OnDestroy {
   private readonly ticketService = inject(TicketService);
   private readonly authService = inject(AuthService);
   private readonly userService = inject(UserService);
@@ -676,6 +694,32 @@ export class TicketDetailPageComponent implements OnInit {
 
   /** Last error message for the composer (e.g. closed ticket toast). */
   readonly composerError = signal<string | null>(null);
+
+  /**
+   * Auto-dismiss timer for the system-error toast. Per
+   * EXPERIENCE.md §"Error States": system-error toasts dismiss
+   * after 5s. Each setError cancels the prior timer so a flurry
+   * of failures gets a fresh 5s window on the latest message.
+   */
+  private composerErrorTimer?: ReturnType<typeof setTimeout>;
+
+  /**
+   * Set the system-error toast message and arm a 5s auto-dismiss.
+   * Direct `composerError.set(msg)` callers should be migrated to
+   * this; clearError() is a no-op when no message is set.
+   */
+  setError(msg: string): void {
+    this.composerError.set(msg);
+    if (this.composerErrorTimer) clearTimeout(this.composerErrorTimer);
+    this.composerErrorTimer = setTimeout(() => {
+      this.composerError.set(null);
+      this.composerErrorTimer = undefined;
+    }, 5000);
+  }
+
+  ngOnDestroy(): void {
+    if (this.composerErrorTimer) clearTimeout(this.composerErrorTimer);
+  }
 
   /**
    * HD-011: Inline error bound to the comment composer only. Set
@@ -849,7 +893,7 @@ export class TicketDetailPageComponent implements OnInit {
       this.composerError.set(null);
     } catch (err) {
       if (err instanceof ApiError) {
-        this.composerError.set(this.formatApiError(err, "Couldn't change status."));
+        this.setError(this.formatApiError(err, "Couldn't change status."));
       }
     }
   }
@@ -866,7 +910,7 @@ export class TicketDetailPageComponent implements OnInit {
       this.composerError.set(null);
     } catch (err) {
       if (err instanceof ApiError) {
-        this.composerError.set(this.formatApiError(err, "Couldn't change priority."));
+        this.setError(this.formatApiError(err, "Couldn't change priority."));
       }
     }
   }
@@ -885,7 +929,7 @@ export class TicketDetailPageComponent implements OnInit {
       this.composerError.set(null);
     } catch (err) {
       if (err instanceof ApiError) {
-        this.composerError.set(this.formatApiError(err, "Couldn't change category."));
+        this.setError(this.formatApiError(err, "Couldn't change category."));
       }
     }
   }
@@ -904,7 +948,7 @@ export class TicketDetailPageComponent implements OnInit {
       this.composerError.set(null);
     } catch (err) {
       if (err instanceof ApiError) {
-        this.composerError.set(this.formatApiError(err, "Couldn't change assignee."));
+        this.setError(this.formatApiError(err, "Couldn't change assignee."));
       }
     }
   }
@@ -921,7 +965,7 @@ export class TicketDetailPageComponent implements OnInit {
       this.composerError.set(null);
     } catch (err) {
       if (err instanceof ApiError) {
-        this.composerError.set(this.formatApiError(err, "Couldn't assign to you."));
+        this.setError(this.formatApiError(err, "Couldn't assign to you."));
       }
     }
   }
@@ -944,7 +988,7 @@ export class TicketDetailPageComponent implements OnInit {
       this.closeReopenModal();
     } catch (err) {
       if (err instanceof ApiError) {
-        this.composerError.set(this.formatApiError(err, "Couldn't reopen."));
+        this.setError(this.formatApiError(err, "Couldn't reopen."));
         this.closeReopenModal();
       }
     }
@@ -959,7 +1003,7 @@ export class TicketDetailPageComponent implements OnInit {
       this.composerError.set(null);
     } catch (err) {
       if (err instanceof ApiError) {
-        this.composerError.set(this.formatApiError(err, "Couldn't close."));
+        this.setError(this.formatApiError(err, "Couldn't close."));
       }
     }
   }
@@ -998,7 +1042,7 @@ export class TicketDetailPageComponent implements OnInit {
       }
     } catch (err) {
       if (err instanceof ApiError) {
-        this.composerError.set(this.formatApiError(err, "Couldn't add your comment."));
+        this.setError(this.formatApiError(err, "Couldn't add your comment."));
         this.commentSubmitError.set(
           TicketDetailPageComponent.COMMENT_SUBMIT_FAILURE_COPY,
         );

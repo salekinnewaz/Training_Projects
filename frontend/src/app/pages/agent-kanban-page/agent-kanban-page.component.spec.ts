@@ -22,7 +22,7 @@
  * sync. Jasmine is used (frontend tsconfig.spec.json).
  */
 
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import {
   ActivatedRoute,
@@ -580,5 +580,250 @@ describe('AgentKanbanPageComponent (HD-012)', () => {
       '[data-testid="unassigned-badge"]',
     );
     expect(unassignedBadges.length).toBe(1);
+  });
+
+  // ─── UX polish: system-error toast auto-dismiss (5s) ──────────────
+
+  it('auto-dismisses the move error toast after 5 seconds', fakeAsync(async () => {
+    const { ticketService, userService } = await bootstrap();
+    const t1 = makeTicket({ id: 47, status: 'Open' });
+    ticketService.listForQueue.and.resolveTo([t1]);
+    userService.listAgents.and.resolveTo([]);
+    ticketService.patch.and.rejectWith(
+      new ApiError(500, 'internal_server_error', 'boom'),
+    );
+
+    const fixture = makeFixture();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const page = fixture.componentInstance;
+    const dt = makeDataTransfer();
+    page.onDragStart(makeDragEvent(dt, 'dragstart'), t1);
+    page.onDragOver(makeDragEvent(dt, 'dragover'));
+    void page.onDrop(makeDragEvent(dt, 'drop'), 'In Progress');
+    // Drain microtasks + the 0-delay boundary so the failure
+    // handler lands and the toast signal is set inside the
+    // fakeAsync zone.
+    await Promise.resolve();
+    tick(0);
+    fixture.detectChanges();
+
+    // Toast is visible immediately after the failed PATCH.
+    let toast = fixture.nativeElement.querySelector(
+      '[data-testid="move-error-toast"]',
+    ) as HTMLElement | null;
+    expect(toast).not.toBeNull();
+    expect(toast?.textContent).toContain("Couldn't move the ticket");
+
+    // Just before 5s the toast is still rendered.
+    tick(4999);
+    fixture.detectChanges();
+    toast = fixture.nativeElement.querySelector(
+      '[data-testid="move-error-toast"]',
+    ) as HTMLElement | null;
+    expect(toast).not.toBeNull();
+
+    // At/after 5s the auto-dismiss timer fires and clears the toast.
+    tick(2);
+    fixture.detectChanges();
+    toast = fixture.nativeElement.querySelector(
+      '[data-testid="move-error-toast"]',
+    ) as HTMLElement | null;
+    expect(toast).toBeNull();
+  }));
+
+  // ─── UX polish: keyboard move-mode (a11y fallback) ────────────────
+
+  function makeKeyboardEvent(
+    key: string,
+    extras: Partial<KeyboardEvent> = {},
+  ): KeyboardEvent {
+    let prevented = false;
+    return {
+      key,
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      preventDefault: () => {
+        prevented = true;
+      },
+      get defaultPrevented() {
+        return prevented;
+      },
+      ...extras,
+    } as unknown as KeyboardEvent;
+  }
+
+  it('opens move mode on the focused card when M is pressed', async () => {
+    const { ticketService, userService } = await bootstrap();
+    ticketService.listForQueue.and.resolveTo([
+      makeTicket({ id: 47, status: 'Open' }),
+    ]);
+    userService.listAgents.and.resolveTo([]);
+
+    const fixture = makeFixture();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const page = fixture.componentInstance;
+    page.onKeydown(makeKeyboardEvent('m'), 47);
+    fixture.detectChanges();
+
+    expect(page.movingTicketId()).toBe(47);
+    expect(page.moveTargetStatus()).toBe('In Progress');
+
+    const live = fixture.nativeElement.querySelector(
+      '[data-testid="move-mode-live"]',
+    ) as HTMLElement;
+    expect(live.textContent).toContain('Move mode active');
+
+    const slot = fixture.nativeElement.querySelector(
+      '.card-slot[data-ticket-id="47"]',
+    ) as HTMLElement;
+    expect(slot.getAttribute('data-moving')).toBe('true');
+    expect(slot.classList.contains('card-slot--moving')).toBe(true);
+  });
+
+  it('commits a move when Enter is pressed after picking a target', async () => {
+    const { ticketService, userService } = await bootstrap();
+    const t1 = makeTicket({ id: 47, status: 'Open' });
+    ticketService.listForQueue.and.resolveTo([t1]);
+    userService.listAgents.and.resolveTo([]);
+    const updated = { ...t1, status: 'In Progress' as const };
+    ticketService.patch.and.resolveTo(updated);
+
+    const fixture = makeFixture();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const page = fixture.componentInstance;
+    page.onKeydown(makeKeyboardEvent('m'), 47);
+    // Default target after M is In Progress (first legal transition
+    // from Open). Press Enter to commit.
+    page.onKeydown(makeKeyboardEvent('Enter'), 47);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.detectChanges();
+
+    expect(ticketService.patch).toHaveBeenCalledWith(47, {
+      status: 'In Progress',
+    });
+    expect(page.movingTicketId()).toBeNull();
+
+    // Card now lives in the In Progress column.
+    const inProgress = fixture.nativeElement.querySelector(
+      '[data-testid="kanban-column"][data-status="In Progress"]',
+    ) as HTMLElement;
+    const moved = inProgress.querySelectorAll(
+      '.card-slot[data-ticket-id="47"]',
+    );
+    expect(moved.length).toBe(1);
+  });
+
+  it('cancels move mode and does not call PATCH on Escape', async () => {
+    const { ticketService, userService } = await bootstrap();
+    ticketService.listForQueue.and.resolveTo([
+      makeTicket({ id: 47, status: 'Open' }),
+    ]);
+    userService.listAgents.and.resolveTo([]);
+
+    const fixture = makeFixture();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const page = fixture.componentInstance;
+    page.onKeydown(makeKeyboardEvent('m'), 47);
+    page.onKeydown(makeKeyboardEvent('Escape'), 47);
+
+    expect(page.movingTicketId()).toBeNull();
+    expect(ticketService.patch).not.toHaveBeenCalled();
+  });
+
+  it('syncs the status filter to the URL via queryParams merge', async () => {
+    const { ticketService, userService, router } = await bootstrap();
+    ticketService.listForQueue.and.resolveTo([]);
+    userService.listAgents.and.resolveTo([]);
+
+    const fixture = makeFixture();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    fixture.componentInstance.onStatusChange('Closed');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.detectChanges();
+
+    expect(router.navigate).toHaveBeenCalled();
+    const lastCall = router.navigate.calls.mostRecent();
+    const args = lastCall.args[1] as { queryParams: Record<string, string> };
+    expect(args.queryParams['status']).toBe('Closed');
+  });
+
+  it('narrows the visible cards to one column when the status filter is set', async () => {
+    const { ticketService, userService } = await bootstrap();
+    ticketService.listForQueue.and.resolveTo([
+      makeTicket({ id: 1, status: 'Open' }),
+      makeTicket({ id: 2, status: 'Closed' }),
+    ]);
+    userService.listAgents.and.resolveTo([]);
+
+    const fixture = makeFixture();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    fixture.componentInstance.onStatusChange('Open');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.detectChanges();
+
+    const slots = fixture.nativeElement.querySelectorAll('.card-slot');
+    expect(slots.length).toBe(1);
+  });
+
+  it('renders a "View list" link in the Closed column footer when Closed is unfiltered and non-empty', async () => {
+    const { ticketService, userService } = await bootstrap();
+    ticketService.listForQueue.and.resolveTo([
+      makeTicket({ id: 1, status: 'Closed' }),
+    ]);
+    userService.listAgents.and.resolveTo([]);
+
+    const fixture = makeFixture();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector(
+      '[data-testid="closed-view-list-link"]',
+    ) as HTMLAnchorElement | null;
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe('/tickets?status=Closed');
+  });
+
+  it('hides the "View list" link when the status filter is set to Closed', async () => {
+    const { ticketService, userService } = await bootstrap();
+    ticketService.listForQueue.and.resolveTo([
+      makeTicket({ id: 1, status: 'Closed' }),
+    ]);
+    userService.listAgents.and.resolveTo([]);
+
+    const fixture = makeFixture();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    fixture.componentInstance.onStatusChange('Closed');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector(
+      '[data-testid="closed-view-list-link"]',
+    );
+    expect(link).toBeNull();
   });
 });
