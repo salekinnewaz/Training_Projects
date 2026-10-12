@@ -33,7 +33,7 @@
 import { TestBed } from '@angular/core/testing';
 import {
   provideHttpClient,
-  withInterceptorsFromDi,
+  withInterceptors,
 } from '@angular/common/http';
 import {
   HttpTestingController,
@@ -41,7 +41,8 @@ import {
 } from '@angular/common/http/testing';
 
 import { AuthService } from './auth.service';
-import { ApiError } from './api-error';
+import { ApiError, apiErrorFrom } from './api-error';
+import { authInterceptor } from './auth.interceptor';
 import { environment } from '../../environments/environment';
 import type { UserPublic } from '../models/user';
 
@@ -64,7 +65,7 @@ describe('AuthService', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
-        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClient(withInterceptors([authInterceptor])),
         provideHttpClientTesting(),
         AuthService,
       ],
@@ -402,6 +403,101 @@ describe('AuthService', () => {
         expect((err as ApiError).status).toBe(401);
         expect((err as ApiError).errorCode).toBe('account_inactive');
       }
+    });
+  });
+
+  // ─── Production regression: double-wrap preservation ─────────
+  //
+  // The auth interceptor converts HttpErrorResponse → ApiError
+  // first; the services all have a defensive
+  // `catch (err) { throw apiErrorFrom(err) }` that runs second.
+  // Before `apiErrorFrom` was made idempotent, this double-wrap
+  // silently downgraded `invalid_credentials` 401 (login) /
+  // `account_inactive` 401 (changePassword) to `unauthenticated`
+  // 401, which the login / change-password pages' switches do not
+  // handle — the user got "Something went wrong" instead of the
+  // specific message. These two tests pin the fix by registering
+  // the real `authInterceptor` in the testbed.
+
+  describe('double-wrap preserves errorCode (auth.interceptor + service)', () => {
+    it('login() rejects with ApiError(401, invalid_credentials) on wrong-password 401', async () => {
+      const p = service.login('sam@example.com', 'wrongPassword');
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/login`);
+      expect(req.request.method).toBe('POST');
+      req.flush(
+        {
+          error: 'invalid_credentials',
+          message: 'Email or password is incorrect. Try again.',
+        },
+        { status: 401, statusText: 'Unauthorized' },
+      );
+      try {
+        await p;
+        fail('expected ApiError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        // If this assertion fails with `unauthenticated` instead,
+        // someone has broken the idempotency in apiErrorFrom —
+        // the service defensive wrap re-read an already-converted
+        // ApiError as if it were a fresh HttpErrorResponse.
+        expect((err as ApiError).status).toBe(401);
+        expect((err as ApiError).errorCode).toBe('invalid_credentials');
+        expect((err as ApiError).message).toBe(
+          'Email or password is incorrect. Try again.',
+        );
+      }
+    });
+
+    it('login() rejects with ApiError(401, account_inactive) on deactivated-user 401', async () => {
+      const p = service.login('deactivated@example.com', 'whatever');
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/login`);
+      req.flush(
+        {
+          error: 'account_inactive',
+          message: 'Your account is inactive. Contact your administrator.',
+        },
+        { status: 401, statusText: 'Unauthorized' },
+      );
+      try {
+        await p;
+        fail('expected ApiError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(401);
+        expect((err as ApiError).errorCode).toBe('account_inactive');
+      }
+    });
+
+    it('changePassword() rejects with ApiError(403, invalid_credentials) — preserves errorCode through both wraps', async () => {
+      const p = service.changePassword('wrongOld', 'newPassword123');
+      const req = httpMock.expectOne(
+        `${environment.apiBaseUrl}/auth/me/password`,
+      );
+      req.flush(
+        {
+          error: 'invalid_credentials',
+          message: 'Your current password is incorrect.',
+        },
+        { status: 403, statusText: 'Forbidden' },
+      );
+      try {
+        await p;
+        fail('expected ApiError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(403);
+        expect((err as ApiError).errorCode).toBe('invalid_credentials');
+      }
+    });
+
+    it('apiErrorFrom on an existing ApiError returns the same instance (unit-level pin)', () => {
+      // Belt + suspenders: the service spec above proves the
+      // contract works through the interceptor + service catch
+      // chain. This tiny standalone assertion pins the
+      // idempotency contract directly so a future refactor that
+      // drops the testbed setup above still trips.
+      const original = new ApiError(401, 'invalid_credentials', 'bad pw');
+      expect(apiErrorFrom(original)).toBe(original);
     });
   });
 });
