@@ -51,12 +51,14 @@ import {
         <button
           type="button"
           class="btn btn-secondary"
+          [disabled]="confirming()"
           (click)="cancel.emit()"
         >{{ cancelLabel() }}</button>
         <button
           #confirmBtn
           type="button"
           class="btn btn-primary"
+          [disabled]="confirming()"
           (click)="confirm.emit()"
         >{{ confirmLabel() }}</button>
       </div>
@@ -150,17 +152,25 @@ export class DialogModalComponent implements AfterViewInit {
     // After first render, move the host's children (scrim + modal) to
     // document.body so fixed positioning is independent of any
     // ancestor transform / overflow. No-op on subsequent renders.
-    effect(() => {
-      if (this.appendedToBody()) return;
-      const el = this.hostEl.nativeElement;
-      // Children live under a `<ng-content>` projection in practice;
-      // because we used inline template above, the children of the
-      // host element ARE the scrim + modal. Append each to body.
-      while (el.firstChild) {
-        this.renderer.appendChild(document.body, el.firstChild);
-      }
-      this.appendedToBody.set(true);
-    });
+    //
+    // `allowSignalWrites: true` — the effect mutates `appendedToBody`
+    // so the portal never re-runs. Angular 17 disallows signal writes
+    // inside effects by default; this is the documented escape hatch
+    // for the "fire once" pattern.
+    effect(
+      () => {
+        if (this.appendedToBody()) return;
+        const el = this.hostEl.nativeElement;
+        // Children live under a `<ng-content>` projection in practice;
+        // because we used inline template above, the children of the
+        // host element ARE the scrim + modal. Append each to body.
+        while (el.firstChild) {
+          this.renderer.appendChild(document.body, el.firstChild);
+        }
+        this.appendedToBody.set(true);
+      },
+      { allowSignalWrites: true },
+    );
   }
 
   ngAfterViewInit(): void {

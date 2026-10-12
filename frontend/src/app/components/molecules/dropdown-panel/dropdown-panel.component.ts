@@ -89,12 +89,18 @@ export class DropdownPanelComponent {
   }
 
   constructor() {
-    effect(() => {
-      const el = this.anchor();
-      if (!el) return;
-      const b = el.getBoundingClientRect();
-      this.rect.set({ top: b.top, bottom: b.bottom, right: b.right });
-    });
+    // Re-anchor whenever the input changes. `allowSignalWrites: true`
+    // because the effect mutates `rect` — Angular 17 disallows
+    // signal writes inside effects without the explicit opt-in.
+    effect(
+      () => {
+        const el = this.anchor();
+        if (!el) return;
+        const b = el.getBoundingClientRect();
+        this.rect.set({ top: b.top, bottom: b.bottom, right: b.right });
+      },
+      { allowSignalWrites: true },
+    );
   }
 
   @HostListener('window:resize')
