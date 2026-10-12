@@ -1,5 +1,5 @@
 /**
- * LoginPageComponent — HD-005.
+ * LoginPageComponent — HD-005 + D4.
  *
  * Public, unauthenticated sign-in page. Renders a centered card
  * with a reactive email/password form. On successful login the
@@ -11,6 +11,15 @@
  * guaranteed 401 round-trip on every visit. The route guard
  * (HD-006) will own the "already authenticated → bounce to
  * dashboard" behaviour.
+ *
+ * D4 added the `rate_limited` switch case in `applyApiError`:
+ * when the backend's `loginRateLimiter` returns 429
+ * `rate_limited` (after 10 wrong-password attempts in 15
+ * minutes), the password field renders "Too many attempts.
+ * Please wait a moment." — same field + same focus-restoration
+ * shape as the `invalid_credentials` and `account_inactive`
+ * cases. See
+ * `_bmad-output/implementation-artifacts/spec-d4-rate-limited.md`.
  *
  * Selector + class name are preserved from the HD-001 placeholder
  * so the lazy route in app.routes.ts keeps working.
@@ -66,6 +75,7 @@ const GENERIC_ERROR = 'Something went wrong. Please try again.';
 
 const WRONG_CREDS = 'Email or password is incorrect. Try again.';
 const INACTIVE_ACCOUNT = 'Your account is inactive. Contact your administrator.';
+const RATE_LIMITED = 'Too many attempts. Please wait a moment.';
 const EMAIL_FORMAT_CLIENT = 'Enter a valid email address.';
 const PASSWORD_REQUIRED = 'Enter your password.';
 
@@ -380,6 +390,10 @@ export class LoginPageComponent implements AfterViewInit {
           break;
         case 'account_inactive':
           mapped = INACTIVE_ACCOUNT;
+          target = 'password';
+          break;
+        case 'rate_limited':
+          mapped = RATE_LIMITED;
           target = 'password';
           break;
         case 'validation_error': {
