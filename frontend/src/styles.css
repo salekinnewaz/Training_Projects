@@ -554,25 +554,6 @@ a.admin-card-row:focus-visible {
   font-size: 13px;
   text-align: center;
 }
-/* HD-014 placeholder. The Users tab stays on /admin#users so
-   the URL contract matches design §4; until HD-014, the body
-   shows a single muted card pointing at the existing /users
-   route. */
-.users-placeholder {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 24px;
-}
-.users-placeholder-text {
-  margin: 0;
-  color: var(--color-label);
-  font-size: 14px;
-  line-height: 1.5;
-}
-.users-standalone-link {
-  color: var(--color-primary);
-}
 .admin-card-top {
   display: flex;
   justify-content: space-between;
@@ -597,4 +578,248 @@ a.admin-card-row:focus-visible {
   font-size: 12px;
   color: var(--color-muted);
   border-top: 1px solid var(--color-border);
+}
+
+/* Users Tab page chrome (HD-014). The page header, table chrome,
+   row geometry, active toggle, and self-row border are kept
+   global so the page component's inline style budget holds under
+   2kB. Mirrors the HD-011 / HD-012 / HD-013 pattern. */
+.users-page {
+  width: 100%;
+}
+.users-header {
+  margin-bottom: 24px;
+}
+.users-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+.users-count {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.users-error-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-error);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.users-error-card .error-message {
+  margin: 0;
+  color: var(--color-error);
+  font-size: 14px;
+}
+.users-table-wrap {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.users-table-header {
+  display: grid;
+  grid-template-columns: 220px 280px 160px 120px 100px;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.users-table {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Users tab row geometry (HD-014). 64px tall row, 5 columns
+   matching the design spec §Spacing "row height 64px, name 220px ·
+   email 280px · role 160px · status 120px · last active 100px".
+   Self-row gets a 3px primary left border per the design spec
+   "self-row visual differentiator" §VisualTokens. */
+.user-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 220px 280px 160px 120px 100px;
+  gap: 16px;
+  align-items: center;
+  height: 64px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-border);
+  transition: background-color 120ms ease;
+}
+.user-row:last-child {
+  border-bottom: 0;
+}
+.user-row:hover {
+  background: var(--color-surface-subtle);
+}
+.user-row--self {
+  background: var(--color-surface-subtle);
+  border-left: 3px solid var(--color-primary);
+  padding-left: 13px;
+}
+.user-row--self:hover {
+  background: var(--color-surface-subtle);
+}
+.user-row--updating {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.user-row__name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.user-row__display-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.user-row__email {
+  font-size: 13px;
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.user-row__role {
+  width: 100%;
+}
+.user-row__status {
+  display: flex;
+  align-items: center;
+}
+.user-row__active-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--color-primary);
+  transition: background-color 120ms ease;
+}
+.user-row__active-toggle:hover:not(:disabled) {
+  background: var(--color-surface);
+}
+.user-row__active-toggle:disabled {
+  cursor: not-allowed;
+}
+.user-row__active-toggle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+.user-row__active-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.user-row__active-toggle.is-active .user-row__active-dot {
+  background: var(--color-success);
+}
+.user-row__active-toggle.is-inactive .user-row__active-dot {
+  background: transparent;
+  border: 1.5px solid var(--color-disabled);
+}
+.user-row__active-toggle.is-inactive {
+  color: var(--color-muted);
+}
+.user-row__last-active {
+  font-size: 12px;
+  color: var(--color-muted);
+  justify-self: end;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-row__never {
+  color: var(--color-muted);
+}
+.user-row__self-micro-label {
+  position: absolute;
+  left: 16px;
+  bottom: -22px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-muted);
+  font-style: italic;
+}
+.user-row__error {
+  position: absolute;
+  right: 16px;
+  bottom: -22px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-error);
+}
+
+/* Users tab loading skeleton (HD-014). 5 placeholder rows render
+   during the loading state. Each row has 6 grey bars (pulsing)
+   matching the 5-column geometry above. */
+.users-table-wrap[aria-busy="true"] .users-table {
+  display: flex;
+  flex-direction: column;
+}
+.user-row-skel {
+  display: grid;
+  grid-template-columns: 220px 280px 160px 120px 100px;
+  gap: 16px;
+  align-items: center;
+  height: 64px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+.user-row-skel .bar {
+  background: var(--color-surface-muted);
+  border-radius: 4px;
+  animation: admin-skel-pulse 1200ms ease-in-out infinite;
+}
+.user-row-skel .bar-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+.user-row-skel .bar-name {
+  height: 14px;
+  width: 70%;
+}
+.user-row-skel .bar-email {
+  height: 12px;
+  width: 90%;
+}
+.user-row-skel .bar-role {
+  height: 24px;
+  width: 100%;
+}
+.user-row-skel .bar-status {
+  height: 16px;
+  width: 80%;
+}
+.user-row-skel .bar-time {
+  height: 12px;
+  width: 60%;
 }

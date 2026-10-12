@@ -1,5 +1,5 @@
 /**
- * ticketService — HD-007 + HD-008 + HD-009 + HD-010 + HD-012 + HD-013.
+ * ticketService — HD-007 + HD-008 + HD-009 + HD-010 + HD-012 + HD-013 + HD-014.
  *
  * Read-side helpers for the Ticket resource. Wraps the consistent
  * `findAll` shape used by every list endpoint so controllers don't
@@ -17,8 +17,10 @@
  * `listForQueue()` to power the /queue board — a Support-Agent
  * view across every ticket in the system. HD-013 (Admin
  * Dashboard) adds `getDashboardSummary()` which returns the
- * four-bucket shape for the /admin page. HD-015 will add
- * combined filter / search helpers and cursor pagination.
+ * four-bucket shape for the /admin page. HD-014 (Users tab) adds
+ * `listAllUsers`, `setUserRole`, and `setUserActive` for the
+ * Admin Users tab. HD-015 will add combined filter / search
+ * helpers and cursor pagination.
  *
  * No pagination params are exposed yet — out of MVP per spec. The
  * `opts` bag exists as an extension point for HD-015 if/when
@@ -739,4 +741,90 @@ export async function listActiveAgents(): Promise<User[]> {
     order: [['displayName', 'ASC']],
     attributes: ['id', 'displayName', 'role'],
   });
+}
+
+// ─── HD-014 — Admin Users tab helpers ──────────────────────────────
+
+/**
+ * Allowed role values, kept in sync with the `User.role` MySQL ENUM.
+ * Used by the controller's body validator for `PUT /:id/role` so
+ * the controller can reject bad input before reaching the DB.
+ */
+export const USER_ROLES = ['User', 'Support Agent', 'Admin'] as const;
+export type UserRoleLiteral = typeof USER_ROLES[number];
+
+export function isUserRoleLiteral(value: unknown): value is UserRoleLiteral {
+  return (
+    typeof value === 'string' &&
+    (USER_ROLES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Full user list (HD-014 GET /api/users).
+ *
+ * Returns every user (active + inactive, all roles) sorted by
+ * `displayName ASC` so the page renders alphabetical without any
+ * client-side sort. No pagination — the MVP team is ≤20 people per
+ * the design doc, so the wire stays small.
+ *
+ * The default User scope strips `passwordHash`; we don't need it
+ * here so no `.scope('withPassword')` call. All other UserPublic
+ * fields are part of the default scope.
+ */
+export async function listAllUsers(): Promise<User[]> {
+  return User.findAll({
+    order: [['displayName', 'ASC']],
+  });
+}
+
+/**
+ * Update a user's role (HD-014 PUT /api/users/:id/role).
+ *
+ * Throws `HttpError(404, 'not_found', ...)` if the user doesn't
+ * exist. The controller is responsible for the role-must-be-an-Admin-
+ * gate (403) and the actor-cannot-change-own-role gate (400) before
+ * reaching this helper — the service trusts its caller.
+ *
+ * On success, the returned User instance reflects the new role.
+ * Activity log is intentionally NOT written here — the design
+ * doc defers that to a separate audit-trail slice; the wire-shape
+ * update + the page's row UI is the only consumer-visible effect
+ * in MVP.
+ */
+export async function setUserRole(
+  id: number,
+  role: UserRoleLiteral,
+): Promise<User> {
+  const user = await User.findByPk(id);
+  if (!user) {
+    throw new HttpError(404, 'not_found', `User ${id} not found.`);
+  }
+  user.role = role;
+  await user.save();
+  return user;
+}
+
+/**
+ * Toggle a user's active status (HD-014 PUT /api/users/:id/status).
+ *
+ * Throws `HttpError(404, 'not_found', ...)` if the user doesn't
+ * exist. The controller is responsible for the actor-cannot-deactivate-
+ * self gate (400) before reaching this helper.
+ *
+ * On success, the returned User instance reflects the new
+ * `isActive` value. As with `setUserRole`, no activity log is
+ * written here — out of scope for MVP per the design doc.
+ */
+export async function setUserActive(
+  id: number,
+  isActive: boolean,
+): Promise<User> {
+  const user = await User.findByPk(id);
+  if (!user) {
+    throw new HttpError(404, 'not_found', `User ${id} not found.`);
+  }
+  user.isActive = isActive;
+  await user.save();
+  return user;
 }

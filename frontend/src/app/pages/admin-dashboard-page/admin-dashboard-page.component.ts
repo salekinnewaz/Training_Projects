@@ -48,6 +48,7 @@ import { ApiError } from '../../services/api-error';
 import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
 import { ButtonComponent } from '../../components/atoms/button/button.component';
 import { BadgeStatusComponent } from '../../components/atoms/badge-status/badge-status.component';
+import { UsersTabPageComponent } from '../users-tab-page/users-tab-page.component';
 import type { Ticket } from '../../models/ticket';
 import type { TicketStatus } from '../../models/enums';
 
@@ -64,6 +65,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
     AppChromeComponent,
     ButtonComponent,
     BadgeStatusComponent,
+    UsersTabPageComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -99,18 +101,13 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
 
         @switch (effectiveRenderState()) {
           @case ('users-placeholder') {
-            <!-- HD-014 will absorb the Users content into this page.
-                 Until then, the tab stays on /admin#users and the
-                 body renders a single placeholder card so the
-                 design-doc contract (tab affordance, hash stays on
-                 /admin) is satisfied. -->
-            <div class="users-placeholder" role="tabpanel" aria-labelledby="admin-tab-users">
-              <p class="users-placeholder-text">
-                User management lands in HD-014. For now, the
-                <a routerLink="/users" class="users-standalone-link">standalone Users page</a>
-                is still reachable from the URL bar.
-              </p>
-            </div>
+            <!-- HD-014: the Users tab on /admin renders the same
+                 UsersTabPageComponent that /users mounts. The URL
+                 hash stays on /admin#users (per the design doc's
+                 "in-page tab" contract); the user can still reach
+                 the standalone /users route by typing it in the
+                 URL bar. -->
+            <app-users-tab-page />
           }
           @case ('loading') {
             <div class="card-row" aria-busy="true" aria-label="Loading dashboard">

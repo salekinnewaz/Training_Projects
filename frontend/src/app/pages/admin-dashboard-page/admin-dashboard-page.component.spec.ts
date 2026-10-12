@@ -25,10 +25,13 @@ import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
+import { BehaviorSubject, type Observable } from 'rxjs';
 
 import { AdminDashboardPageComponent } from './admin-dashboard-page.component';
 import { TicketService } from '../../services/ticket.service';
 import type { AdminDashboardSummary } from '../../services/ticket.service';
+import { UserService } from '../../services/user.service';
+import { AuthService } from '../../services/auth.service';
 import { ApiError } from '../../services/api-error';
 import type { Ticket } from '../../models/ticket';
 import type { UserPublic } from '../../models/user';
@@ -405,12 +408,35 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
   });
 });
 
-describe('AdminDashboardPageComponent URL hash routing (HD-013)', () => {
+describe('AdminDashboardPageComponent URL hash routing (HD-013 + HD-014)', () => {
   let localTicketService: { adminDashboard: jasmine.Spy };
+  let localUserService: { listAll: jasmine.Spy };
+  let localAuthService: {
+    userSnapshot: jasmine.Spy;
+    user$: Observable<UserPublic | null>;
+    refreshUser: jasmine.Spy;
+  };
 
   beforeEach(async () => {
     TestBed.resetTestingModule();
     localTicketService = { adminDashboard: jasmine.createSpy('adminDashboard') };
+    localUserService = { listAll: jasmine.createSpy('listAll') };
+    // Stub listAll() so the embedded UsersTabPageComponent renders
+    // its success state synchronously without a real HTTP call.
+    localUserService.listAll.and.resolveTo([]);
+    // The UsersTabPageComponent wraps content in <app-chrome>, which
+    // boots via header-chrome. header-chrome calls
+    // `auth.refreshUser()` and reads `auth.user$` via `toSignal()`,
+    // so the AuthService stub needs both.
+    localAuthService = {
+      userSnapshot: jasmine
+        .createSpy('userSnapshot')
+        .and.returnValue(baseUser),
+      user$: new BehaviorSubject<UserPublic | null>(baseUser).asObservable(),
+      refreshUser: jasmine
+        .createSpy('refreshUser')
+        .and.resolveTo(),
+    };
     await TestBed.configureTestingModule({
       imports: [AdminDashboardPageComponent],
       providers: [
@@ -420,11 +446,13 @@ describe('AdminDashboardPageComponent URL hash routing (HD-013)', () => {
         ]),
         provideHttpClient(),
         { provide: TicketService, useValue: localTicketService },
+        { provide: UserService, useValue: localUserService },
+        { provide: AuthService, useValue: localAuthService },
       ],
     }).compileComponents();
   });
 
-  it('renders the Users tab active + users-placeholder body when URL hash is #users on initial load', async () => {
+  it('renders the Users tab active + UsersTabPageComponent body when URL hash is #users on initial load', async () => {
     const router = TestBed.inject(Router);
     const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
 
@@ -444,11 +472,17 @@ describe('AdminDashboardPageComponent URL hash routing (HD-013)', () => {
       // The Users tab is active in the template.
       expect(newComponent.activeTab()).toBe('users');
 
-      // The body renders the users-placeholder branch (HD-014 will
-      // replace this with the real Users content).
+      // The body renders the HD-014 <app-users-tab-page> in-place.
+      // The Dashboard cards (the previous tab's content) are not
+      // rendered when the Users tab is active.
       const compiled = newFixture.nativeElement as HTMLElement;
-      expect(compiled.querySelector('.users-placeholder')).toBeTruthy();
+      expect(compiled.querySelector('.users-placeholder')).toBeNull();
       expect(compiled.querySelectorAll('.card-row .card').length).toBe(0);
+      // The UsersTabPageComponent renders <section class="users-page">.
+      expect(compiled.querySelector('app-users-tab-page .users-page'))
+        .toBeTruthy();
+      // The UsersTabPageComponent called listAll() exactly once on init.
+      expect(localUserService.listAll).toHaveBeenCalledTimes(1);
 
       // Heading reflects the active tab.
       const h1 = compiled.querySelector('h1');
