@@ -481,7 +481,7 @@ export async function updateTicket(
 function assertValidTransition(
   from: import('../models/Ticket').TicketStatus,
   to: import('../models/Ticket').TicketStatus,
-  _actorRole: ActorRole,
+  actorRole: ActorRole,
 ): void {
   if (from === to) return; // No-op; idempotent.
   if (from === 'Closed') {
@@ -490,6 +490,21 @@ function assertValidTransition(
       'validation_error',
       'Closed is a terminal status; cannot transition.',
       { status: 'Closed is a terminal status; cannot transition.' },
+    );
+  }
+  // D119: Per EXPERIENCE.md "Status transitions" — "Closed is not
+  // selectable by agent — only the user (creator) confirms close."
+  // The agent PATCH path cannot drive Resolved → Closed; that
+  // transition is reserved for `confirmCloseTicket` (called from
+  // the user-initiated "Confirm and close" button). Admins still
+  // get a back-door so they can force-close stale tickets, but
+  // Support Agents do not.
+  if (to === 'Closed' && actorRole === 'Support Agent') {
+    throw new HttpError(
+      403,
+      'forbidden',
+      'Only the ticket creator or an admin can close a ticket.',
+      { status: 'Only the ticket creator or an admin can close a ticket.' },
     );
   }
   const allowed: Record<

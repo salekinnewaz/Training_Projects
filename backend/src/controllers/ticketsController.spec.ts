@@ -947,6 +947,58 @@ describe('ticketsController.patch (HD-010)', () => {
     expect(body.ticket.owner.id).toBe(22);
     expect(body.ticket.owner.displayName).toBe('Jordan');
   });
+
+  // D119: per EXPERIENCE.md "Closed is not selectable by agent —
+  // only the user (creator) confirms close." A Support Agent's
+  // PATCH that drives Resolved → Closed must NOT update the
+  // ticket and must return the service's 403 + workflow message.
+  // The forward-the-error assertion matches the existing tests
+  // for transition errors above.
+  it('D119: forwards HttpError(403, forbidden) when a Support Agent PATCHes Resolved → Closed', async () => {
+    const { HttpError } = require('../utils/errors');
+    const fake = makeResolvedTicket();
+    (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
+    (ticketService.updateTicket as jest.Mock).mockRejectedValueOnce(
+      new HttpError(
+        403,
+        'forbidden',
+        'Only the ticket creator or an admin can close a ticket.',
+        { status: 'Only the ticket creator or an admin can close a ticket.' },
+      ),
+    );
+
+    const req = {
+      params: { id: '47' },
+      body: { status: 'Closed' },
+      user: {
+        id: 11,
+        email: 'sam@example.com',
+        displayName: 'Sam',
+        role: 'Support Agent',
+      },
+    } as unknown as Request;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+    const next = jest.fn() as unknown as NextFunction;
+
+    await patch(req, res, next);
+    await Promise.resolve();
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(403);
+    expect(err.errorCode).toBe('forbidden');
+    expect(err.fields).toBeDefined();
+    expect(Object.keys(err.fields || {})).toContain('status');
+    expect(ticketService.updateTicket).toHaveBeenCalledWith(
+      47,
+      11,
+      'Support Agent',
+      { status: 'Closed' },
+    );
+  });
 });
 
 describe('ticketsController.addComment (HD-010)', () => {
