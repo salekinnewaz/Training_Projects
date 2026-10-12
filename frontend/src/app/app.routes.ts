@@ -140,6 +140,16 @@ export const routes: Routes = [
   },
 
   {
+    path: 'profile',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./pages/profile-page/profile-page.component').then(
+        (m) => m.ProfilePageComponent
+      ),
+    title: 'Profile · HelpDesk Lite',
+  },
+
+  {
     path: 'profile/password',
     canActivate: [authGuard],
     loadComponent: () =>
@@ -149,5 +159,20 @@ export const routes: Routes = [
     title: 'Change password · HelpDesk Lite',
   },
 
-  { path: '**', redirectTo: 'login' },
+  {
+    // D110: 404 page — dedicated component (was a silent redirect
+    // to /login, which was misleading because logged-in users
+    // deep-linking to a typo'd URL would get bounced back to
+    // their own dashboard without explanation). Per EXPERIENCE.md
+    // line 195: "404/403: dedicated page with back-to-dashboard
+    // action". No guards — works for both authenticated and cold
+    // users; the page itself reads `auth.roleHomePath()` to
+    // decide where the CTA goes.
+    path: '**',
+    loadComponent: () =>
+      import('./pages/not-found-page/not-found-page.component').then(
+        (m) => m.NotFoundPageComponent
+      ),
+    title: 'Page not found · HelpDesk Lite',
+  },
 ];
