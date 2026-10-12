@@ -30,7 +30,12 @@ const baseUser: UserPublic = {
   displayName: 'Eli Chen',
   role: 'User',
   isActive: true,
-  lastActiveAt: '2026-10-09T12:00:00.000Z',
+  // lastActiveAt is set to 2 days before "now" at test setup
+  // time so the relative-time formatter renders "2d ago"
+  // regardless of when the suite runs (a hard-coded ISO
+  // string here would drift as wall-clock time advances
+  // and silently start failing the assertion).
+  lastActiveAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
   createdAt: '2026-09-01T00:00:00.000Z',
   updatedAt: '2026-09-02T00:00:00.000Z',
 };
