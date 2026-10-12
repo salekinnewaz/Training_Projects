@@ -170,7 +170,7 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
     fixture.detectChanges();
 
     const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
-    const openFooter = cards[0].querySelector('.card-footer');
+    const openFooter = cards[0].querySelector('.admin-card-footer');
     expect(openFooter).toBeTruthy();
     expect(openFooter.textContent.trim()).toBe('Showing 2 of 11');
   });
@@ -190,10 +190,10 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
 
     const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
     // Open: 1 row, total 1 → no footer.
-    const openFooter = cards[0].querySelector('.card-footer');
+    const openFooter = cards[0].querySelector('.admin-card-footer');
     expect(openFooter).toBeNull();
     // In Progress: 0 rows, total 0 → no footer.
-    const ipFooter = cards[1].querySelector('.card-footer');
+    const ipFooter = cards[1].querySelector('.admin-card-footer');
     expect(ipFooter).toBeNull();
   });
 
@@ -241,7 +241,7 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
     fixture.detectChanges();
 
     expect(component.renderState()).toBe('error');
-    const errorCard = fixture.nativeElement.querySelector('.error-card');
+    const errorCard = fixture.nativeElement.querySelector('.admin-error-card');
     expect(errorCard).toBeTruthy();
     const errorMsg = errorCard.querySelector('.error-message');
     expect(errorMsg.textContent.trim()).toBe(
@@ -284,11 +284,40 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
     expect(ticketService.adminDashboard).toHaveBeenCalledTimes(2);
   });
 
-  it('routes to /users when URL hash is #users on initial load', () => {
-    // The hash-based redirect is verified separately in the
-    // "URL hash routing" describe block (below) so it doesn't
-    // disturb the in-flight fixture state of the other tests.
-    expect(true).toBe(true);
+  it('reactive heading reflects the active tab on initial load (Dashboard)', async () => {
+    ticketService.adminDashboard.and.resolveTo(makeSummary());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const h1 = fixture.nativeElement.querySelector('h1');
+    expect(h1?.textContent?.trim()).toBe('Dashboard');
+  });
+
+  it('renders the tablist with role="tablist" and two role="tab" anchors', async () => {
+    ticketService.adminDashboard.and.resolveTo(makeSummary());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const tablist = compiled.querySelector('.tabs[role="tablist"]');
+    expect(tablist).toBeTruthy();
+    const tabs = compiled.querySelectorAll('.tab[role="tab"]');
+    expect(tabs.length).toBe(2);
+  });
+
+  it('marks the active tab with aria-selected="true" and the inactive with aria-selected="false"', async () => {
+    ticketService.adminDashboard.and.resolveTo(makeSummary());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const tabs = fixture.nativeElement.querySelectorAll('.tab[role="tab"]') as NodeListOf<HTMLAnchorElement>;
+    const dashboardTab = Array.from(tabs).find((t) => t.textContent?.trim() === 'Dashboard')!;
+    const usersTab = Array.from(tabs).find((t) => t.textContent?.trim() === 'Users')!;
+    expect(dashboardTab.getAttribute('aria-selected')).toBe('true');
+    expect(usersTab.getAttribute('aria-selected')).toBe('false');
   });
 
   describe('formatRelative', () => {
@@ -385,14 +414,17 @@ describe('AdminDashboardPageComponent URL hash routing (HD-013)', () => {
     await TestBed.configureTestingModule({
       imports: [AdminDashboardPageComponent],
       providers: [
-        provideRouter([{ path: 'users', children: [] }]),
+        provideRouter([
+          { path: 'admin', children: [] },
+          { path: 'users', children: [] },
+        ]),
         provideHttpClient(),
         { provide: TicketService, useValue: localTicketService },
       ],
     }).compileComponents();
   });
 
-  it('routes to /users when URL hash is #users on initial load', async () => {
+  it('renders the Users tab active + users-placeholder body when URL hash is #users on initial load', async () => {
     const router = TestBed.inject(Router);
     const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
 
@@ -400,11 +432,27 @@ describe('AdminDashboardPageComponent URL hash routing (HD-013)', () => {
     window.location.hash = '#users';
     try {
       const newFixture = TestBed.createComponent(AdminDashboardPageComponent);
+      const newComponent = newFixture.componentInstance;
       newFixture.detectChanges();
       await newFixture.whenStable();
       newFixture.detectChanges();
 
-      expect(navigateSpy).toHaveBeenCalledWith('/users');
+      // URL hash contract: /admin#users stays on /admin, not /users.
+      // The component does NOT navigate to /users anymore.
+      expect(navigateSpy).not.toHaveBeenCalledWith('/users');
+
+      // The Users tab is active in the template.
+      expect(newComponent.activeTab()).toBe('users');
+
+      // The body renders the users-placeholder branch (HD-014 will
+      // replace this with the real Users content).
+      const compiled = newFixture.nativeElement as HTMLElement;
+      expect(compiled.querySelector('.users-placeholder')).toBeTruthy();
+      expect(compiled.querySelectorAll('.card-row .card').length).toBe(0);
+
+      // Heading reflects the active tab.
+      const h1 = compiled.querySelector('h1');
+      expect(h1?.textContent?.trim()).toBe('Users');
     } finally {
       window.location.hash = originalHash;
     }

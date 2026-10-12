@@ -41,7 +41,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 
 import { TicketService, type AdminDashboardSummary } from '../../services/ticket.service';
 import { ApiError } from '../../services/api-error';
@@ -51,7 +51,7 @@ import { BadgeStatusComponent } from '../../components/atoms/badge-status/badge-
 import type { Ticket } from '../../models/ticket';
 import type { TicketStatus } from '../../models/enums';
 
-type RenderState = 'loading' | 'error' | 'success';
+type RenderState = 'loading' | 'error' | 'success' | 'users-placeholder';
 type TabKey = 'dashboard' | 'users';
 
 const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
@@ -70,26 +70,48 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
     <app-chrome>
       <section class="admin-page">
         <header class="admin-header">
-          <h1>Dashboard</h1>
-          <nav class="tabs" aria-label="Admin views">
+          <h1>{{ headingText() }}</h1>
+          <nav class="tabs" role="tablist" aria-label="Admin views">
             <a
               class="tab"
+              role="tab"
+              id="admin-tab-dashboard"
               [class.active]="activeTab() === 'dashboard'"
               routerLink="/admin"
               [fragment]="'dashboard'"
-              ariaCurrentWhenActive="page"
+              [attr.aria-selected]="activeTab() === 'dashboard'"
+              [attr.tabindex]="activeTab() === 'dashboard' ? 0 : -1"
+              (keydown)="onTabKeydown($event, 'dashboard')"
             >Dashboard</a>
             <a
               class="tab"
+              role="tab"
+              id="admin-tab-users"
               [class.active]="activeTab() === 'users'"
-              routerLink="/users"
+              routerLink="/admin"
               [fragment]="'users'"
-              ariaCurrentWhenActive="page"
+              [attr.aria-selected]="activeTab() === 'users'"
+              [attr.tabindex]="activeTab() === 'users' ? 0 : -1"
+              (keydown)="onTabKeydown($event, 'users')"
             >Users</a>
           </nav>
         </header>
 
-        @switch (renderState()) {
+        @switch (effectiveRenderState()) {
+          @case ('users-placeholder') {
+            <!-- HD-014 will absorb the Users content into this page.
+                 Until then, the tab stays on /admin#users and the
+                 body renders a single placeholder card so the
+                 design-doc contract (tab affordance, hash stays on
+                 /admin) is satisfied. -->
+            <div class="users-placeholder" role="tabpanel" aria-labelledby="admin-tab-users">
+              <p class="users-placeholder-text">
+                User management lands in HD-014. For now, the
+                <a routerLink="/users" class="users-standalone-link">standalone Users page</a>
+                is still reachable from the URL bar.
+              </p>
+            </div>
+          }
           @case ('loading') {
             <div class="card-row" aria-busy="true" aria-label="Loading dashboard">
               @for (_ of skeletonArray(); track $index) {
@@ -104,7 +126,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
             </div>
           }
           @case ('error') {
-            <div class="error-card" role="alert">
+            <div class="admin-error-card" role="alert">
               <p class="error-message">{{ errorMessage() }}</p>
               <atom-button variant="primary" size="md" (pressed)="onRefresh()">
                 Retry
@@ -115,7 +137,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
             <div class="card-row">
               @for (bucket of buckets(); track bucket.key) {
                 <article class="card" [class.muted]="bucket.key === 'Closed'">
-                  <header class="card-top">
+                  <header class="admin-card-top">
                     <span class="pill-zone">
                       <badge-status [status]="bucket.status" />
                     </span>
@@ -124,7 +146,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
                       [class.muted-count]="bucket.key === 'Closed'"
                     >{{ bucket.rows.length }}</span>
                   </header>
-                  <ul class="card-body">
+                  <ul class="admin-card-body">
                     @if (bucket.rows.length === 0) {
                       <li class="empty-marker">Nothing here.</li>
                     } @else {
@@ -162,7 +184,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
                     }
                   </ul>
                   @if (bucket.total > bucket.rows.length) {
-                    <footer class="card-footer">
+                    <footer class="admin-card-footer">
                       Showing {{ bucket.rows.length }} of {{ bucket.total }}
                     </footer>
                   }
@@ -175,111 +197,17 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
     </app-chrome>
   `,
   styles: [`
+    /* All admin-page rules (header / tab switcher / card chrome /
+       row geometry / skeleton) are owned by styles.css so this
+       component's inline style budget stays under 2kB. Mirrors the
+       HD-011 / HD-012 pattern. */
     :host {
       display: block;
-    }
-    .admin-page {
-      width: 100%;
-    }
-    .admin-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 24px;
-      margin-bottom: 24px;
-    }
-    .admin-header h1 {
-      margin: 0;
-      font-size: 24px;
-      font-weight: 600;
-      color: var(--color-primary);
-    }
-    .tabs {
-      display: inline-flex;
-      gap: 4px;
-      padding: 4px;
-      background: var(--color-surface-subtle);
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
-    }
-    .tab {
-      padding: 6px 14px;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--color-label);
-      text-decoration: none;
-      transition: background-color 120ms ease, color 120ms ease;
-    }
-    .tab:hover {
-      color: var(--color-primary);
-      text-decoration: none;
-    }
-    .tab.active {
-      background: var(--color-surface);
-      color: var(--color-primary);
-      font-weight: 600;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-    }
-    .tab:focus-visible {
-      outline: var(--focus-ring-width) solid var(--focus-ring-color);
-      outline-offset: 2px;
-    }
-    .error-card {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 16px;
-      background: var(--color-surface);
-      border: 1px solid var(--color-error);
-      border-radius: 8px;
-      margin-bottom: 16px;
-    }
-    .error-message {
-      margin: 0;
-      color: var(--color-error);
-      font-size: 14px;
-    }
-    .empty-marker {
-      padding: 16px 12px;
-      color: var(--color-muted);
-      font-size: 13px;
-      text-align: center;
-    }
-    /* Card-specific geometry: the 4-column row + card chrome + per-
-       row layout are kept in styles.css (mirrors the HD-011 / HD-012
-       pattern of pushing the heaviest rules to global so the page
-       component's inline style budget holds under 2kB). */
-    .card-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .count {
-      font-size: 20px;
-      font-weight: 600;
-      color: var(--color-primary);
-    }
-    .count.muted-count {
-      color: var(--color-muted);
-    }
-    .card-body {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-    }
-    .card-footer {
-      padding: 8px 12px;
-      font-size: 12px;
-      color: var(--color-muted);
-      border-top: 1px solid var(--color-border);
     }
   `],
 })
 export class AdminDashboardPageComponent implements OnInit {
   private readonly ticketService = inject(TicketService);
-  private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly renderState = signal<RenderState>('loading');
@@ -304,16 +232,36 @@ export class AdminDashboardPageComponent implements OnInit {
     ];
   });
 
+  /**
+   * Heading reflects the active tab per design §2 ("heading text
+   * reflects the active tab. Dashboard when Dashboard active;
+   * Users when Users active."). Hardcoded string on each branch
+   * so the page title can also read this via a future document.title
+   * binding.
+   */
+  readonly headingText = computed(() =>
+    this.activeTab() === 'users' ? 'Users' : 'Dashboard',
+  );
+
+  /**
+   * The render state the template switches on. When the active tab
+   * is `users`, we short-circuit to the users-placeholder branch
+   * regardless of the underlying load state (the dashboard data
+   * is not relevant to the users tab). HD-014 will split this
+   * into a separate signal.
+   */
+  readonly effectiveRenderState = computed<RenderState>(() => {
+    if (this.activeTab() === 'users') return 'users-placeholder';
+    return this.renderState();
+  });
+
   ngOnInit(): void {
     this.syncTabFromUrl();
-    // The Users tab is a placeholder for HD-014 — route to /users
-    // so the tab affordance is real without rendering duplicate
-    // content. HD-014 will absorb the Users content into /admin
-    // and turn this into a true in-page switch.
-    if (this.activeTab() === 'users') {
-      void this.router.navigateByUrl('/users');
-      return;
-    }
+    // Per design §4, the Users tab content is a placeholder for
+    // HD-014 (which will absorb the Users content into this page).
+    // The URL hash stays on /admin#users so the page contract
+    // matches the design doc; until HD-014, the body renders an
+    // "HD-014 will land here" placeholder.
     void this.load();
   }
 
@@ -332,6 +280,33 @@ export class AdminDashboardPageComponent implements OnInit {
 
   onRefresh(): void {
     void this.load();
+  }
+
+  /**
+   * Tab-list arrow-key navigation per design §4 ("←/→ arrow keys
+   * move focus between tabs, Enter activates"). The current
+   * implementation uses <a> tabs (so Enter/Space activate via the
+   * default link behavior), but the arrow-key pattern is on top so
+   * keyboard users don't fall out of the tab group at the right edge.
+   */
+  onTabKeydown(event: KeyboardEvent, current: TabKey): void {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const next: TabKey = current === 'dashboard' ? 'users' : 'dashboard';
+    // Update the URL hash (so the URL stays in sync with the active
+    // tab) and move focus to the newly-active tab. We do this
+    // manually rather than via routerLink so the page doesn't
+    // re-fire ngOnInit (which would refetch the dashboard).
+    this.activeTab.set(next);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `#${next}`);
+    }
+    queueMicrotask(() => {
+      const id =
+        next === 'dashboard' ? 'admin-tab-dashboard' : 'admin-tab-users';
+      const el = document.getElementById(id);
+      el?.focus();
+    });
   }
 
   formatRelative(iso: string): string {

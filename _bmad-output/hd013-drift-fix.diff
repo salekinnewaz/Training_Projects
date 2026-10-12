@@ -1,0 +1,674 @@
+diff --git a/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.spec.ts b/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.spec.ts
+index a08fe4f..aef7b9c 100644
+--- a/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.spec.ts
++++ b/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.spec.ts
+@@ -170,7 +170,7 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
+     fixture.detectChanges();
+ 
+     const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
+-    const openFooter = cards[0].querySelector('.card-footer');
++    const openFooter = cards[0].querySelector('.admin-card-footer');
+     expect(openFooter).toBeTruthy();
+     expect(openFooter.textContent.trim()).toBe('Showing 2 of 11');
+   });
+@@ -190,10 +190,10 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
+ 
+     const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
+     // Open: 1 row, total 1 → no footer.
+-    const openFooter = cards[0].querySelector('.card-footer');
++    const openFooter = cards[0].querySelector('.admin-card-footer');
+     expect(openFooter).toBeNull();
+     // In Progress: 0 rows, total 0 → no footer.
+-    const ipFooter = cards[1].querySelector('.card-footer');
++    const ipFooter = cards[1].querySelector('.admin-card-footer');
+     expect(ipFooter).toBeNull();
+   });
+ 
+@@ -241,7 +241,7 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
+     fixture.detectChanges();
+ 
+     expect(component.renderState()).toBe('error');
+-    const errorCard = fixture.nativeElement.querySelector('.error-card');
++    const errorCard = fixture.nativeElement.querySelector('.admin-error-card');
+     expect(errorCard).toBeTruthy();
+     const errorMsg = errorCard.querySelector('.error-message');
+     expect(errorMsg.textContent.trim()).toBe(
+@@ -284,11 +284,40 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
+     expect(ticketService.adminDashboard).toHaveBeenCalledTimes(2);
+   });
+ 
+-  it('routes to /users when URL hash is #users on initial load', () => {
+-    // The hash-based redirect is verified separately in the
+-    // "URL hash routing" describe block (below) so it doesn't
+-    // disturb the in-flight fixture state of the other tests.
+-    expect(true).toBe(true);
++  it('reactive heading reflects the active tab on initial load (Dashboard)', async () => {
++    ticketService.adminDashboard.and.resolveTo(makeSummary());
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const h1 = fixture.nativeElement.querySelector('h1');
++    expect(h1?.textContent?.trim()).toBe('Dashboard');
++  });
++
++  it('renders the tablist with role="tablist" and two role="tab" anchors', async () => {
++    ticketService.adminDashboard.and.resolveTo(makeSummary());
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const compiled = fixture.nativeElement as HTMLElement;
++    const tablist = compiled.querySelector('.tabs[role="tablist"]');
++    expect(tablist).toBeTruthy();
++    const tabs = compiled.querySelectorAll('.tab[role="tab"]');
++    expect(tabs.length).toBe(2);
++  });
++
++  it('marks the active tab with aria-selected="true" and the inactive with aria-selected="false"', async () => {
++    ticketService.adminDashboard.and.resolveTo(makeSummary());
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const tabs = fixture.nativeElement.querySelectorAll('.tab[role="tab"]') as NodeListOf<HTMLAnchorElement>;
++    const dashboardTab = Array.from(tabs).find((t) => t.textContent?.trim() === 'Dashboard')!;
++    const usersTab = Array.from(tabs).find((t) => t.textContent?.trim() === 'Users')!;
++    expect(dashboardTab.getAttribute('aria-selected')).toBe('true');
++    expect(usersTab.getAttribute('aria-selected')).toBe('false');
+   });
+ 
+   describe('formatRelative', () => {
+@@ -385,14 +414,17 @@ describe('AdminDashboardPageComponent URL hash routing (HD-013)', () => {
+     await TestBed.configureTestingModule({
+       imports: [AdminDashboardPageComponent],
+       providers: [
+-        provideRouter([{ path: 'users', children: [] }]),
++        provideRouter([
++          { path: 'admin', children: [] },
++          { path: 'users', children: [] },
++        ]),
+         provideHttpClient(),
+         { provide: TicketService, useValue: localTicketService },
+       ],
+     }).compileComponents();
+   });
+ 
+-  it('routes to /users when URL hash is #users on initial load', async () => {
++  it('renders the Users tab active + users-placeholder body when URL hash is #users on initial load', async () => {
+     const router = TestBed.inject(Router);
+     const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+ 
+@@ -400,11 +432,27 @@ describe('AdminDashboardPageComponent URL hash routing (HD-013)', () => {
+     window.location.hash = '#users';
+     try {
+       const newFixture = TestBed.createComponent(AdminDashboardPageComponent);
++      const newComponent = newFixture.componentInstance;
+       newFixture.detectChanges();
+       await newFixture.whenStable();
+       newFixture.detectChanges();
+ 
+-      expect(navigateSpy).toHaveBeenCalledWith('/users');
++      // URL hash contract: /admin#users stays on /admin, not /users.
++      // The component does NOT navigate to /users anymore.
++      expect(navigateSpy).not.toHaveBeenCalledWith('/users');
++
++      // The Users tab is active in the template.
++      expect(newComponent.activeTab()).toBe('users');
++
++      // The body renders the users-placeholder branch (HD-014 will
++      // replace this with the real Users content).
++      const compiled = newFixture.nativeElement as HTMLElement;
++      expect(compiled.querySelector('.users-placeholder')).toBeTruthy();
++      expect(compiled.querySelectorAll('.card-row .card').length).toBe(0);
++
++      // Heading reflects the active tab.
++      const h1 = compiled.querySelector('h1');
++      expect(h1?.textContent?.trim()).toBe('Users');
+     } finally {
+       window.location.hash = originalHash;
+     }
+diff --git a/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.ts b/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.ts
+index 5272715..e0e467c 100644
+--- a/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.ts
++++ b/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.ts
+@@ -41,7 +41,7 @@ import {
+   inject,
+   signal,
+ } from '@angular/core';
+-import { Router, RouterLink } from '@angular/router';
++import { RouterLink } from '@angular/router';
+ 
+ import { TicketService, type AdminDashboardSummary } from '../../services/ticket.service';
+ import { ApiError } from '../../services/api-error';
+@@ -51,7 +51,7 @@ import { BadgeStatusComponent } from '../../components/atoms/badge-status/badge-
+ import type { Ticket } from '../../models/ticket';
+ import type { TicketStatus } from '../../models/enums';
+ 
+-type RenderState = 'loading' | 'error' | 'success';
++type RenderState = 'loading' | 'error' | 'success' | 'users-placeholder';
+ type TabKey = 'dashboard' | 'users';
+ 
+ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
+@@ -70,26 +70,48 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
+     <app-chrome>
+       <section class="admin-page">
+         <header class="admin-header">
+-          <h1>Dashboard</h1>
+-          <nav class="tabs" aria-label="Admin views">
++          <h1>{{ headingText() }}</h1>
++          <nav class="tabs" role="tablist" aria-label="Admin views">
+             <a
+               class="tab"
++              role="tab"
++              id="admin-tab-dashboard"
+               [class.active]="activeTab() === 'dashboard'"
+               routerLink="/admin"
+               [fragment]="'dashboard'"
+-              ariaCurrentWhenActive="page"
++              [attr.aria-selected]="activeTab() === 'dashboard'"
++              [attr.tabindex]="activeTab() === 'dashboard' ? 0 : -1"
++              (keydown)="onTabKeydown($event, 'dashboard')"
+             >Dashboard</a>
+             <a
+               class="tab"
++              role="tab"
++              id="admin-tab-users"
+               [class.active]="activeTab() === 'users'"
+-              routerLink="/users"
++              routerLink="/admin"
+               [fragment]="'users'"
+-              ariaCurrentWhenActive="page"
++              [attr.aria-selected]="activeTab() === 'users'"
++              [attr.tabindex]="activeTab() === 'users' ? 0 : -1"
++              (keydown)="onTabKeydown($event, 'users')"
+             >Users</a>
+           </nav>
+         </header>
+ 
+-        @switch (renderState()) {
++        @switch (effectiveRenderState()) {
++          @case ('users-placeholder') {
++            <!-- HD-014 will absorb the Users content into this page.
++                 Until then, the tab stays on /admin#users and the
++                 body renders a single placeholder card so the
++                 design-doc contract (tab affordance, hash stays on
++                 /admin) is satisfied. -->
++            <div class="users-placeholder" role="tabpanel" aria-labelledby="admin-tab-users">
++              <p class="users-placeholder-text">
++                User management lands in HD-014. For now, the
++                <a routerLink="/users" class="users-standalone-link">standalone Users page</a>
++                is still reachable from the URL bar.
++              </p>
++            </div>
++          }
+           @case ('loading') {
+             <div class="card-row" aria-busy="true" aria-label="Loading dashboard">
+               @for (_ of skeletonArray(); track $index) {
+@@ -104,7 +126,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
+             </div>
+           }
+           @case ('error') {
+-            <div class="error-card" role="alert">
++            <div class="admin-error-card" role="alert">
+               <p class="error-message">{{ errorMessage() }}</p>
+               <atom-button variant="primary" size="md" (pressed)="onRefresh()">
+                 Retry
+@@ -115,7 +137,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
+             <div class="card-row">
+               @for (bucket of buckets(); track bucket.key) {
+                 <article class="card" [class.muted]="bucket.key === 'Closed'">
+-                  <header class="card-top">
++                  <header class="admin-card-top">
+                     <span class="pill-zone">
+                       <badge-status [status]="bucket.status" />
+                     </span>
+@@ -124,7 +146,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
+                       [class.muted-count]="bucket.key === 'Closed'"
+                     >{{ bucket.rows.length }}</span>
+                   </header>
+-                  <ul class="card-body">
++                  <ul class="admin-card-body">
+                     @if (bucket.rows.length === 0) {
+                       <li class="empty-marker">Nothing here.</li>
+                     } @else {
+@@ -162,7 +184,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
+                     }
+                   </ul>
+                   @if (bucket.total > bucket.rows.length) {
+-                    <footer class="card-footer">
++                    <footer class="admin-card-footer">
+                       Showing {{ bucket.rows.length }} of {{ bucket.total }}
+                     </footer>
+                   }
+@@ -175,111 +197,17 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
+     </app-chrome>
+   `,
+   styles: [`
++    /* All admin-page rules (header / tab switcher / card chrome /
++       row geometry / skeleton) are owned by styles.css so this
++       component's inline style budget stays under 2kB. Mirrors the
++       HD-011 / HD-012 pattern. */
+     :host {
+       display: block;
+     }
+-    .admin-page {
+-      width: 100%;
+-    }
+-    .admin-header {
+-      display: flex;
+-      justify-content: space-between;
+-      align-items: center;
+-      gap: 24px;
+-      margin-bottom: 24px;
+-    }
+-    .admin-header h1 {
+-      margin: 0;
+-      font-size: 24px;
+-      font-weight: 600;
+-      color: var(--color-primary);
+-    }
+-    .tabs {
+-      display: inline-flex;
+-      gap: 4px;
+-      padding: 4px;
+-      background: var(--color-surface-subtle);
+-      border: 1px solid var(--color-border);
+-      border-radius: 8px;
+-    }
+-    .tab {
+-      padding: 6px 14px;
+-      border-radius: 6px;
+-      font-size: 14px;
+-      font-weight: 500;
+-      color: var(--color-label);
+-      text-decoration: none;
+-      transition: background-color 120ms ease, color 120ms ease;
+-    }
+-    .tab:hover {
+-      color: var(--color-primary);
+-      text-decoration: none;
+-    }
+-    .tab.active {
+-      background: var(--color-surface);
+-      color: var(--color-primary);
+-      font-weight: 600;
+-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+-    }
+-    .tab:focus-visible {
+-      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+-      outline-offset: 2px;
+-    }
+-    .error-card {
+-      display: flex;
+-      flex-direction: column;
+-      align-items: flex-start;
+-      gap: 12px;
+-      padding: 16px;
+-      background: var(--color-surface);
+-      border: 1px solid var(--color-error);
+-      border-radius: 8px;
+-      margin-bottom: 16px;
+-    }
+-    .error-message {
+-      margin: 0;
+-      color: var(--color-error);
+-      font-size: 14px;
+-    }
+-    .empty-marker {
+-      padding: 16px 12px;
+-      color: var(--color-muted);
+-      font-size: 13px;
+-      text-align: center;
+-    }
+-    /* Card-specific geometry: the 4-column row + card chrome + per-
+-       row layout are kept in styles.css (mirrors the HD-011 / HD-012
+-       pattern of pushing the heaviest rules to global so the page
+-       component's inline style budget holds under 2kB). */
+-    .card-top {
+-      display: flex;
+-      justify-content: space-between;
+-      align-items: center;
+-    }
+-    .count {
+-      font-size: 20px;
+-      font-weight: 600;
+-      color: var(--color-primary);
+-    }
+-    .count.muted-count {
+-      color: var(--color-muted);
+-    }
+-    .card-body {
+-      list-style: none;
+-      margin: 0;
+-      padding: 0;
+-    }
+-    .card-footer {
+-      padding: 8px 12px;
+-      font-size: 12px;
+-      color: var(--color-muted);
+-      border-top: 1px solid var(--color-border);
+-    }
+   `],
+ })
+ export class AdminDashboardPageComponent implements OnInit {
+   private readonly ticketService = inject(TicketService);
+-  private readonly router = inject(Router);
+   private readonly destroyRef = inject(DestroyRef);
+ 
+   readonly renderState = signal<RenderState>('loading');
+@@ -304,16 +232,36 @@ export class AdminDashboardPageComponent implements OnInit {
+     ];
+   });
+ 
++  /**
++   * Heading reflects the active tab per design §2 ("heading text
++   * reflects the active tab. Dashboard when Dashboard active;
++   * Users when Users active."). Hardcoded string on each branch
++   * so the page title can also read this via a future document.title
++   * binding.
++   */
++  readonly headingText = computed(() =>
++    this.activeTab() === 'users' ? 'Users' : 'Dashboard',
++  );
++
++  /**
++   * The render state the template switches on. When the active tab
++   * is `users`, we short-circuit to the users-placeholder branch
++   * regardless of the underlying load state (the dashboard data
++   * is not relevant to the users tab). HD-014 will split this
++   * into a separate signal.
++   */
++  readonly effectiveRenderState = computed<RenderState>(() => {
++    if (this.activeTab() === 'users') return 'users-placeholder';
++    return this.renderState();
++  });
++
+   ngOnInit(): void {
+     this.syncTabFromUrl();
+-    // The Users tab is a placeholder for HD-014 — route to /users
+-    // so the tab affordance is real without rendering duplicate
+-    // content. HD-014 will absorb the Users content into /admin
+-    // and turn this into a true in-page switch.
+-    if (this.activeTab() === 'users') {
+-      void this.router.navigateByUrl('/users');
+-      return;
+-    }
++    // Per design §4, the Users tab content is a placeholder for
++    // HD-014 (which will absorb the Users content into this page).
++    // The URL hash stays on /admin#users so the page contract
++    // matches the design doc; until HD-014, the body renders an
++    // "HD-014 will land here" placeholder.
+     void this.load();
+   }
+ 
+@@ -334,6 +282,33 @@ export class AdminDashboardPageComponent implements OnInit {
+     void this.load();
+   }
+ 
++  /**
++   * Tab-list arrow-key navigation per design §4 ("←/→ arrow keys
++   * move focus between tabs, Enter activates"). The current
++   * implementation uses <a> tabs (so Enter/Space activate via the
++   * default link behavior), but the arrow-key pattern is on top so
++   * keyboard users don't fall out of the tab group at the right edge.
++   */
++  onTabKeydown(event: KeyboardEvent, current: TabKey): void {
++    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
++    event.preventDefault();
++    const next: TabKey = current === 'dashboard' ? 'users' : 'dashboard';
++    // Update the URL hash (so the URL stays in sync with the active
++    // tab) and move focus to the newly-active tab. We do this
++    // manually rather than via routerLink so the page doesn't
++    // re-fire ngOnInit (which would refetch the dashboard).
++    this.activeTab.set(next);
++    if (typeof window !== 'undefined') {
++      window.history.replaceState(null, '', `#${next}`);
++    }
++    queueMicrotask(() => {
++      const id =
++        next === 'dashboard' ? 'admin-tab-dashboard' : 'admin-tab-users';
++      const el = document.getElementById(id);
++      el?.focus();
++    });
++  }
++
+   formatRelative(iso: string): string {
+     const then = new Date(iso).getTime();
+     if (Number.isNaN(then)) return '';
+diff --git a/frontend/src/styles.css b/frontend/src/styles.css
+index 4ff636e..4bdbce1 100644
+--- a/frontend/src/styles.css
++++ b/frontend/src/styles.css
+@@ -325,21 +325,29 @@ a:hover {
+    skeleton; this block owns the row + card layout so the page
+    fits in the 2kB component-style soft budget. Mirrors the
+    HD-011 / HD-012 pattern of pushing the heaviest rules to
+-   global. */
++   global.
++
++   Per design spec §Spacing: card width 320px (fixed), 4 cards
++   fit 1440px canvas with 16px gaps and 56px outer padding.
++   The page sits inside <app-chrome> which already has the 56px
++   outer padding baked in via .page-content, so the cards align
++   flush to the chrome. */
+ .card-row {
+   display: grid;
+-  grid-template-columns: repeat(4, minmax(0, 1fr));
++  grid-template-columns: repeat(4, 320px);
+   gap: 16px;
+   align-items: start;
++  justify-content: start;
+ }
+ .card-row > .card,
+ .card-row > .card-skel {
+   background: var(--color-surface);
+   border: 1px solid var(--color-border);
+-  border-radius: 8px;
++  border-radius: 6px;
+   display: flex;
+   flex-direction: column;
+   overflow: hidden;
++  width: 320px;
+ }
+ .card-row > .card.muted {
+   /* Closed card is muted everywhere; spec line: "Closed count is
+@@ -354,14 +362,29 @@ a:hover {
+   flex: 1;
+   display: flex;
+   flex-direction: column;
+-  padding: 8px 0;
++  padding: 0;
++}
++
++/* Status badge mini-pill in the admin card top zone is sized down
++   per design spec §VisualTokens (18px tall, padding 0 8px, radius
++   9px). The base atom is 22px tall for ticket-row usage; we override
++   it just here via descendant selector so other callers (ticket-row,
++   submission-confirmation) are untouched. */
++.card-row .pill-zone badge-status .badge {
++  min-height: 18px;
++  padding: 0 8px;
++  font-size: 11px;
++  line-height: 18px;
++  border-radius: 9px;
+ }
+ 
+ /* Admin Dashboard card-body row (HD-013). Each row = mono number
+  * (left) · title (center-left, 1-line clamp) · relative timestamp
+  * (right). Open / In Progress / Resolved rows are <a> (hover tints
+  * subtle, focus ring); Closed rows are <li> (muted, no hover, no
+- * click). The page component owns the count + footer + skeleton;
++ * click). Geometry follows design spec §Spacing "row height 40px,
++ * mono number 11px #868e96, title 13px #212529, timestamp 11px
++ * #868e96". The page component owns the count + footer + skeleton;
+  * this block owns the per-row geometry so the page component's
+  * inline style budget stays under 2kB. */
+ .admin-card-row {
+@@ -369,7 +392,7 @@ a:hover {
+   grid-template-columns: 90px 1fr 80px;
+   align-items: center;
+   gap: 12px;
+-  height: 36px;
++  height: 40px;
+   padding: 0 12px;
+   color: var(--color-label);
+   text-decoration: none;
+@@ -395,20 +418,21 @@ a.admin-card-row:focus-visible {
+ }
+ .admin-card-row .number {
+   font-family: var(--font-mono);
+-  font-size: 12px;
++  font-size: 11px;
+   color: var(--color-muted);
+   letter-spacing: 0.5px;
+ }
+ .admin-card-row .title {
+   font-size: 13px;
+-  font-weight: 500;
++  font-weight: 600;
++  color: var(--color-primary);
+   overflow: hidden;
+   text-overflow: ellipsis;
+   white-space: nowrap;
+   min-width: 0;
+ }
+ .admin-card-row .timestamp {
+-  font-size: 12px;
++  font-size: 11px;
+   color: var(--color-muted);
+   justify-self: end;
+ }
+@@ -445,3 +469,132 @@ a.admin-card-row:focus-visible {
+   0%, 100% { opacity: 1; }
+   50% { opacity: 0.55; }
+ }
++
++/* Admin Dashboard page chrome (HD-013). The page header, tab
++   switcher, and per-card top / body / footer chrome are kept
++   global so the page component's inline style budget holds under
++   2kB. Mirrors the HD-011 / HD-012 pattern of pushing the heaviest
++   rules to global. */
++.admin-page {
++  width: 100%;
++}
++.admin-header {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  gap: 24px;
++  margin-bottom: 24px;
++}
++.admin-header h1 {
++  margin: 0;
++  font-size: 24px;
++  font-weight: 600;
++  color: var(--color-primary);
++}
++/* Tab switcher — design spec §2: 14px semibold #212529 active
++   with a 2px underline at y=124; inactive 14px regular #868e96,
++   no underline. No pill background. */
++.tabs {
++  display: inline-flex;
++  gap: 0;
++}
++.tab {
++  position: relative;
++  padding: 6px 14px 8px;
++  font-size: 14px;
++  font-weight: 400;
++  color: var(--color-muted);
++  text-decoration: none;
++  transition: color 120ms ease;
++}
++.tab:hover {
++  color: var(--color-primary);
++  text-decoration: none;
++}
++.tab.active {
++  color: var(--color-primary);
++  font-weight: 600;
++}
++/* Active 2px underline beneath text (spec §2 "active underline
++   at y=124 #212529 2px"). Positioned absolute so the underline
++   sits at a stable baseline regardless of font rendering. */
++.tab.active::after {
++  content: '';
++  position: absolute;
++  left: 14px;
++  right: 14px;
++  bottom: -2px;
++  height: 2px;
++  background: var(--color-primary);
++}
++.tab:focus-visible {
++  outline: var(--focus-ring-width) solid var(--focus-ring-color);
++  outline-offset: 2px;
++  border-radius: 2px;
++}
++.admin-error-card {
++  display: flex;
++  flex-direction: column;
++  align-items: flex-start;
++  gap: 12px;
++  padding: 16px;
++  background: var(--color-surface);
++  border: 1px solid var(--color-error);
++  border-radius: 8px;
++  margin-bottom: 16px;
++}
++.admin-error-card .error-message {
++  margin: 0;
++  color: var(--color-error);
++  font-size: 14px;
++}
++.empty-marker {
++  padding: 16px 12px;
++  color: var(--color-muted);
++  font-size: 13px;
++  text-align: center;
++}
++/* HD-014 placeholder. The Users tab stays on /admin#users so
++   the URL contract matches design §4; until HD-014, the body
++   shows a single muted card pointing at the existing /users
++   route. */
++.users-placeholder {
++  background: var(--color-surface);
++  border: 1px solid var(--color-border);
++  border-radius: 8px;
++  padding: 24px;
++}
++.users-placeholder-text {
++  margin: 0;
++  color: var(--color-label);
++  font-size: 14px;
++  line-height: 1.5;
++}
++.users-standalone-link {
++  color: var(--color-primary);
++}
++.admin-card-top {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++}
++.admin-card-top .count {
++  font-size: 28px;
++  font-weight: 600;
++  color: var(--color-primary);
++  line-height: 1;
++}
++.admin-card-top .count.muted-count {
++  color: var(--color-muted);
++}
++.admin-card-body {
++  list-style: none;
++  margin: 0;
++  padding: 0;
++}
++.admin-card-footer {
++  padding: 8px 12px;
++  font-size: 12px;
++  color: var(--color-muted);
++  border-top: 1px solid var(--color-border);
++}
