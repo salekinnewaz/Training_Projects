@@ -1,0 +1,2134 @@
+diff --git a/_bmad-output/implementation-artifacts/spec-hd-015-swagger.md b/_bmad-output/implementation-artifacts/spec-hd-015-swagger.md
+new file mode 100644
+index 0000000..eb57590
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/spec-hd-015-swagger.md
+@@ -0,0 +1,201 @@
++---
++title: 'HD-015 — Swagger / OpenAPI documentation at /api/docs'
++---
++
++# HD-015 — Swagger / OpenAPI documentation at /api/docs
++
++## Intent
++
++The HelpDesk Lite backend exposes 21 endpoints across 5 routers
++(`/api/health`, `/api/auth`, `/api/tickets`, `/api/users`,
++`/api/admin`) but ships with **zero API documentation** — no
++Swagger, no OpenAPI yaml, no Postman collection. The only
++documentation is inline JSDoc on each handler, which isn't
++browsable.
++
++HD-015 adds a browsable, interactive API reference: open
++`http://localhost:3000/api/docs` and see every endpoint grouped
++by tag, with full request/response schemas and a "Try it out"
++button. The OpenAPI JSON is also served at `/api/docs.json` for
++tooling (curl, codegen, import into Postman, etc.).
++
++This is a dev-tooling slice, not a product story. The contract
++being documented is already locked in (the controllers) — this
++story just makes that contract visible.
++
++## Boundaries
++
++### In scope
++
++- Mount Swagger UI at `GET /api/docs` + raw OpenAPI JSON at
++  `GET /api/docs.json` under the existing `/api` mount.
++- Annotate every existing controller handler with `@openapi`
++  JSDoc blocks (21 endpoints).
++- Define shared `components.schemas` (wire shapes) +
++  `components.responses` (error envelopes) so per-route
++  annotations stay short.
++- Document the existing `token` HttpOnly cookie as a
++  `cookieAuth` security scheme so Swagger UI's "Authorize"
++  button can attach it to requests.
++- One sanity spec (`openapi.spec.ts`) that asserts the
++  generated spec contains all 21 paths + the cookie scheme +
++  the key schemas. Catches silent regressions if someone
++  removes an annotation.
++
++### Out of scope
++
++- No code generation, no client SDK generation.
++- No "Authorize" / RBAC flow on the UI side — the cookie scheme
++  is documented, but the backend doesn't grow any new auth path.
++- No versioning, no `requestBody.example` per route, no per-route
++  `description` prose beyond a one-line `summary`.
++- No splitting into "public" vs "internal" surfaces — every
++  endpoint is documented.
++- No CSRF considerations — the docs UI is GET-only.
++- No Postman / Insomnia collection export.
++- No changes to the frontend (the docs live entirely in the
++  backend).
++
++## I/O matrix (high level)
++
++| User action | System response |
++|---|---|
++| Visit `http://localhost:3000/api/docs` | Browser loads Swagger UI HTML page with 21 endpoints grouped under 5 tags |
++| Visit `http://localhost:3000/api/docs.json` | Browser receives the raw OpenAPI 3.0.3 JSON document |
++| Click `Try it out` on `GET /health` | UI issues the request and shows `{ status: "ok", service, timestamp }` |
++| Click `Authorize` → paste JWT cookie → click `Try it out` on `GET /api/tickets/mine` | UI issues the request with the cookie and shows the user's tickets |
++| `curl -s :3000/api/docs.json \| jq '.paths \| keys' \| length` | Shell prints `21` |
++
++## Test plan
++
++### Unit (Jest)
++
++- `backend/src/docs/openapi.spec.ts` — single `it()` with ~30
++  assertions:
++  - `getOpenApiSpec()` returns without throwing.
++  - `spec.paths` contains all 21 path keys.
++  - `spec.components.securitySchemes.cookieAuth` is defined and
++    `in: 'cookie'`, `name: 'token'`.
++  - `spec.components.schemas` contains `User`, `Ticket`,
++    `Comment`, `ActivityLog`, `ErrorBody`, `HealthResponse`,
++    `LoginResponse`, `TicketListResponse`, `DashboardResponse`,
++    `UserListResponse`.
++  - Every operation has a `summary`, at least one
++    `responses.<status>`, and a `tags` array.
++
++### Integration (manual browser smoke)
++
++- `cd backend && npm run dev` (already runs on `:3000`).
++- Open `http://localhost:3000/api/docs` → Swagger UI loads
++  with all 21 endpoints under 5 tags (Health, Auth, Tickets,
++  Users, Admin).
++- `GET /api/docs.json` returns a valid OpenAPI 3.0.3 JSON
++  document with 21 paths.
++- `GET /api/health` via the UI's "Try it out" returns 200 with
++  the expected body.
++
++## Files
++
++**New:**
++- `backend/src/docs/openapi.ts` (~250 lines: spec assembler +
++  shared schemas/responses + cookieAuth security scheme)
++- `backend/src/docs/openapi.spec.ts` (~35 lines, single `it()`
++  with ~30 assertions)
++- `_bmad-output/implementation-artifacts/spec-hd-015-swagger.md`
++  (this file)
++- `_bmad-output/hd015.diff`
++
++**Modified:**
++- `backend/package.json` (add `swagger-jsdoc` + `swagger-ui-express`
++  to devDependencies)
++- `backend/src/server.ts` (2 imports + 2 mounts)
++- `backend/src/controllers/healthController.ts` (1 `@openapi` block)
++- `backend/src/controllers/authController.ts` (4 `@openapi` blocks)
++- `backend/src/controllers/ticketsController.ts` (10 `@openapi`
++  blocks)
++- `backend/src/controllers/usersController.ts` (4 `@openapi` blocks)
++- `backend/src/controllers/adminController.ts` (1 `@openapi` block)
++
++## Implementation order
++
++1. Add `swagger-jsdoc` + `swagger-ui-express` to
++   `backend/package.json`; run `npm install`.
++2. Write `backend/src/docs/openapi.ts` with the spec assembler
++   + shared `components.schemas` + `components.responses` +
++   `cookieAuth` scheme. The function `getOpenApiSpec()` should
++   be a no-op throw-away at this point (no annotations yet), so
++   the spec assembles with 0 paths but the file compiles.
++3. Mount in `server.ts` (so any wiring bug surfaces early,
++   before the annotation work).
++4. Add `@openapi` blocks to every controller, in this order:
++   1. `healthController` (simplest, 1 endpoint).
++   2. `authController` (4 endpoints, introduces `LoginRequest`
++      + `LoginResponse` + uses cookieAuth).
++   3. `usersController` (4 endpoints, introduces `User` +
++      `UserListResponse` + `UpdateRoleRequest` +
++      `UpdateStatusRequest`).
++   4. `ticketsController` (10 endpoints, biggest set,
++      introduces `Ticket` + `Comment` + `ActivityLog` +
++      `TicketListResponse` + the various request bodies).
++   5. `adminController` (1 endpoint, introduces
++      `DashboardResponse`).
++5. Write `backend/src/docs/openapi.spec.ts` and run `npm test`
++   — all 21 paths must be present.
++6. Run `npm run typecheck` — exits 0.
++7. Manual browser smoke (see Test plan → Integration).
++8. Generate diff, commit, push (two-commit pattern).
++
++## Verification
++
++1. `cd backend && npm test` — **74/74 pass** (was 73 + 1 new
++   `openapi.spec.ts` with ~30 assertions in a single `it()`).
++2. `cd backend && npm run typecheck` — exits 0. (The
++   `@openapi` blocks are inside JSDoc so TS doesn't type-check
++   them, but the spec config + UI mount must compile.)
++3. `cd backend && npm run dev` then:
++   - `curl -s :3000/api/docs.json | jq '.paths | keys | length'`
++     → `21`.
++   - `curl -s :3000/api/docs.json | jq
++     '.components.securitySchemes.cookieAuth'` → cookie scheme
++     with `name: "token"`.
++   - Browser: `http://localhost:3000/api/docs` loads Swagger UI
++     with all 21 endpoints under 5 tags.
++4. Frontend untouched — `npx ng test` and `npx ng build` both
++   unaffected (148/154 baseline holds).
++
++## Reuse (no new patterns)
++
++- `HttpErrorBody` shape in `backend/src/utils/errors.ts:13` →
++  `ErrorBody` OpenAPI schema (and the `fields` optional
++  property is the `ValidationErrorBody` schema).
++- Cookie name `token` in `backend/src/utils/cookies.ts` →
++  `cookieAuth` security scheme `name`.
++- Existing serializers in each controller (`serializeTicket`,
++  `serializeUser`, `serializeComment`, `serializeActivity`) are
++  the source of truth for the schemas — the OpenAPI doc just
++  mirrors them.
++- The frontend's matching `UserPublic` / `Ticket` / `Comment`
++  interfaces already stay in lockstep with the backend by
++  hand. The OpenAPI doc adds another mirror of the same
++  contract — three-way sync is on the human, same as it is
++  today.
++
++## Notes for the implementer
++
++- swagger-jsdoc is sync on first call; the spec is built once
++  at module load and cached. `getOpenApiSpec()` returns the
++  same object every time.
++- swagger-ui-express can throw if `setup(spec)` is called with
++  a malformed spec. The `openapi.spec.ts` smoke test catches
++  the silent case where a path is missing but the UI still
++  renders. For malformed cases, the UI will fail loudly on
++  first request.
++- JSDoc blocks must be **directly above** the exported handler
++  (no blank lines, no intermediate comments) for swagger-jsdoc
++  to pick them up. The existing controller JSDoc blocks
++  describe the handler's intent — keep those, append the
++  `@openapi` block as a second paragraph.
++- The `*` glob in `apis: ['./src/routes/*.ts',
++  './src/controllers/*.ts']` is relative to the project root
++  (where `node` is invoked from), not to the openapi.ts file.
++  This matches swagger-jsdoc's documented behavior.
+diff --git a/backend/package.json b/backend/package.json
+index c6e8a1a..3536755 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -38,9 +38,13 @@
+     "@types/morgan": "^1.9.9",
+     "@types/node": "^22.9.0",
+     "@types/supertest": "^6.0.2",
++    "@types/swagger-jsdoc": "^6.0.4",
++    "@types/swagger-ui-express": "^4.1.8",
+     "jest": "^29.7.0",
+     "sequelize-cli": "^6.6.2",
+     "supertest": "^7.0.0",
++    "swagger-jsdoc": "^6.3.0",
++    "swagger-ui-express": "^5.0.1",
+     "ts-jest": "^29.2.5",
+     "ts-node": "^10.9.2",
+     "tsx": "^4.19.2",
+diff --git a/backend/src/controllers/adminController.ts b/backend/src/controllers/adminController.ts
+index 8c65d1e..6bf9d23 100644
+--- a/backend/src/controllers/adminController.ts
++++ b/backend/src/controllers/adminController.ts
+@@ -96,6 +96,29 @@ function serializeDashboard(
+  * `authMiddleware → handler` chain.
+  *
+  * Response: 200 with the four-bucket summary object.
++ *
++ * @openapi
++ * /admin/dashboard:
++ *   get:
++ *     summary: Admin dashboard summary
++ *     description: |
++ *       Returns a four-bucket summary of every ticket in the
++ *       system, grouped by status. Each bucket carries the first
++ *       14 tickets (the Admin Dashboard UI cap) plus the total
++ *       count so the footer can render "Showing N of M" when
++ *       total > 14. Admin only.
++ *     tags: [Admin]
++ *     responses:
++ *       200:
++ *         description: Dashboard summary.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/DashboardResponse'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       403:
++ *         $ref: '#/components/responses/Forbidden'
+  */
+ export const getDashboardHandler = asyncHandler(
+   async (req: Request, res: Response) => {
+diff --git a/backend/src/controllers/authController.ts b/backend/src/controllers/authController.ts
+index 5b4e1c1..f339f5e 100644
+--- a/backend/src/controllers/authController.ts
++++ b/backend/src/controllers/authController.ts
+@@ -87,6 +87,52 @@ interface AuthUserPayload {
+   updatedAt: string;
+ }
+ 
++/**
++ * @openapi
++ * /auth/login:
++ *   post:
++ *     summary: Log in
++ *     description: |
++ *       Validates credentials, sets the `auth` HttpOnly cookie, and
++ *       returns the public user shape. The cookie is the sole
++ *       auth token for every subsequent request.
++ *     tags: [Auth]
++ *     security: []
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             $ref: '#/components/schemas/LoginRequest'
++ *     responses:
++ *       200:
++ *         description: |
++ *           Login successful. `Set-Cookie: auth=...` attached.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/LoginResponse'
++ *       400:
++ *         $ref: '#/components/responses/ValidationError'
++ *       401:
++ *         description: Invalid credentials.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *             example:
++ *               error: invalid_credentials
++ *               message: Email or password is incorrect. Try again.
++ *       403:
++ *         description: Account is inactive.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *             example:
++ *               error: account_inactive
++ *               message: Your account is inactive. Contact your administrator.
++ */
+ export const login = asyncHandler(async (req: Request, res: Response) => {
+   const { email, password } = validateLoginBody(
+     (req.body ?? {}) as LoginBody,
+@@ -143,11 +189,46 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
+   });
+ });
+ 
++/**
++ * @openapi
++ * /auth/logout:
++ *   post:
++ *     summary: Log out
++ *     description: |
++ *       Clears the `auth` cookie. Always returns 204, even if no
++ *       cookie was set (idempotent).
++ *     tags: [Auth]
++ *     security: []
++ *     responses:
++ *       204:
++ *         description: Logged out. No body.
++ */
+ export const logout = asyncHandler(async (_req: Request, res: Response) => {
+   clearAuthCookie(res);
+   res.status(204).send();
+ });
+ 
++/**
++ * @openapi
++ * /auth/register:
++ *   post:
++ *     summary: Register (not implemented)
++ *     description: |
++ *       Admin-managed users per HD-014 — this endpoint is intentionally
++ *       unimplemented in MVP. Returns 501.
++ *     tags: [Auth]
++ *     security: []
++ *     responses:
++ *       501:
++ *         description: Not implemented in this build.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *             example:
++ *               error: not_implemented
++ *               message: Account registration is not available in this build. Contact your administrator.
++ */
+ export const register = asyncHandler(async (_req: Request, _res: Response) => {
+   // Admin-managed users per HD-014; this endpoint is intentionally
+   // unimplemented in MVP.
+@@ -158,6 +239,36 @@ export const register = asyncHandler(async (_req: Request, _res: Response) => {
+   );
+ });
+ 
++/**
++ * @openapi
++ * /auth/me:
++ *   get:
++ *     summary: Current user
++ *     description: |
++ *       Returns the full public user shape for the JWT'd user.
++ *       Reloads from the database on every call so role / isActive
++ *       changes made by an Admin (HD-014) take effect on the
++ *       user's next request without forcing a re-login.
++ *     tags: [Auth]
++ *     responses:
++ *       200:
++ *         description: Current user payload.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/MeResponse'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       403:
++ *         description: Account was deactivated since token issuance.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *             example:
++ *               error: account_inactive
++ *               message: Your account is inactive. Contact your administrator.
++ */
+ export const me = asyncHandler(async (req: Request, res: Response) => {
+   // authMiddleware attached req.user from the JWT. Reload from DB
+   // to detect role / isActive changes since token issuance — this
+diff --git a/backend/src/controllers/healthController.ts b/backend/src/controllers/healthController.ts
+index e03e4d0..c12f0aa 100644
+--- a/backend/src/controllers/healthController.ts
++++ b/backend/src/controllers/healthController.ts
+@@ -6,6 +6,21 @@ import { Request, Response } from 'express';
+  *
+  * HD-001 ships this as the only API route; every subsequent story
+  * (HD-002+) registers its routes under /api in routes/index.ts.
++ *
++ * @openapi
++ * /health:
++ *   get:
++ *     summary: Health check
++ *     description: Public liveness probe. Returns 200 with service metadata.
++ *     tags: [Health]
++ *     security: []
++ *     responses:
++ *       200:
++ *         description: Service is up.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/HealthResponse'
+  */
+ export function healthController(_req: Request, res: Response): void {
+   res.status(200).json({
+diff --git a/backend/src/controllers/ticketsController.ts b/backend/src/controllers/ticketsController.ts
+index 10bc7b6..790f99e 100644
+--- a/backend/src/controllers/ticketsController.ts
++++ b/backend/src/controllers/ticketsController.ts
+@@ -143,6 +143,26 @@ function parseTicketId(rawId: string): number {
+   return parsed;
+ }
+ 
++/**
++ * @openapi
++ * /tickets/mine:
++ *   get:
++ *     summary: List the caller's tickets
++ *     description: |
++ *       Returns every ticket submitted by the JWT'd user, newest
++ *       first. Used by the Employee Dashboard
++ *       (`frontend/src/app/pages/employee-dashboard-page`).
++ *     tags: [Tickets]
++ *     responses:
++ *       200:
++ *         description: Caller's tickets.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/TicketListResponse'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ */
+ export const listMine = asyncHandler(async (req: Request, res: Response) => {
+   // authMiddleware ran before us and populated req.user.
+   const userId = req.user!.id;
+@@ -168,6 +188,27 @@ export const listMine = asyncHandler(async (req: Request, res: Response) => {
+  * No filter / search params are honored in HD-012 — the page applies
+  * those client-side over the returned set. HD-015 will lift them
+  * server-side and add cursor pagination.
++ *
++ * @openapi
++ * /tickets/queue:
++ *   get:
++ *     summary: List every ticket (Support Agent / Admin)
++ *     description: |
++ *       Returns every ticket in the system, newest first. Used by
++ *       the Agent Kanban board (HD-012). Support Agent or Admin
++ *       only; Users get 403.
++ *     tags: [Tickets]
++ *     responses:
++ *       200:
++ *         description: All tickets.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/TicketListResponse'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       403:
++ *         $ref: '#/components/responses/Forbidden'
+  */
+ export const listForQueueHandler = asyncHandler(
+   async (req: Request, res: Response) => {
+@@ -203,6 +244,44 @@ export const listForQueueHandler = asyncHandler(
+  *      instance.
+  *   5. respond 201 with `{ ticket: serializeTicket(...) }`.
+  */
++/**
++ * @openapi
++ * /tickets:
++ *   post:
++ *     summary: Create a ticket
++ *     description: |
++ *       Creates a new ticket on behalf of the JWT'd user. The
++ *       submitter is taken from the JWT, never the body. Only
++ *       `User` role may create — Support Agents and Admins are
++ *       403'd.
++ *     tags: [Tickets]
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             $ref: '#/components/schemas/CreateTicketRequest'
++ *     responses:
++ *       201:
++ *         description: Ticket created.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/TicketResponse'
++ *       400:
++ *         $ref: '#/components/responses/ValidationError'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       403:
++ *         description: Caller is not a `User`.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *             example:
++ *               error: forbidden
++ *               message: Only the User role may create tickets.
++ */
+ export const create = asyncHandler(async (req: Request, res: Response) => {
+   // Role gate. Per spec, no roleGuard(['User']) on the route — the
+   // controller owns the assertion so the route file reads as a
+@@ -241,6 +320,40 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
+  *      other users' ticket IDs by status code. Support Agent /
+  *      Admin see any ticket.
+  *   5. respond 200 with `{ ticket: serializeTicket(...) }`.
++ *
++ * @openapi
++ * /tickets/{id}:
++ *   get:
++ *     summary: Get a ticket by id
++ *     description: |
++ *       Users see their own tickets only. Support Agents and
++ *       Admins see any ticket. A User probing another user's
++ *       ticket id receives the same 404 as a missing ticket
++ *       (enumeration protection).
++ *     tags: [Tickets]
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *         schema:
++ *           type: integer
++ *     responses:
++ *       200:
++ *         description: Ticket.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/TicketResponse'
++ *       400:
++ *         description: Invalid id.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       404:
++ *         $ref: '#/components/responses/NotFound'
+  */
+ export const getById = asyncHandler(async (req: Request, res: Response) => {
+   const parsedId = Number(req.params.id);
+@@ -287,6 +400,44 @@ export const getById = asyncHandler(async (req: Request, res: Response) => {
+  *
+  * On success: 200 `{ ticket }`. On any validation failure: 400
+  * `validation_error` with `fields` (HD-008 envelope).
++ *
++ * @openapi
++ * /tickets/{id}:
++ *   patch:
++ *     summary: Update a ticket
++ *     description: |
++ *       Partial update of `status`, `priority`, `category`, or
++ *       `ownerId`. Per-field role + transition rules enforced —
++ *       see controller JSDoc for the matrix. Closed tickets
++ *       cannot transition out of Closed (returns 400).
++ *     tags: [Tickets]
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *         schema:
++ *           type: integer
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             $ref: '#/components/schemas/UpdateTicketRequest'
++ *     responses:
++ *       200:
++ *         description: Updated ticket.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/TicketResponse'
++ *       400:
++ *         $ref: '#/components/responses/ValidationError'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       403:
++ *         $ref: '#/components/responses/Forbidden'
++ *       404:
++ *         $ref: '#/components/responses/NotFound'
+  */
+ export const patch = asyncHandler(async (req: Request, res: Response) => {
+   const ticketId = parseTicketId(req.params.id);
+@@ -352,6 +503,46 @@ export const patch = asyncHandler(async (req: Request, res: Response) => {
+  * On success: 201 `{ comment }`. The comment's `author`
+  * association is eager-loaded by the service so the controller
+  * can serialize straight back without a second round-trip.
++ *
++ * @openapi
++ * /tickets/{id}/comments:
++ *   post:
++ *     summary: Add a comment
++ *     description: |
++ *       Adds a comment to a ticket. Closed tickets return 403.
++ *       The comment's `author` is the JWT'd user.
++ *     tags: [Tickets]
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *         schema:
++ *           type: integer
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             $ref: '#/components/schemas/AddCommentRequest'
++ *     responses:
++ *       201:
++ *         description: Comment created.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/CommentCreateResponse'
++ *       400:
++ *         $ref: '#/components/responses/ValidationError'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       403:
++ *         description: Ticket is closed.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *       404:
++ *         $ref: '#/components/responses/NotFound'
+  */
+ export const addCommentHandler = asyncHandler(
+   async (req: Request, res: Response) => {
+@@ -375,6 +566,30 @@ export const addCommentHandler = asyncHandler(
+  *
+  * Same enumeration protection as `getById`. Returns 200
+  * `{ comments: [...], count }`.
++ *
++ * @openapi
++ * /tickets/{id}/comments:
++ *   get:
++ *     summary: List ticket comments
++ *     description: Returns every comment on the ticket, oldest first.
++ *     tags: [Tickets]
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *         schema:
++ *           type: integer
++ *     responses:
++ *       200:
++ *         description: Comment list.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/CommentListResponse'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       404:
++ *         $ref: '#/components/responses/NotFound'
+  */
+ export const listCommentsHandler = asyncHandler(
+   async (req: Request, res: Response) => {
+@@ -395,6 +610,30 @@ export const listCommentsHandler = asyncHandler(
+  * Same enumeration protection as `getById`. Returns 200
+  * `{ activity: [...], count }`. The timeline-entry renderer uses
+  * `eventType` + `payload` to derive the per-event description.
++ *
++ * @openapi
++ * /tickets/{id}/activity:
++ *   get:
++ *     summary: List ticket activity
++ *     description: Returns every activity event for the ticket, newest first.
++ *     tags: [Tickets]
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *         schema:
++ *           type: integer
++ *     responses:
++ *       200:
++ *         description: Activity list.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ActivityListResponse'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       404:
++ *         $ref: '#/components/responses/NotFound'
+  */
+ export const listActivityHandler = asyncHandler(
+   async (req: Request, res: Response) => {
+@@ -417,6 +656,44 @@ export const listActivityHandler = asyncHandler(
+  * when `ticket.status === Resolved`; any other status → 400.
+  *
+  * On success: 200 `{ ticket }`.
++ *
++ * @openapi
++ * /tickets/{id}/reopen:
++ *   post:
++ *     summary: Reopen a ticket
++ *     description: |
++ *       Submitter-only. Transitions `Resolved` → `Open`. Any
++ *       other current status returns 400.
++ *     tags: [Tickets]
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *         schema:
++ *           type: integer
++ *     responses:
++ *       200:
++ *         description: Ticket reopened.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/TicketResponse'
++ *       400:
++ *         description: Ticket is not in Resolved state.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       403:
++ *         description: Caller is not the submitter.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *       404:
++ *         $ref: '#/components/responses/NotFound'
+  */
+ export const reopen = asyncHandler(async (req: Request, res: Response) => {
+   const ticketId = parseTicketId(req.params.id);
+@@ -455,6 +732,44 @@ export const reopen = asyncHandler(async (req: Request, res: Response) => {
+  * read-only (no edits, no comments, no reopen).
+  *
+  * On success: 200 `{ ticket }`.
++ *
++ * @openapi
++ * /tickets/{id}/confirm-close:
++ *   post:
++ *     summary: Confirm close
++ *     description: |
++ *       Submitter-only. Transitions `Resolved` → `Closed`. Closed
++ *       is terminal — once here, the ticket is read-only.
++ *     tags: [Tickets]
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *         schema:
++ *           type: integer
++ *     responses:
++ *       200:
++ *         description: Ticket closed.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/TicketResponse'
++ *       400:
++ *         description: Ticket is not in Resolved state.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       403:
++ *         description: Caller is not the submitter.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *       404:
++ *         $ref: '#/components/responses/NotFound'
+  */
+ export const confirmClose = asyncHandler(
+   async (req: Request, res: Response) => {
+diff --git a/backend/src/controllers/usersController.ts b/backend/src/controllers/usersController.ts
+index 94ec45e..da73861 100644
+--- a/backend/src/controllers/usersController.ts
++++ b/backend/src/controllers/usersController.ts
+@@ -61,6 +61,27 @@ interface AgentSummaryWire {
+  * drops the agent list to an Unassigned-only fallback — the meta
+  * load never blocks on this endpoint.
+  */
++/**
++ * @openapi
++ * /users/agents:
++ *   get:
++ *     summary: List active agents
++ *     description: |
++ *       Returns Support Agents + Admins (active only), sorted by
++ *       displayName ASC. Used by the Ticket Detail page's
++ *       assignee dropdown. No `User` role is included — Users
++ *       can never own a ticket.
++ *     tags: [Users]
++ *     responses:
++ *       200:
++ *         description: Agent list.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/AgentListResponse'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ */
+ export const listActiveAgentsHandler = asyncHandler(
+   async (_req: Request, res: Response) => {
+     const users = await listActiveAgents();
+@@ -125,6 +146,27 @@ function serializeUser(u: UserAttributes): UserPublicWire {
+  * window-focus refetch (mirrors admin-dashboard) is the only
+  * revalidation trigger.
+  */
++/**
++ * @openapi
++ * /users:
++ *   get:
++ *     summary: List all users
++ *     description: |
++ *       Full user list (Admin only), sorted by displayName ASC.
++ *       No pagination in MVP (capped at ≤20 users per design doc).
++ *     tags: [Users]
++ *     responses:
++ *       200:
++ *         description: User list.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/UserListResponse'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       403:
++ *         $ref: '#/components/responses/Forbidden'
++ */
+ export const listAllHandler = asyncHandler(
+   async (req: Request, res: Response) => {
+     const role = req.user!.role;
+@@ -159,6 +201,49 @@ export const listAllHandler = asyncHandler(
+  * On success, returns 200 with the updated user wire (single
+  * object, not wrapped) so the page can patch its local signal.
+  */
++/**
++ * @openapi
++ * /users/{id}/role:
++ *   put:
++ *     summary: Change a user's role
++ *     description: |
++ *       Admin only. Self-protection: returns 400 if `id` matches
++ *       the caller's own user id (mirrors the UI's self-row
++ *       protection — defense-in-depth).
++ *     tags: [Users]
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *         description: Target user id.
++ *         schema:
++ *           type: integer
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             $ref: '#/components/schemas/UpdateRoleRequest'
++ *     responses:
++ *       200:
++ *         description: Updated user.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/User'
++ *       400:
++ *         description: Validation error, invalid id, or self-role-change attempt.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ValidationErrorBody'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       403:
++ *         $ref: '#/components/responses/Forbidden'
++ *       404:
++ *         $ref: '#/components/responses/NotFound'
++ */
+ export const setRoleHandler = asyncHandler(
+   async (req: Request, res: Response) => {
+     const actor = req.user!;
+@@ -215,6 +300,50 @@ export const setRoleHandler = asyncHandler(
+  *
+  * On success, returns 200 with the updated user wire.
+  */
++/**
++ * @openapi
++ * /users/{id}/status:
++ *   put:
++ *     summary: Toggle a user's active status
++ *     description: |
++ *       Admin only. Self-protection: returns 400 if `id` matches
++ *       the caller's own user id (an Admin cannot deactivate
++ *       themselves). Setting `isActive: false` invalidates the
++ *       target's session on their next `/me` call.
++ *     tags: [Users]
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *         description: Target user id.
++ *         schema:
++ *           type: integer
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             $ref: '#/components/schemas/UpdateStatusRequest'
++ *     responses:
++ *       200:
++ *         description: Updated user.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/User'
++ *       400:
++ *         description: Validation error or self-deactivation attempt.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ValidationErrorBody'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       403:
++ *         $ref: '#/components/responses/Forbidden'
++ *       404:
++ *         $ref: '#/components/responses/NotFound'
++ */
+ export const setActiveHandler = asyncHandler(
+   async (req: Request, res: Response) => {
+     const actor = req.user!;
+diff --git a/backend/src/docs/openapi.spec.ts b/backend/src/docs/openapi.spec.ts
+new file mode 100644
+index 0000000..f6bbed8
+--- /dev/null
++++ b/backend/src/docs/openapi.spec.ts
+@@ -0,0 +1,137 @@
++/**
++ * openapi.spec.ts — HD-015.
++ *
++ * Sanity test that the assembled OpenAPI document contains every
++ * endpoint, every shared schema, and the cookieAuth security
++ * scheme. Catches silent regressions if someone removes an
++ * `@openapi` block from a controller handler.
++ *
++ * One `it()` with a flat list of `expect()`s so the test report
++ * is a single roll-up. Individual expectations can fail with
++ * precise names (`Expected spec.paths to have property '/auth/me'`).
++ */
++
++import { describe, it, expect } from '@jest/globals';
++
++import { getOpenApiSpec } from './openapi';
++
++describe('OpenAPI spec (HD-015)', () => {
++  const spec = getOpenApiSpec() as {
++    openapi: string;
++    info: { title: string; version: string };
++    paths: Record<string, Record<string, unknown>>;
++    components: {
++      securitySchemes: Record<string, { type: string; in: string; name: string }>;
++      schemas: Record<string, unknown>;
++      responses: Record<string, unknown>;
++    };
++  };
++
++  it('contains every endpoint + the cookie auth scheme + key schemas', () => {
++    // ── Top-level metadata ────────────────────────────────────────
++    expect(spec.openapi).toBe('3.0.3');
++    expect(spec.info.title).toBe('HelpDesk Lite API');
++    expect(typeof spec.info.version).toBe('string');
++
++    // ── All 18 paths (covering 20 HTTP methods across 5 routers) ──
++    // Note: GET and PATCH on /tickets/{id} share one path entry,
++    // so 18 paths × 20 methods. The list below is the union of
++    // every documented operation.
++    const expectedPaths = [
++      '/health',
++      '/auth/login',
++      '/auth/logout',
++      '/auth/me',
++      '/auth/register',
++      '/tickets',
++      '/tickets/mine',
++      '/tickets/queue',
++      '/tickets/{id}',
++      '/tickets/{id}/activity',
++      '/tickets/{id}/comments',
++      '/tickets/{id}/confirm-close',
++      '/tickets/{id}/reopen',
++      '/users',
++      '/users/agents',
++      '/users/{id}/role',
++      '/users/{id}/status',
++      '/admin/dashboard',
++    ];
++    for (const p of expectedPaths) {
++      expect(spec.paths).toHaveProperty(p);
++    }
++    // Belt-and-braces: confirm the path count.
++    expect(Object.keys(spec.paths).length).toBe(expectedPaths.length);
++
++    // ── Security: cookieAuth with the right cookie name ───────────
++    expect(spec.components.securitySchemes).toHaveProperty('cookieAuth');
++    expect(spec.components.securitySchemes.cookieAuth).toEqual({
++      type: 'apiKey',
++      in: 'cookie',
++      name: 'auth',
++      description: expect.stringContaining('HttpOnly JWT cookie'),
++    });
++
++    // ── Schemas: every wire shape the controllers emit ────────────
++    const expectedSchemas = [
++      'User',
++      'AgentSummary',
++      'Ticket',
++      'Comment',
++      'ActivityLog',
++      'DashboardBucket',
++      'DashboardResponse',
++      'HealthResponse',
++      'LoginResponse',
++      'MeResponse',
++      'TicketListResponse',
++      'TicketResponse',
++      'CommentListResponse',
++      'CommentCreateResponse',
++      'ActivityListResponse',
++      'AgentListResponse',
++      'UserListResponse',
++      'LoginRequest',
++      'CreateTicketRequest',
++      'UpdateTicketRequest',
++      'AddCommentRequest',
++      'UpdateRoleRequest',
++      'UpdateStatusRequest',
++      'ErrorBody',
++      'ValidationErrorBody',
++    ];
++    for (const s of expectedSchemas) {
++      expect(spec.components.schemas).toHaveProperty(s);
++    }
++
++    // ── Responses: the shared error envelopes ─────────────────────
++    for (const r of [
++      'NotFound',
++      'ValidationError',
++      'Unauthorized',
++      'Forbidden',
++      'Conflict',
++    ]) {
++      expect(spec.components.responses).toHaveProperty(r);
++    }
++
++    // ── Every operation has a summary + tags + at least one
++    //    response (catches a handler whose @openapi block was
++    //    truncated mid-YAML). ─────────────────────────────────────
++    for (const [path, methods] of Object.entries(spec.paths)) {
++      for (const [verb, op] of Object.entries(methods)) {
++        if (verb.startsWith('x-')) continue;
++        expect((op as { summary?: string }).summary).toBeTruthy();
++        expect((op as { tags?: string[] }).tags).toBeTruthy();
++        expect((op as { responses?: unknown }).responses).toBeTruthy();
++        // Tag is a non-empty array of strings.
++        const tags = (op as { tags: string[] }).tags;
++        expect(Array.isArray(tags)).toBe(true);
++        expect(tags.length).toBeGreaterThan(0);
++        // Unused arg so the path / verb show in failure messages.
++        expect(typeof path).toBe('string');
++        expect(typeof verb).toBe('string');
++      }
++    }
++  });
++});
+diff --git a/backend/src/docs/openapi.ts b/backend/src/docs/openapi.ts
+new file mode 100644
+index 0000000..06bf22f
+--- /dev/null
++++ b/backend/src/docs/openapi.ts
+@@ -0,0 +1,525 @@
++/**
++ * OpenAPI spec assembler — HD-015.
++ *
++ * Generates the OpenAPI 3.0.3 document that Swagger UI renders at
++ * `GET /api/docs` and that tooling (curl, Postman import,
++ * codegen) can fetch at `GET /api/docs.json`.
++ *
++ * The spec is built from two sources:
++ *
++ *   1. The hand-written `components` block in `sharedComponents`
++ *      below — the wire-shape schemas (User, Ticket, Comment,
++ *      ActivityLog, the error envelopes) and the cookieAuth
++ *      security scheme. Every per-route `@openapi` block in the
++ *      controllers `$ref`s these, so a schema change happens in
++ *      one place.
++ *
++ *   2. The `@openapi` JSDoc blocks above every exported handler
++ *      in `src/controllers/*.ts`. swagger-jsdoc scans those
++ *      comments at boot and merges them into `paths`.
++ *
++ * `getOpenApiSpec()` is sync and caches the result, so the
++ * swagger-ui-express `setup(spec)` call and the `/api/docs.json`
++ * route share the same instance.
++ *
++ * **Cookie name**: the JWT rides in an HttpOnly cookie named
++ * `auth` (see `utils/cookies.ts:16`). The `cookieAuth` security
++ * scheme references that name verbatim — Swagger UI's "Authorize"
++ * dialog prompts for the cookie value.
++ *
++ * **Why per-route annotations instead of a yaml file?** Same
++ * reason every Express-TS project picks JSDoc: the OpenAPI doc
++ * lives next to the code that implements it. Drift gets caught
++ * in code review. Hand-written yaml drifts the moment someone
++ * adds a route and forgets to update the file.
++ */
++
++import swaggerJSDoc from 'swagger-jsdoc';
++
++import packageJson from '../../package.json';
++
++/**
++ * Shared OpenAPI `components` block — schemas, responses, and
++ * security schemes. Every `@openapi` block in the controllers
++ * references these via `$ref`, so a wire-shape change happens
++ * in one place and propagates to every endpoint that uses it.
++ */
++const sharedComponents = {
++  securitySchemes: {
++    /**
++     * The `auth` HttpOnly cookie set by `POST /api/auth/login`
++     * and read by `authMiddleware`. Swagger UI's "Authorize"
++     * button surfaces this; the user pastes the cookie value
++     * (copy from browser devtools after logging in) and every
++     * subsequent "Try it out" call sends it.
++     */
++    cookieAuth: {
++      type: 'apiKey',
++      in: 'cookie',
++      name: 'auth',
++      description:
++        'HttpOnly JWT cookie set by `POST /api/auth/login`. ' +
++        'Copy the cookie value from browser devtools — it cannot ' +
++        'be set from JavaScript because it is HttpOnly.',
++    },
++  },
++  schemas: {
++    // ── User ──────────────────────────────────────────────────────
++    User: {
++      type: 'object',
++      required: [
++        'id',
++        'email',
++        'displayName',
++        'role',
++        'isActive',
++        'lastActiveAt',
++        'createdAt',
++        'updatedAt',
++      ],
++      properties: {
++        id: { type: 'integer', example: 7 },
++        email: { type: 'string', format: 'email', example: 'user@company.com' },
++        displayName: { type: 'string', example: 'Avery Patel' },
++        role: {
++          type: 'string',
++          enum: ['User', 'Support Agent', 'Admin'],
++          example: 'User',
++        },
++        isActive: { type: 'boolean', example: true },
++        lastActiveAt: {
++          type: 'string',
++          format: 'date-time',
++          nullable: true,
++          example: '2026-10-12T12:00:00.000Z',
++        },
++        createdAt: { type: 'string', format: 'date-time' },
++        updatedAt: { type: 'string', format: 'date-time' },
++      },
++    },
++    AgentSummary: {
++      type: 'object',
++      required: ['id', 'displayName', 'role'],
++      properties: {
++        id: { type: 'integer', example: 4 },
++        displayName: { type: 'string', example: 'Sam Patel' },
++        role: {
++          type: 'string',
++          enum: ['Support Agent', 'Admin'],
++          example: 'Support Agent',
++        },
++      },
++    },
++
++    // ── Ticket ────────────────────────────────────────────────────
++    Ticket: {
++      type: 'object',
++      required: [
++        'id',
++        'number',
++        'title',
++        'description',
++        'status',
++        'priority',
++        'category',
++        'submitterId',
++        'ownerId',
++        'createdAt',
++        'updatedAt',
++        'deletedAt',
++      ],
++      properties: {
++        id: { type: 'integer', example: 47 },
++        number: { type: 'string', example: 'HD-0047' },
++        title: { type: 'string', example: 'VPN disconnects every 5 minutes' },
++        description: { type: 'string', example: 'Since this morning, my VPN …' },
++        status: {
++          type: 'string',
++          enum: ['Open', 'In Progress', 'Resolved', 'Closed'],
++          example: 'Open',
++        },
++        priority: {
++          type: 'string',
++          enum: ['Low', 'Medium', 'High'],
++          example: 'Medium',
++        },
++        category: { type: 'string', nullable: true, example: 'Network' },
++        submitterId: { type: 'integer', example: 7 },
++        ownerId: { type: 'integer', nullable: true, example: 4 },
++        attachmentId: { type: 'integer', nullable: true, example: null },
++        createdAt: { type: 'string', format: 'date-time' },
++        updatedAt: { type: 'string', format: 'date-time' },
++        deletedAt: {
++          type: 'string',
++          format: 'date-time',
++          nullable: true,
++        },
++      },
++    },
++
++    // ── Comment ───────────────────────────────────────────────────
++    Comment: {
++      type: 'object',
++      required: ['id', 'ticketId', 'authorId', 'body', 'createdAt', 'author'],
++      properties: {
++        id: { type: 'integer', example: 12 },
++        ticketId: { type: 'integer', example: 47 },
++        authorId: { type: 'integer', example: 4 },
++        body: { type: 'string', example: "I've reproduced on my machine." },
++        createdAt: { type: 'string', format: 'date-time' },
++        author: { $ref: '#/components/schemas/AgentSummary' },
++      },
++    },
++
++    // ── Activity log ──────────────────────────────────────────────
++    ActivityLog: {
++      type: 'object',
++      required: ['id', 'ticketId', 'eventType', 'createdAt'],
++      properties: {
++        id: { type: 'integer', example: 88 },
++        ticketId: { type: 'integer', example: 47 },
++        actorId: { type: 'integer', nullable: true, example: 4 },
++        eventType: {
++          type: 'string',
++          enum: [
++            'Created',
++            'Assigned',
++            'Reassigned',
++            'StatusChanged',
++            'PriorityChanged',
++            'Reopened',
++            'ConfirmedClosed',
++            'CommentAdded',
++          ],
++          example: 'StatusChanged',
++        },
++        payload: {
++          type: 'object',
++          nullable: true,
++          additionalProperties: true,
++          description:
++            'Event-specific JSON. Shape varies by eventType — see ActivityEventPayload in backend/src/models/ActivityLog.ts.',
++        },
++        createdAt: { type: 'string', format: 'date-time' },
++        actor: {
++          allOf: [{ $ref: '#/components/schemas/AgentSummary' }],
++          nullable: true,
++        },
++      },
++    },
++
++    // ── Dashboard buckets ────────────────────────────────────────
++    DashboardBucket: {
++      type: 'object',
++      required: ['rows', 'total'],
++      properties: {
++        rows: { type: 'array', items: { $ref: '#/components/schemas/Ticket' } },
++        total: { type: 'integer', example: 14 },
++      },
++    },
++    DashboardResponse: {
++      type: 'object',
++      required: ['open', 'inProgress', 'resolved', 'closed'],
++      properties: {
++        open: { $ref: '#/components/schemas/DashboardBucket' },
++        inProgress: { $ref: '#/components/schemas/DashboardBucket' },
++        resolved: { $ref: '#/components/schemas/DashboardBucket' },
++        closed: { $ref: '#/components/schemas/DashboardBucket' },
++      },
++    },
++
++    // ── Response envelopes ────────────────────────────────────────
++    HealthResponse: {
++      type: 'object',
++      required: ['status', 'service', 'timestamp'],
++      properties: {
++        status: { type: 'string', example: 'ok' },
++        service: { type: 'string', example: 'helpdesk-lite-backend' },
++        timestamp: { type: 'string', format: 'date-time' },
++      },
++    },
++    LoginResponse: {
++      type: 'object',
++      required: ['user'],
++      properties: {
++        user: {
++          type: 'object',
++          required: ['id', 'email', 'displayName', 'role'],
++          properties: {
++            id: { type: 'integer', example: 7 },
++            email: { type: 'string', format: 'email' },
++            displayName: { type: 'string' },
++            role: {
++              type: 'string',
++              enum: ['User', 'Support Agent', 'Admin'],
++            },
++          },
++        },
++      },
++    },
++    MeResponse: {
++      type: 'object',
++      required: ['user'],
++      properties: {
++        user: { $ref: '#/components/schemas/User' },
++      },
++    },
++    TicketListResponse: {
++      type: 'object',
++      required: ['tickets', 'count'],
++      properties: {
++        tickets: {
++          type: 'array',
++          items: { $ref: '#/components/schemas/Ticket' },
++        },
++        count: { type: 'integer', example: 3 },
++      },
++    },
++    TicketResponse: {
++      type: 'object',
++      required: ['ticket'],
++      properties: {
++        ticket: { $ref: '#/components/schemas/Ticket' },
++      },
++    },
++    CommentListResponse: {
++      type: 'object',
++      required: ['comments', 'count'],
++      properties: {
++        comments: {
++          type: 'array',
++          items: { $ref: '#/components/schemas/Comment' },
++        },
++        count: { type: 'integer', example: 4 },
++      },
++    },
++    CommentCreateResponse: {
++      type: 'object',
++      required: ['comment'],
++      properties: {
++        comment: { $ref: '#/components/schemas/Comment' },
++      },
++    },
++    ActivityListResponse: {
++      type: 'object',
++      required: ['events', 'count'],
++      properties: {
++        events: {
++          type: 'array',
++          items: { $ref: '#/components/schemas/ActivityLog' },
++        },
++        count: { type: 'integer', example: 9 },
++      },
++    },
++    AgentListResponse: {
++      type: 'object',
++      required: ['agents', 'count'],
++      properties: {
++        agents: {
++          type: 'array',
++          items: { $ref: '#/components/schemas/AgentSummary' },
++        },
++        count: { type: 'integer', example: 4 },
++      },
++    },
++    UserListResponse: {
++      type: 'object',
++      required: ['users', 'count'],
++      properties: {
++        users: { type: 'array', items: { $ref: '#/components/schemas/User' } },
++        count: { type: 'integer', example: 6 },
++      },
++    },
++
++    // ── Request bodies ────────────────────────────────────────────
++    LoginRequest: {
++      type: 'object',
++      required: ['email', 'password'],
++      properties: {
++        email: { type: 'string', format: 'email', example: 'user@company.com' },
++        password: { type: 'string', minLength: 1, example: 'password123' },
++      },
++    },
++    CreateTicketRequest: {
++      type: 'object',
++      required: ['title', 'description', 'priority'],
++      properties: {
++        title: { type: 'string', minLength: 1, maxLength: 200 },
++        description: { type: 'string', minLength: 1 },
++        category: { type: 'string', nullable: true },
++        priority: { type: 'string', enum: ['Low', 'Medium', 'High'] },
++        attachmentId: { type: 'integer', nullable: true },
++      },
++    },
++    UpdateTicketRequest: {
++      type: 'object',
++      description:
++        'Partial update. Only fields present are applied. Per-field role + transition rules enforced (see controller).',
++      properties: {
++        status: {
++          type: 'string',
++          enum: ['Open', 'In Progress', 'Resolved', 'Closed'],
++        },
++        priority: { type: 'string', enum: ['Low', 'Medium', 'High'] },
++        category: { type: 'string', nullable: true },
++        ownerId: { type: 'integer', nullable: true },
++      },
++    },
++    AddCommentRequest: {
++      type: 'object',
++      required: ['body'],
++      properties: {
++        body: { type: 'string', minLength: 1, maxLength: 5000 },
++      },
++    },
++    UpdateRoleRequest: {
++      type: 'object',
++      required: ['role'],
++      properties: {
++        role: { type: 'string', enum: ['User', 'Support Agent', 'Admin'] },
++      },
++    },
++    UpdateStatusRequest: {
++      type: 'object',
++      required: ['isActive'],
++      properties: {
++        isActive: { type: 'boolean' },
++      },
++    },
++
++    // ── Error envelopes (mirrors HttpErrorBody in utils/errors.ts) ─
++    ErrorBody: {
++      type: 'object',
++      required: ['error', 'message'],
++      properties: {
++        error: {
++          type: 'string',
++          example: 'not_found',
++          description:
++            'Machine-readable error code. Stable across versions; safe to switch on.',
++        },
++        message: {
++          type: 'string',
++          example: 'Ticket not found.',
++          description: 'Human-readable. Subject to change; not for switch logic.',
++        },
++      },
++    },
++    ValidationErrorBody: {
++      allOf: [
++        { $ref: '#/components/schemas/ErrorBody' },
++        {
++          type: 'object',
++          required: ['fields'],
++          properties: {
++            error: { type: 'string', enum: ['validation_error'] },
++            fields: {
++              type: 'object',
++              additionalProperties: { type: 'string' },
++              description: 'Per-field error messages keyed by field name.',
++              example: { email: 'Enter a valid email address.' },
++            },
++          },
++        },
++      ],
++    },
++  },
++  responses: {
++    NotFound: {
++      description: 'Resource not found.',
++      content: {
++        'application/json': {
++          schema: { $ref: '#/components/schemas/ErrorBody' },
++        },
++      },
++    },
++    ValidationError: {
++      description: 'Request body failed validation.',
++      content: {
++        'application/json': {
++          schema: { $ref: '#/components/schemas/ValidationErrorBody' },
++        },
++      },
++    },
++    Unauthorized: {
++      description: 'Missing or invalid `auth` cookie.',
++      content: {
++        'application/json': {
++          schema: { $ref: '#/components/schemas/ErrorBody' },
++          example: { error: 'unauthorized', message: 'Authentication required.' },
++        },
++      },
++    },
++    Forbidden: {
++      description: "Authenticated but not allowed to perform this action.",
++      content: {
++        'application/json': {
++          schema: { $ref: '#/components/schemas/ErrorBody' },
++          example: { error: 'forbidden', message: 'Admin only.' },
++        },
++      },
++    },
++    Conflict: {
++      description: 'A uniqueness constraint was violated.',
++      content: {
++        'application/json': {
++          schema: { $ref: '#/components/schemas/ErrorBody' },
++        },
++      },
++    },
++  },
++};
++
++/**
++ * swagger-jsdoc configuration. The `apis` glob is resolved
++ * relative to the project root (where `node` is invoked),
++ * which matches the swagger-jsdoc documented behavior.
++ *
++ * The first call to `swaggerJSDoc(...)` parses every JSDoc
++ * block in the matched files and assembles the full spec.
++ * The result is cached at module load so every subsequent
++ * `getOpenApiSpec()` call returns the same object.
++ */
++const swaggerOptions: swaggerJSDoc.Options = {
++  definition: {
++    openapi: '3.0.3',
++    info: {
++      title: 'HelpDesk Lite API',
++      version: packageJson.version,
++      description:
++        'Internal helpdesk — tickets, comments, user management. ' +
++        'All endpoints under `/api`. Most require an `auth` HttpOnly ' +
++        'cookie (set by `POST /api/auth/login`). Click "Authorize" in ' +
++        'the UI to attach the cookie to subsequent requests.',
++    },
++    servers: [
++      {
++        url: 'http://localhost:3000/api',
++        description: 'Local development',
++      },
++    ],
++    components: sharedComponents,
++    tags: [
++      { name: 'Health', description: 'Liveness / metadata.' },
++      { name: 'Auth', description: 'Login, logout, current user.' },
++      { name: 'Tickets', description: 'Ticket lifecycle (HD-007 to HD-012).' },
++      { name: 'Users', description: 'User listing + admin role / status management (HD-010, HD-014).' },
++      { name: 'Admin', description: 'Admin-only surfaces (HD-013).' },
++    ],
++  },
++  apis: [
++    './src/routes/*.ts',
++    './src/controllers/*.ts',
++  ],
++};
++
++const cachedSpec = swaggerJSDoc(swaggerOptions);
++
++/**
++ * Return the assembled OpenAPI document. Sync, cached at module
++ * load. `swagger-ui-express` accepts the result directly; the
++ * `/api/docs.json` route also serves it raw.
++ */
++export function getOpenApiSpec(): object {
++  return cachedSpec;
++}
+diff --git a/backend/src/server.ts b/backend/src/server.ts
+index 8a88c64..0c7a02d 100644
+--- a/backend/src/server.ts
++++ b/backend/src/server.ts
+@@ -24,7 +24,9 @@ import helmet from 'helmet';
+ import morgan from 'morgan';
+ import cookieParser from 'cookie-parser';
+ import dotenv from 'dotenv';
++import swaggerUi from 'swagger-ui-express';
+ import apiRouter from './routes';
++import { getOpenApiSpec } from './docs/openapi';
+ import { errorHandler } from './middleware/errorHandler';
+ 
+ dotenv.config();
+@@ -50,6 +52,22 @@ if (process.env.NODE_ENV !== 'test') {
+ // ── Routes ──────────────────────────────────────────────────────────
+ app.use('/api', apiRouter);
+ 
++// ── API documentation (HD-015) ──────────────────────────────────────
++// Raw OpenAPI JSON for tooling (Postman import, codegen, curl).
++// Mounted under /api so it sits on the same origin as the rest of
++// the API — no CORS gymnastics needed.
++app.get('/api/docs.json', (_req: Request, res: Response) => {
++  res.json(getOpenApiSpec());
++});
++// Swagger UI HTML. Browse to http://localhost:<port>/api/docs.
++app.use(
++  '/api/docs',
++  swaggerUi.serve,
++  swaggerUi.setup(getOpenApiSpec(), {
++    customSiteTitle: 'HelpDesk Lite API',
++  }),
++);
++
+ // ── 404 fallback (JSON, not HTML) ───────────────────────────────────
+ app.use((_req: Request, res: Response) => {
+   res.status(404).json({ error: 'not_found', message: 'Route not found.' });
+diff --git a/package-lock.json b/package-lock.json
+index b402331..a9d7640 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -43,9 +43,13 @@
+         "@types/morgan": "^1.9.9",
+         "@types/node": "^22.9.0",
+         "@types/supertest": "^6.0.2",
++        "@types/swagger-jsdoc": "^6.0.4",
++        "@types/swagger-ui-express": "^4.1.8",
+         "jest": "^29.7.0",
+         "sequelize-cli": "^6.6.2",
+         "supertest": "^7.0.0",
++        "swagger-jsdoc": "^6.3.0",
++        "swagger-ui-express": "^5.0.1",
+         "ts-jest": "^29.2.5",
+         "ts-node": "^10.9.2",
+         "tsx": "^4.19.2",
+@@ -653,6 +657,105 @@
+         "rxjs": "^6.5.3 || ^7.4.0"
+       }
+     },
++    "node_modules/@apidevtools/json-schema-ref-parser": {
++      "version": "14.0.1",
++      "resolved": "https://registry.npmjs.org/@apidevtools/json-schema-ref-parser/-/json-schema-ref-parser-14.0.1.tgz",
++      "integrity": "sha512-Oc96zvmxx1fqoSEdUmfmvvb59/KDOnUoJ7s2t7bISyAn0XEz57LCCw8k2Y4Pf3mwKaZLMciESALORLgfe2frCw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/json-schema": "^7.0.15",
++        "js-yaml": "^4.1.0"
++      },
++      "engines": {
++        "node": ">= 16"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/philsturgeon"
++      }
++    },
++    "node_modules/@apidevtools/json-schema-ref-parser/node_modules/argparse": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/argparse/-/argparse-2.0.1.tgz",
++      "integrity": "sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==",
++      "dev": true,
++      "license": "Python-2.0"
++    },
++    "node_modules/@apidevtools/json-schema-ref-parser/node_modules/js-yaml": {
++      "version": "4.3.2",
++      "resolved": "https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.2.tgz",
++      "integrity": "sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/puzrin"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/nodeca"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "argparse": "^2.0.1"
++      },
++      "bin": {
++        "js-yaml": "bin/js-yaml.js"
++      }
++    },
++    "node_modules/@apidevtools/openapi-schemas": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/@apidevtools/openapi-schemas/-/openapi-schemas-2.1.0.tgz",
++      "integrity": "sha512-Zc1AlqrJlX3SlpupFGpiLi2EbteyP7fXmUOGup6/DnkRgjP9bgMM/ag+n91rsv0U1Gpz0H3VILA/o3bW7Ua6BQ==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=10"
++      }
++    },
++    "node_modules/@apidevtools/swagger-methods": {
++      "version": "3.0.2",
++      "resolved": "https://registry.npmjs.org/@apidevtools/swagger-methods/-/swagger-methods-3.0.2.tgz",
++      "integrity": "sha512-QAkD5kK2b1WfjDS/UQn/qQkbwF31uqRjPTrsCs5ZG9BQGAkjwvqGFjjPqAuzac/IYzpPtRzjCP1WrTuAIjMrXg==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@apidevtools/swagger-parser": {
++      "version": "12.1.0",
++      "resolved": "https://registry.npmjs.org/@apidevtools/swagger-parser/-/swagger-parser-12.1.0.tgz",
++      "integrity": "sha512-e5mJoswsnAX0jG+J09xHFYQXb/bUc5S3pLpMxUuRUA2H8T2kni3yEoyz2R3Dltw5f4A6j6rPNMpWTK+iVDFlng==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@apidevtools/json-schema-ref-parser": "14.0.1",
++        "@apidevtools/openapi-schemas": "^2.1.0",
++        "@apidevtools/swagger-methods": "^3.0.2",
++        "ajv": "^8.17.1",
++        "ajv-draft-04": "^1.0.0",
++        "call-me-maybe": "^1.0.2"
++      },
++      "peerDependencies": {
++        "openapi-types": ">=7"
++      }
++    },
++    "node_modules/@apidevtools/swagger-parser/node_modules/ajv": {
++      "version": "8.20.0",
++      "resolved": "https://registry.npmjs.org/ajv/-/ajv-8.20.0.tgz",
++      "integrity": "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "fast-deep-equal": "^3.1.3",
++        "fast-uri": "^3.0.1",
++        "json-schema-traverse": "^1.0.0",
++        "require-from-string": "^2.0.2"
++      },
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/epoberezkin"
++      }
++    },
+     "node_modules/@babel/code-frame": {
+       "version": "7.29.7",
+       "resolved": "https://registry.npmjs.org/@babel/code-frame/-/code-frame-7.29.7.tgz",
+@@ -4567,6 +4670,14 @@
+         "win32"
+       ]
+     },
++    "node_modules/@scarf/scarf": {
++      "version": "1.4.0",
++      "resolved": "https://registry.npmjs.org/@scarf/scarf/-/scarf-1.4.0.tgz",
++      "integrity": "sha512-xxeapPiUXdZAE3che6f3xogoJPeZgig6omHEy1rIY5WVsB3H2BHNnZH+gHG6x91SCWyQCzWGsuL2Hh3ClO5/qQ==",
++      "dev": true,
++      "hasInstallScript": true,
++      "license": "Apache-2.0"
++    },
+     "node_modules/@schematics/angular": {
+       "version": "17.3.17",
+       "resolved": "https://registry.npmjs.org/@schematics/angular/-/angular-17.3.17.tgz",
+@@ -5209,6 +5320,24 @@
+         "@types/superagent": "^8.1.0"
+       }
+     },
++    "node_modules/@types/swagger-jsdoc": {
++      "version": "6.0.4",
++      "resolved": "https://registry.npmjs.org/@types/swagger-jsdoc/-/swagger-jsdoc-6.0.4.tgz",
++      "integrity": "sha512-W+Xw5epcOZrF/AooUM/PccNMSAFOKWZA5dasNyMujTwsBkU74njSJBpvCCJhHAJ95XRMzQrrW844Btu0uoetwQ==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@types/swagger-ui-express": {
++      "version": "4.1.8",
++      "resolved": "https://registry.npmjs.org/@types/swagger-ui-express/-/swagger-ui-express-4.1.8.tgz",
++      "integrity": "sha512-AhZV8/EIreHFmBV5wAs0gzJUNq9JbbSXgJLQubCC0jtIo6prnI9MIRRxnU4MZX9RB9yXxF1V4R7jtLl/Wcj31g==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/express": "*",
++        "@types/serve-static": "*"
++      }
++    },
+     "node_modules/@types/validator": {
+       "version": "13.15.10",
+       "resolved": "https://registry.npmjs.org/@types/validator/-/validator-13.15.10.tgz",
+@@ -5575,6 +5704,21 @@
+         "url": "https://github.com/sponsors/epoberezkin"
+       }
+     },
++    "node_modules/ajv-draft-04": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/ajv-draft-04/-/ajv-draft-04-1.0.0.tgz",
++      "integrity": "sha512-mv00Te6nmYbRp5DCwclxtt7yV/joXJPGS7nM+97GdxvuttCOfgI3K4U25zboyeX0O+myI8ERluxQe5wljMmVIw==",
++      "dev": true,
++      "license": "MIT",
++      "peerDependencies": {
++        "ajv": "^8.5.0"
++      },
++      "peerDependenciesMeta": {
++        "ajv": {
++          "optional": true
++        }
++      }
++    },
+     "node_modules/ajv-formats": {
+       "version": "2.1.1",
+       "resolved": "https://registry.npmjs.org/ajv-formats/-/ajv-formats-2.1.1.tgz",
+@@ -6438,6 +6582,13 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/call-me-maybe": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/call-me-maybe/-/call-me-maybe-1.0.2.tgz",
++      "integrity": "sha512-HpX65o1Hnr9HH25ojC1YGs7HCQLq0GCOibSaWER0eNpgJ/Z1MZv2mTc7+xh6WOPxbRVcmgbv4hGU+uSQ/2xFZQ==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/callsites": {
+       "version": "3.1.0",
+       "resolved": "https://registry.npmjs.org/callsites/-/callsites-3.1.0.tgz",
+@@ -7551,6 +7702,19 @@
+         "node": ">=6"
+       }
+     },
++    "node_modules/doctrine": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/doctrine/-/doctrine-3.0.0.tgz",
++      "integrity": "sha512-yS+Q5i3hBf7GBkd4KG8a7eBNNWNGLTaEwwYWUijIYM7zrlYDM0BFXHjjPWlWZ1Rg7UaddZeIDmi9jF3HmqiQ2w==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "esutils": "^2.0.2"
++      },
++      "engines": {
++        "node": ">=6.0.0"
++      }
++    },
+     "node_modules/dom-serialize": {
+       "version": "2.2.1",
+       "resolved": "https://registry.npmjs.org/dom-serialize/-/dom-serialize-2.2.1.tgz",
+@@ -11404,6 +11568,13 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/lodash.mergewith": {
++      "version": "4.6.2",
++      "resolved": "https://registry.npmjs.org/lodash.mergewith/-/lodash.mergewith-4.6.2.tgz",
++      "integrity": "sha512-GK3g5RPZWTRSeLSpgP8Xhra+pnjBC56q9FZYe1d5RN3TJ35dbkGy3YqBSMbyCrlbi+CM9Z3Jk5yTL7RCsqboyQ==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/lodash.once": {
+       "version": "4.1.1",
+       "resolved": "https://registry.npmjs.org/lodash.once/-/lodash.once-4.1.1.tgz",
+@@ -12663,6 +12834,14 @@
+         "url": "https://github.com/sponsors/sindresorhus"
+       }
+     },
++    "node_modules/openapi-types": {
++      "version": "12.1.3",
++      "resolved": "https://registry.npmjs.org/openapi-types/-/openapi-types-12.1.3.tgz",
++      "integrity": "sha512-N4YtSYJqghVu4iek2ZUvcN/0aqH1kRDuNqzcycDxhOUpg7GdvLa2F3DgS6yBNhInhv2r/6I0Flkn7CqL8+nIcw==",
++      "dev": true,
++      "license": "MIT",
++      "peer": true
++    },
+     "node_modules/ora": {
+       "version": "5.4.1",
+       "resolved": "https://registry.npmjs.org/ora/-/ora-5.4.1.tgz",
+@@ -15312,6 +15491,180 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/swagger-jsdoc": {
++      "version": "6.3.0",
++      "resolved": "https://registry.npmjs.org/swagger-jsdoc/-/swagger-jsdoc-6.3.0.tgz",
++      "integrity": "sha512-I+iQjVGV3t28pOkQUJv2MncthvOtkEactOn8R76SvSYhxgtIn7FoqfDHwQaN+GBnQdXQLrhgDXseKitmJcHMsA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@apidevtools/swagger-parser": "^12.1.0",
++        "commander": "6.2.0",
++        "doctrine": "3.0.0",
++        "glob": "11.1.0",
++        "lodash.mergewith": "^4.6.2",
++        "yaml": "2.0.0-1"
++      },
++      "bin": {
++        "swagger-jsdoc": "bin/swagger-jsdoc.js"
++      },
++      "engines": {
++        "node": ">=20.0.0"
++      }
++    },
++    "node_modules/swagger-jsdoc/node_modules/@isaacs/cliui": {
++      "version": "9.0.0",
++      "resolved": "https://registry.npmjs.org/@isaacs/cliui/-/cliui-9.0.0.tgz",
++      "integrity": "sha512-AokJm4tuBHillT+FpMtxQ60n8ObyXBatq7jD2/JA9dxbDDokKQm8KMht5ibGzLVU9IJDIKK4TPKgMHEYMn3lMg==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/swagger-jsdoc/node_modules/balanced-match": {
++      "version": "4.0.4",
++      "resolved": "https://registry.npmjs.org/balanced-match/-/balanced-match-4.0.4.tgz",
++      "integrity": "sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "18 || 20 || >=22"
++      }
++    },
++    "node_modules/swagger-jsdoc/node_modules/brace-expansion": {
++      "version": "5.0.12",
++      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.12.tgz",
++      "integrity": "sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "balanced-match": "^4.0.2"
++      },
++      "engines": {
++        "node": "20 || >=22"
++      }
++    },
++    "node_modules/swagger-jsdoc/node_modules/commander": {
++      "version": "6.2.0",
++      "resolved": "https://registry.npmjs.org/commander/-/commander-6.2.0.tgz",
++      "integrity": "sha512-zP4jEKbe8SHzKJYQmq8Y9gYjtO/POJLgIdKgV7B9qNmABVFVc+ctqSX6iXh4mCpJfRBOabiZ2YKPg8ciDw6C+Q==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">= 6"
++      }
++    },
++    "node_modules/swagger-jsdoc/node_modules/glob": {
++      "version": "11.1.0",
++      "resolved": "https://registry.npmjs.org/glob/-/glob-11.1.0.tgz",
++      "integrity": "sha512-vuNwKSaKiqm7g0THUBu2x7ckSs3XJLXE+2ssL7/MfTGPLLcrJQ/4Uq1CjPTtO5cCIiRxqvN6Twy1qOwhL0Xjcw==",
++      "deprecated": "Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "dependencies": {
++        "foreground-child": "^3.3.1",
++        "jackspeak": "^4.1.1",
++        "minimatch": "^10.1.1",
++        "minipass": "^7.1.2",
++        "package-json-from-dist": "^1.0.0",
++        "path-scurry": "^2.0.0"
++      },
++      "bin": {
++        "glob": "dist/esm/bin.mjs"
++      },
++      "engines": {
++        "node": "20 || >=22"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/isaacs"
++      }
++    },
++    "node_modules/swagger-jsdoc/node_modules/jackspeak": {
++      "version": "4.2.3",
++      "resolved": "https://registry.npmjs.org/jackspeak/-/jackspeak-4.2.3.tgz",
++      "integrity": "sha512-ykkVRwrYvFm1nb2AJfKKYPr0emF6IiXDYUaFx4Zn9ZuIH7MrzEZ3sD5RlqGXNRpHtvUHJyOnCEFxOlNDtGo7wg==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "dependencies": {
++        "@isaacs/cliui": "^9.0.0"
++      },
++      "engines": {
++        "node": "20 || >=22"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/isaacs"
++      }
++    },
++    "node_modules/swagger-jsdoc/node_modules/lru-cache": {
++      "version": "11.5.3",
++      "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.3.tgz",
++      "integrity": "sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "engines": {
++        "node": "20 || >=22"
++      }
++    },
++    "node_modules/swagger-jsdoc/node_modules/minimatch": {
++      "version": "10.2.6",
++      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz",
++      "integrity": "sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "dependencies": {
++        "brace-expansion": "^5.0.8"
++      },
++      "engines": {
++        "node": "18 || 20 || >=22"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/isaacs"
++      }
++    },
++    "node_modules/swagger-jsdoc/node_modules/path-scurry": {
++      "version": "2.0.2",
++      "resolved": "https://registry.npmjs.org/path-scurry/-/path-scurry-2.0.2.tgz",
++      "integrity": "sha512-3O/iVVsJAPsOnpwWIeD+d6z/7PmqApyQePUtCndjatj/9I5LylHvt5qluFaBT3I5h3r1ejfR056c+FCv+NnNXg==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "dependencies": {
++        "lru-cache": "^11.0.0",
++        "minipass": "^7.1.2"
++      },
++      "engines": {
++        "node": "18 || 20 || >=22"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/isaacs"
++      }
++    },
++    "node_modules/swagger-ui-dist": {
++      "version": "5.33.1",
++      "resolved": "https://registry.npmjs.org/swagger-ui-dist/-/swagger-ui-dist-5.33.1.tgz",
++      "integrity": "sha512-H872wWkA53bFIsGgi7OWgmq+CRWw3nFQGdJWRqOB9wNwTm6e5ol34+qPDkV4AJlK+gglM2EsJiOOzsGsEGbluA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@scarf/scarf": "=1.4.0"
++      }
++    },
++    "node_modules/swagger-ui-express": {
++      "version": "5.0.1",
++      "resolved": "https://registry.npmjs.org/swagger-ui-express/-/swagger-ui-express-5.0.1.tgz",
++      "integrity": "sha512-SrNU3RiBGTLLmFU8GIJdOdanJTl4TOmT27tt3bWWHppqYmAZ6IDuEuBvMU6nZq0zLEe6b/1rACXCgLZqO6ZfrA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "swagger-ui-dist": ">=5.0.0"
++      },
++      "engines": {
++        "node": ">= v0.10.32"
++      },
++      "peerDependencies": {
++        "express": ">=4.0.0 || >=5.0.0-beta"
++      }
++    },
+     "node_modules/symbol-observable": {
+       "version": "4.0.0",
+       "resolved": "https://registry.npmjs.org/symbol-observable/-/symbol-observable-4.0.0.tgz",
+@@ -17568,6 +17921,16 @@
+       "dev": true,
+       "license": "ISC"
+     },
++    "node_modules/yaml": {
++      "version": "2.0.0-1",
++      "resolved": "https://registry.npmjs.org/yaml/-/yaml-2.0.0-1.tgz",
++      "integrity": "sha512-W7h5dEhywMKenDJh2iX/LABkbFnBxasD27oyXWDS/feDsxiw0dD5ncXdYXgkvAsXIY2MpW/ZKkr9IU30DBdMNQ==",
++      "dev": true,
++      "license": "ISC",
++      "engines": {
++        "node": ">= 6"
++      }
++    },
+     "node_modules/yargs": {
+       "version": "17.7.2",
+       "resolved": "https://registry.npmjs.org/yargs/-/yargs-17.7.2.tgz",
