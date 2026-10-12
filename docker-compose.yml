@@ -12,6 +12,10 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      # D9: bootstrap the integration-test database (`helpdesk_lite_test`)
+      # and grant the dev `helpdesk` user access to it. Runs once on
+      # first container start (or after `docker compose down -v`).
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "helpdesk", "-phelpdesk_pwd"]
       interval: 10s

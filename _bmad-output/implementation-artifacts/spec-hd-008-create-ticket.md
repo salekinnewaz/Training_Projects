@@ -247,6 +247,12 @@ Three review layers (Blind Hunter, Edge Case Hunter, Verification Gap) returned 
 | Direct unit test for `ticketService.createTicket` transaction + counter | defer | Needs integration testing infra (in-memory DB or sequelize-mock); out of MVP scope; spec's DUPLICATE_NUMBER edge case acknowledges "tests assert both inserts succeed with distinct numbers" is aspirational. Defer to backend testing infra story. |
 | `validateCreateTicketBody` no test for `attachmentId` branch | low (rejected) | Attachment is disabled per OQ-1; the `attachmentId` branch is unreachable in HD-008; HD-011 will turn the drop zone on and exercise this branch. |
 | `validateCreateTicketBody` imports `TicketCategory`/`TicketPriority` from `../../models/Ticket` (not a dedicated backend enums file) | false | `tsc --noEmit` returned 0 errors; the imports resolve correctly. The reviewer's concern was speculative. |
+
+### Pinned (post-MVP followups that closed the original aspirational note)
+
+| # | Aspirational note | Closed by | Where |
+|---|-------------------|-----------|-------|
+| P-D9 | "Direct unit test for `ticketService.createTicket` transaction + counter" — was deferred to "backend testing infra story" because the project had no in-memory DB / sequelize-mock and the spec's DUPLICATE_NUMBER edge case was acknowledged as aspirational. | **D9 slice (2026-10-12)** | `_bmad-output/implementation-artifacts/spec-d9-create-ticket-integration.md`. New `backend/test/integration/createTicket.integration.spec.ts` pins 4 tests: happy path (HD-21), sequential counter increments (HD-21/22/23), DUPLICATE_NUMBER 2× parallel (HD-21, HD-22 distinct), and 10× parallel stress (HD-10000..HD-10009 distinct — the assertion that actually proves `lock: UPDATE` is doing the serialization work). Real MySQL on a sibling `helpdesk_lite_test` DB on the same `docker-compose.yml` container; no in-memory DB / sequelize-mock. `npm test` → 118/118 (was 114; +4 from the new integration project). `npm run test:integration` runs just the DB-backed project. |
 | `onDragLeave` only resets on `event.target === event.currentTarget` → drop zone can stick in drag-over visual if drag leaves a child element | low (rejected) | HD-008 ships the drop zone disabled per OQ-1, so the drag/drop visual is not user-visible. Cosmetic only. |
 | `handleSessionExpired`'s `router.navigate` rejection unhandled | low (rejected) | `void` prefix suppresses the rejection per Angular idiom; in the HD-006 logged-in flow, the guard rarely cancels. |
 | `Ticket.create` could resolve null | false | Sequelize `Model.create` always resolves to the new instance on success and rejects on error; null is not a documented return path. |
@@ -264,7 +270,7 @@ Three review layers (Blind Hunter, Edge Case Hunter, Verification Gap) returned 
 
 | # | Finding | Disposition |
 |---|---------|-------------|
-| D9 | **Backend `createTicket` transaction + counter race test** (the DUPLICATE_NUMBER edge-case row in the spec's matrix) — no direct test that two parallel POSTs get distinct `HD-<n>`. | Defer to a backend testing-infrastructure story (needs in-memory DB or sequelize-mock library). The spec's verification block acknowledges this aspirational test was not added in HD-008. |
+| D9 | **Backend `createTicket` transaction + counter race test** (the DUPLICATE_NUMBER edge-case row in the spec's matrix) — no direct test that two parallel POSTs get distinct `HD-<n>`. | **Resolved by D9 slice (2026-10-12).** New `backend/test/integration/createTicket.integration.spec.ts` exercises the real `nextTicketNumber` + `Ticket.create` tx against a sibling `helpdesk_lite_test` MySQL DB on the same dev container. 4 tests pin the contract: happy path (HD-21), sequential counter increments (HD-21..HD-23), DUPLICATE_NUMBER 2× parallel (HD-21, HD-22 distinct), and 10× parallel stress (HD-10000..HD-10009 distinct — the assertion that actually proves `lock: UPDATE` is doing the serialization). Spec at `_bmad-output/implementation-artifacts/spec-d9-create-ticket-integration.md`. The original deferral (needs in-memory DB or sequelize-mock) is now unnecessary — real MySQL/InnoDB on the same container is fine. |
 
 ## Verification
 
