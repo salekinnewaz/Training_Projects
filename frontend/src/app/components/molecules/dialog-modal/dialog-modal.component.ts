@@ -1,5 +1,5 @@
 /**
- * dialog-modal — molecule (HD-004).
+ * dialog-modal — molecule (HD-004 + D7).
  *
  * Centered confirmation dialog with a scrim overlay. Rendered via a
  * Renderer2 portal-to-body so the `position: fixed` modal escapes any
@@ -13,6 +13,15 @@
  *   - Cancel button click → cancel.emit()
  *
  * Initial focus lands on the confirm button per the UX spec.
+ *
+ * D7 replaced the hand-rolled `.btn` / `.btn-primary` /
+ * `.btn-secondary` styles with the existing `<atom-button>`
+ * atom (D7 spec: "convergence is deliberate non-goal until
+ * dialogs gain a second use case"; three consumers now use
+ * the dialog). The atom's `focus()` method preserves the
+ * pre-D7 auto-focus UX (`ngAfterViewInit` calls
+ * `confirmBtn().focus()` instead of
+ * `confirmBtn().nativeElement.focus()`).
  */
 
 import {
@@ -30,10 +39,13 @@ import {
   viewChild,
 } from '@angular/core';
 
+import { ButtonComponent } from '../../atoms/button/button.component';
+
 @Component({
   selector: 'dialog-modal',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ButtonComponent],
   template: `
     <div class="scrim" (click)="cancel.emit()"></div>
     <div
@@ -48,19 +60,17 @@ import {
         <p class="modal-error" role="alert">{{ e }}</p>
       }
       <div class="modal-actions">
-        <button
-          type="button"
-          class="btn btn-secondary"
+        <atom-button
+          variant="secondary"
           [disabled]="confirming()"
-          (click)="cancel.emit()"
-        >{{ cancelLabel() }}</button>
-        <button
+          (pressed)="cancel.emit()"
+        >{{ cancelLabel() }}</atom-button>
+        <atom-button
           #confirmBtn
-          type="button"
-          class="btn btn-primary"
+          variant="primary"
           [disabled]="confirming()"
-          (click)="confirm.emit()"
-        >{{ confirmLabel() }}</button>
+          (pressed)="confirm.emit()"
+        >{{ confirmLabel() }}</atom-button>
       </div>
     </div>
   `,
@@ -104,31 +114,6 @@ import {
       gap: 12px;
       margin-top: 20px;
     }
-    .btn {
-      height: var(--button-height);
-      padding: 0 20px;
-      border-radius: var(--button-radius);
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
-    }
-    .btn-secondary {
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      color: var(--color-label);
-    }
-    .btn-secondary:hover {
-      background: var(--color-surface-subtle);
-    }
-    .btn-primary {
-      background: var(--color-primary);
-      border: 1px solid var(--color-primary);
-      color: #ffffff;
-    }
-    .btn-primary:hover {
-      background: #000000;
-    }
   `],
 })
 export class DialogModalComponent implements AfterViewInit {
@@ -144,7 +129,13 @@ export class DialogModalComponent implements AfterViewInit {
   readonly cancel = output<void>();
   readonly confirm = output<void>();
 
-  readonly confirmBtn = viewChild<ElementRef<HTMLButtonElement>>('confirmBtn');
+  // Pre-D7 this was `viewChild<ElementRef<HTMLButtonElement>>('confirmBtn')`
+  // pointing at the inline `<button>`. D7 swaps to a
+  // `viewChild<ButtonComponent>` against the `<atom-button>` host so
+  // `ngAfterViewInit` can call `.focus()` on the component instance
+  // — the atom owns the inner button element + the disabled state
+  // check (see `ButtonComponent.focus`).
+  readonly confirmBtn = viewChild<ButtonComponent>('confirmBtn');
 
   private readonly appendedToBody = signal(false);
 
@@ -174,9 +165,13 @@ export class DialogModalComponent implements AfterViewInit {
   }
 
   ngAfterViewInit(): void {
-    // Initial focus on the confirm button per UX spec.
+    // Initial focus on the confirm button per UX spec. D7 calls
+    // the atom's public `focus()` method instead of
+    // `nativeElement.focus()` directly. The atom no-ops when
+    // disabled, so we don't have to guard on the `[confirming]`
+    // flag here.
     queueMicrotask(() => {
-      this.confirmBtn()?.nativeElement.focus();
+      this.confirmBtn()?.focus();
     });
   }
 
