@@ -1,0 +1,3443 @@
+diff --git a/_bmad-output/implementation-artifacts/spec-hd-014-users-tab.md b/_bmad-output/implementation-artifacts/spec-hd-014-users-tab.md
+new file mode 100644
+index 0000000..097798e
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/spec-hd-014-users-tab.md
+@@ -0,0 +1,194 @@
++---
++title: 'HD-014 — Users tab (Admin in-page Users table + /users route)'
++type: 'feature'
++created: '2026-10-12'
++status: 'in-progress'
++route: 'build'
++review_loop_iteration: 0
++baseline_commit: '253ebd6f6c8e2c4c2c0b3f3a8e1d1c2f7d9a4b3e'
++context:
++  - 'design-process/D-UX-Design/users-tab.md'
++  - 'design-process/D-UX-Design/admin-dashboard.md'
++  - 'design-process/E-Design-System/04-organisms/users-table-page.md'
++  - 'design-process/E-Design-System/05-patterns/confirmation-dialog.md'
++---
++
++<frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
++
++## Intent
++
++**Problem:** HD-013 stubbed the Users tab on `/admin` as a placeholder that links to a placeholder `/users` page. Admin has no user-management surface today. Admin's two operational jobs are: (1) see the queue's shape (HD-013 shipped this) and (2) manage who has access to HelpDesk Lite (HD-014 ships this). HD-014 closes the Users tab loop and replaces both placeholders with the real table.
++
++**Approach:**
++- New `GET /api/users` endpoint (Admin only) returning the full user list alphabetical by `displayName`, with all fields the design doc surfaces (id, email, displayName, role, isActive, lastActiveAt, createdAt, updatedAt).
++- New `PUT /api/users/:id/role` endpoint (Admin only) that updates a user's role. Self-protection server-side — `req.user.id === :id` returns 400. The frontend pre-validates via a confirmation dialog when the change is a demotion from Admin.
++- New `PUT /api/users/:id/status` endpoint (Admin only) that toggles `isActive`. Same self-protection. The frontend pre-validates via a dialog when the toggle would deactivate an Admin.
++- All three new routes live under the existing `usersRouter` (mounted at `/api/users` by `routes/index.ts`) — matches the design doc's URL paths verbatim and the existing `routes/users.ts` docblock that anticipated these endpoints.
++- Full rewrite of `UsersTabPageComponent` (placeholder today) with `<app-chrome>` wrap, heading, active-count summary, and the 5-column table (Name / Email / Role / Status / Last active). Self-row protection: the row corresponding to the Admin viewing the page renders disabled controls + a 3px primary left border + a muted micro-label below the row.
++- New `<molecule-user-row>` at `frontend/src/app/components/molecules/user-row/` that owns the per-row markup + the role/active wiring. Page component handles table chrome + render states + window-focus refetch.
++- `<app-users-tab-page>` rendered inside `AdminDashboardPageComponent`'s `users-placeholder` branch (replacing the placeholder card) so the Users tab on `/admin#users` shows the real table in-page. Same component is mounted by `/users` for deep-link parity.
++
++**Boundaries noted now:** Add-user flow is out of MVP (design doc §Open Questions). Per-user detail page is out. Bulk actions are out. Search/filter is out. Pagination is out (≤20 users per the design doc's MVP team size). The activity log surface (where role/status changes are recorded) is a separate story — HD-014 just calls `User.update()`.
++
++## Boundaries & Constraints
++
++**Always:**
++- Backend `GET /api/users` returns `{ users: UserPublic[], count: number }` sorted by `displayName ASC`. Each entry is the full `UserPublic` wire (no `passwordHash`). Eager-loads none (no associations needed).
++- Backend `GET /api/users` is Admin-only — inline role gate, 403 `forbidden` on mismatch.
++- Backend `PUT /api/users/:id/role` accepts `{ role: 'User' | 'Support Agent' | 'Admin' }`, validates it (400 `validation_error` on missing/invalid), refuses self-demotion (400 `validation_error` with `fields.actor`), returns 200 + updated user.
++- Backend `PUT /api/users/:id/status` accepts `{ isActive: boolean }`, validates it (400 `validation_error` on missing/non-boolean), refuses self-deactivation (same 400 shape), returns 200 + updated user.
++- Backend `serializeUser` helper in `usersController.ts` (mirrors `serializeTicket` in `adminController.ts`) maps the Sequelize row to the `UserPublic` wire (strips `passwordHash`, ISO-encodes `lastActiveAt` or passes null).
++- Backend `listAllUsers`, `setUserRole`, `setUserActive` helpers in `services/ticketService.ts` — the file already houses `listActiveAgents` (HD-010), so the user-related helpers cluster together.
++- Frontend `UserService.listAll() / updateRole() / updateActive()` mirror the existing `listAgents()` shape: `firstValueFrom` + `withCredentials` + `apiErrorFrom` on non-2xx.
++- Frontend page wraps in `<app-chrome>`. Heading "Users" (24px / 600 / `--color-primary`). Active-count micro-label below (12px / `--color-muted`): "N users · N active · N inactive".
++- Frontend table: 5 columns matching the design doc geometry (Name 220px · Email 280px · Role 160px · Status 120px · Last active 100px — flex inside the 880px content column).
++- Frontend Name column = `<atom-chrome-avatar size="32">` + display name. Email = full email in `--color-muted`. Role = bare `<atom-select>` (no form-field wrapper). Status = custom inline toggle button (filled `#2b8a3e` circle + "Active" / empty `#adb5bd` circle + "Inactive" in `--color-muted`). Last active = `formatRelative()` output or "Never" for null.
++- Frontend self-row protection: `isSelf = currentUser?.id === row.user.id`. When true: 3px left border (`--color-primary`), atom-select + status toggle are `disabled`, micro-label "You cannot change your own role." appears 12px below the row.
++- Frontend role-change demotion flow: dropdown change → if `user.role === 'Admin'` AND new role !== 'Admin' → open `<dialog-modal>` with headline "Demote <displayName> from Admin to <newRole>? They will lose admin access immediately." + Cancel + Demote. Confirm → call `updateRole`. Cancel → revert the select to the prior role (the local signal still holds the previous value).
++- Frontend role-change non-demotion flow: dropdown change → immediate `updateRole` call, success updates the local signal, error reverts + inline row error.
++- Frontend status-toggle Admin-deactivation flow: toggle click → if `user.role === 'Admin'` AND `user.isActive === true` → open `<dialog-modal>` with headline "Deactivate <displayName>? They will be logged out and unable to log in." + Cancel + Deactivate. Confirm → call `updateActive(false)`. Cancel → noop.
++- Frontend status-toggle non-Admin flow: immediate `updateActive`. Same revert-on-error pattern as the role change.
++- Frontend render states (`@switch`): `loading` → heading + 5 row skeletons (64px tall, grey bars). `error` → inline error card "Couldn't load users. Refresh to try again." + Retry button. `success` → the table.
++- Frontend window:focus refetches the list when in success state (mirrors admin-dashboard).
++- Frontend alphabetical sort: backend handles it; frontend just iterates the array.
++
++**Never:**
++- No add-user flow. No bulk actions. No per-user detail page. No audit log surface. No search/filter. No pagination. (All explicitly out of MVP per the design doc.)
++- No new design tokens. Reuses every existing token: `--color-surface`, `--color-border`, `--color-primary`, `--color-muted`, `--color-disabled`, `--color-success` (for the active indicator), `--color-error`, `--focus-ring-color`, `--button-radius`, `--button-height`, `--space-modal-pad`, `--size-modal-width`, `--color-scrim`, `--z-modal-scrim`, `--z-modal`.
++- No new atoms. Reuses `atom-select` (HD-008), `atom-chrome-avatar` (HD-004), `atom-button` (HD-004).
++- No new molecules beyond `<molecule-user-row>` (HD-014). Reuses `<dialog-modal>` (HD-004) and `<app-chrome>` (HD-004).
++- No extension of `DialogModalComponent` — the existing `headline` input is sufficient because the design doc's "no body copy" rule says the headline IS the question (e.g., "Demote Sam from Admin to Support Agent? They will lose admin access immediately.").
++- No write endpoints to the activity log from the role/status changes — that's the existing `ActivityLog` model and is a separate slice.
++- No realtime updates (no WebSocket / SSE / long-poll). Page refetches on window-focus OR explicit Retry.
++- The Agent Kanban `/queue` and Employee Dashboard `/dashboard` are not modified by HD-014.
++- The HD-013 admin-dashboard-page's `users-placeholder` branch is REPLACED with `<app-users-tab-page>` (no longer a placeholder card), but the rest of HD-013 (Dashboard tab, tablist ARIA, etc.) is untouched.
++
++## I/O & Edge-Case Matrix
++
++| Scenario | Input / State | Expected Output / Behavior | Error Handling |
++|----------|--------------|---------------------------|----------------|
++| HAPPY_PATH_ADMIN_LOADS_USERS | Avery (Admin) loads `/users` or `/admin#users`; 6 users seeded (1 Admin, 2 Support Agents, 3 Users; 1 inactive) | 200 → table renders 6 rows alphabetical by displayName. Active-count micro-label "6 users · 5 active · 1 inactive". Self-row (Avery) has disabled controls + 3px border + micro-label. | N/A |
++| HAPPY_PATH_CHANGE_NON_ADMIN_ROLE | Avery changes Eli Chen's role from `User` to `Support Agent` (non-demotion) | Dropdown updates immediately, no dialog. `PUT /api/users/7/role` → 200 → row reflects new role. | N/A |
++| HAPPY_PATH_TOGGLE_NON_ADMIN_STATUS | Avery clicks the Active toggle on Eli Chen (User role, currently active) | Toggle updates immediately, no dialog. `PUT /api/users/7/status` `{ isActive: false }` → 200 → row reflects Inactive. Active-count micro-label updates to "6 users · 4 active · 2 inactive". | N/A |
++| CONFIRM_DEMOTE_ADMIN | Avery selects a different Admin (Sam Patel) and chooses `Support Agent` in the dropdown | Dialog opens: "Demote Sam Patel from Admin to Support Agent? They will lose admin access immediately." Cancel → dropdown reverts. Save Demote → `PUT /api/users/<sam-id>/role` → 200 → row reflects new role, dialog closes. | N/A |
++| CONFIRM_DEACTIVATE_ADMIN | Avery clicks the Active toggle on Sam Patel (Admin role, currently active) | Dialog opens: "Deactivate Sam Patel? They will be logged out and unable to log in." Cancel → noop, toggle reverts. Deactivate → `PUT /api/users/<sam-id>/status` `{ isActive: false }` → 200 → row reflects Inactive, dialog closes. | N/A |
++| NOOP_SELF_ROW_CONTROLS | Avery (Admin) views their own row | Dropdown is disabled (`<atom-select disabled>`). Toggle button is disabled (`disabled` attr + `cursor: not-allowed`). Micro-label "You cannot change your own role." appears 12px below the row. 3px primary left border on the row. Click on either control does nothing. | N/A |
++| NOOP_CHANGE_OWN_ROLE_VIA_CURL | Direct PUT `/api/users/<own-id>/role` as Admin | 400 `validation_error` `actor` field. Server-side self-protection. | 400 response |
++| NOOP_DEACTIVATE_SELF_VIA_CURL | Direct PUT `/api/users/<own-id>/status` `{ isActive: false }` as Admin | 400 `validation_error` `actor` field. Same server-side self-protection. | 400 response |
++| ERROR_LOAD_USERS_5XX | Backend returns 500 on `GET /api/users` | Inline error card: "Couldn't load users. Refresh to try again." + Retry button. Retry refetches. | n/a |
++| ERROR_LOAD_USERS_401 | Backend returns 401 | Auth interceptor redirects to /login; page does not render an error card (mirrors admin-dashboard contract). | redirect |
++| ERROR_UPDATE_ROLE_5XX | Backend returns 500 on `PUT /api/users/<id>/role` | Dropdown reverts to prior role; inline row error "Couldn't update. Try again." below the row. | n/a |
++| ERROR_UPDATE_STATUS_5XX | Backend returns 500 on `PUT /api/users/<id>/status` | Toggle reverts to prior state; inline row error "Couldn't update. Try again." below the row. | n/a |
++| ERROR_INVALID_ROLE_PUT_CURL | Body `{ role: 'Wizard' }` | 400 `validation_error` no role field. | 400 response |
++| ERROR_INVALID_STATUS_PUT_CURL | Body `{}` (missing isActive) | 400 `validation_error` no status field. | 400 response |
++| ERROR_404_MISSING_USER_PUT | `PUT /api/users/9999/role` (no user with id 9999) | 404 `not_found`. Frontend reverts the dropdown. | 404 response |
++| ERROR_403_NON_ADMIN_LOAD | Support Agent direct-arrival to `/users` | `roleGuard(['Admin'])` redirects to `/forbidden`. Backend defense-in-depth: even if guard bypassed, GET returns 403 `forbidden`. | redirect + 403 |
++| WINDOW_FOCUS_REFETCH | Admin's tab loses then regains focus while page is in success state | `GET /api/users` is called again, table refreshes. (Mirrors admin-dashboard behavior.) | N/A |
++| IN_PAGE_TAB_NAV | Avery clicks Users tab on `/admin` | URL hash becomes `#users`; the `users-placeholder` branch in admin-dashboard-page renders `<app-users-tab-page>` in-place. Same component as `/users` mounts. No router navigation to `/users`. | N/A |
++
++## Test Plan
++
++### Backend (extend `backend/src/controllers/usersController.spec.ts`)
++
++Auth middleware mocked (default Admin). `ticketService` mocked. Add ~10 tests:
++
++- `GET /` (listAllHandler):
++  - 200 happy path: 5 users alphabetical, `{ users, count }` shape, each user has all 8 UserPublic fields.
++  - 403 for User role.
++  - 403 for Support Agent role.
++  - 401 not tested here (authMiddleware mock bypasses it).
++- `PUT /:id/role` (setRoleHandler):
++  - 200 happy path: Admin updates another user (Eli) from `User` → `Support Agent`. Returns serialized updated user.
++  - 200 self-update non-demotion: Admin updates their own role from `Admin` → `Admin` is rejected; we test Admin updating another Admin's role from `Admin` → `Admin` (no-op) works (returns 200, no change).
++  - 400 self-demote attempt: Admin tries to demote themselves. Service is NOT called. Response has `errorCode: 'validation_error'` and `fields.actor`.
++  - 400 missing/invalid role in body: `{ role: 'Wizard' }`. Service is NOT called. `fields.role`.
++  - 404 missing user.
++  - 403 for User role.
++- `PUT /:id/status` (setActiveHandler):
++  - 200 happy path: Admin toggles another user from active → inactive. Returns serialized updated user.
++  - 200 self-toggle active-when-not-active (impossible by definition since self is always active by design, but we test the contract).
++  - 400 self-deactivate attempt: Admin tries to deactivate themselves. Service is NOT called.
++  - 400 missing `isActive` in body.
++  - 404 missing user.
++  - 403 for User role.
++
++### Frontend
++
++**`frontend/src/app/services/user.service.spec.ts`** (new file):
++- `listAll()` happy path: GET `/api/users`, returns the array.
++- `listAll()` 5xx: throws `ApiError(500, 'internal_server_error')`.
++- `updateRole(id, role)` happy path: PUT `/api/users/:id/role` with body, returns updated user.
++- `updateRole()` 5xx: throws `ApiError`.
++- `updateActive(id, isActive)` happy path: PUT `/api/users/:id/status` with body, returns updated user.
++- `updateActive()` 5xx: throws `ApiError`.
++
++**`frontend/src/app/components/molecules/user-row/user-row.component.spec.ts`** (new):
++- Renders avatar + name + email + role select + status toggle + last-active for a non-self row.
++- Renders disabled controls + 3px left border + micro-label for a self row.
++- Click on role select emits `roleChange`.
++- Click on status toggle emits `activeToggle`.
++
++**`frontend/src/app/pages/users-tab-page/users-tab-page.component.spec.ts`** (new):
++- happy path: 5 rows from `listAll()`, alphabetical.
++- heading + active-count micro-label.
++- loading state: 5 row skeletons, no table body.
++- server error: inline error + Retry, Retry refetches.
++- 401: does not render error card.
++- self-row: disabled atom-select, disabled status toggle, micro-label visible, 3px left border.
++- role change non-demotion: calls `updateRole` immediately.
++- role demotion (Admin → Support Agent): opens dialog, confirm calls `updateRole`, cancel reverts.
++- status toggle non-Admin: calls `updateActive` immediately.
++- status toggle Admin → inactive: opens dialog, confirm calls `updateActive`, cancel reverts.
++- window:focus refetches.
++- `formatRelative`: "just now" / "Xm ago" / "Xh ago" / "Xd ago" / "Xmo ago" / "Xy ago" / "" (NaN).
++- `formatRelative(null)` → "Never".
++
++## Files
++
++**New:**
++- `backend/src/controllers/usersController.spec.ts` (extend with ~10 tests; ~250 lines added)
++- `frontend/src/app/services/user.service.spec.ts` (~120 lines)
++- `frontend/src/app/components/molecules/user-row/user-row.component.ts` (~150 lines)
++- `frontend/src/app/components/molecules/user-row/user-row.component.spec.ts` (~100 lines)
++- `frontend/src/app/pages/users-tab-page/users-tab-page.component.spec.ts` (~350 lines)
++- `_bmad-output/hd014.diff` (BMAD artifact)
++
++**Modified:**
++- `backend/src/services/ticketService.ts` — add `listAllUsers`, `setUserRole`, `setUserActive` (~80 lines)
++- `backend/src/controllers/usersController.ts` — add `serializeUser`, `listAllHandler`, `setRoleHandler`, `setActiveHandler` (~120 lines)
++- `backend/src/routes/users.ts` — register 3 new routes (~10 lines)
++- `frontend/src/app/services/user.service.ts` — add `listAll`, `updateRole`, `updateActive` (~100 lines added)
++- `frontend/src/app/pages/users-tab-page/users-tab-page.component.ts` — full rewrite (~280 lines)
++- `frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.ts` — replace `users-placeholder` branch with `<app-users-tab-page>` (~10 lines changed)
++- `frontend/src/styles.css` — add `.user-table` rules (~100 lines)
++
++## Implementation Order
++
++1. **Backend service helpers** (`listAllUsers`, `setUserRole`, `setUserActive` in `services/ticketService.ts`).
++2. **Backend controller handlers** (`serializeUser` + `listAllHandler` + `setRoleHandler` + `setActiveHandler` in `controllers/usersController.ts`).
++3. **Backend routes** (extend `routes/users.ts`).
++4. **Backend tests** (extend `usersController.spec.ts`).
++5. **Frontend service** (extend `frontend/src/app/services/user.service.ts`).
++6. **Frontend molecule** (`<molecule-user-row>`).
++7. **Frontend page** (rewrite `<app-users-tab-page>`).
++8. **Frontend styles** (extend `styles.css` with user-table rules).
++9. **Frontend in-page tab wiring** (replace `users-placeholder` branch in `<app-admin-dashboard-page>`).
++10. **Frontend tests** (3 spec files: service, molecule, page).
++
++## Verification
++
++1. `cd backend && npm test` — full suite green (target: 57 prior + ~10 new = ~67 tests).
++2. `cd frontend && npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox --include='**/users-tab-page/**,**/user-row/**,**/user.service.spec.ts'` — all new tests pass.
++3. `cd frontend && npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox` — full frontend suite (expect same baseline: 105+ SUCCESS, same 6 pre-existing EmployeeDashboard failures unrelated to HD-014).
++4. `cd frontend && npx ng build --configuration=development` — exits 0.
++5. Browser smoke (manual): log in as `admin@company.com`, navigate to `/admin` Dashboard, click Users tab, exercise the full flow per the I/O matrix.
++
++## Out of Scope (deferred)
++
++- Refactor `formatRelative` from per-page copy into a shared util (already deferred; pattern continues).
++- Add-user flow. Bulk actions. Per-user detail page. Audit log surface on the page. Search/filter. Pagination. (All per design doc.)
++- `lastActiveAt` write-hook — already wired in `authController.ts:130` on every successful login, so the column has fresh data without HD-014 work.
++
++## Open Questions
++
++None blocking. The design doc fully specifies the visual + behavior contract.
+\ No newline at end of file
+diff --git a/backend/src/controllers/usersController.spec.ts b/backend/src/controllers/usersController.spec.ts
+index 57f7fb8..b507fa1 100644
+--- a/backend/src/controllers/usersController.spec.ts
++++ b/backend/src/controllers/usersController.spec.ts
+@@ -1,23 +1,52 @@
+ /**
+- * usersController — HD-010 spec.
++ * usersController — HD-010 + HD-014 spec.
+  *
+- * Verifies GET /api/users/agents:
+- *   - happy-path: listActiveAgents returns an array; the controller
+- *     responds 200 with `{ agents: [{id, displayName, role}, ...],
+- *     count }`.
+- *   - 401 / unauthenticated: when req.user is missing the controller
+- *     still responds 200 (the middleware will short-circuit before
+- *     we ever reach it). The authMiddleware mock installs a
+- *     default user so we only exercise the success path here.
++ * HD-010 (already shipped): `listActiveAgents` happy path + empty
++ * list path.
+  *
+- * Both `authMiddleware` and `ticketService` (which exposes
+- * `listActiveAgents` for HD-010) are mocked so the controller is
+- * exercised in isolation.
++ * HD-014 extends the file with three handlers and a similar
++ * matrix for each:
++ *
++ *   GET  /              — listAllHandler:
++ *                          200 happy path (5 users alphabetical,
++ *                          serializes the UserPublic wire shape);
++ *                          403 for User; 403 for Support Agent.
++ *
++ *   PUT  /:id/role      — setRoleHandler:
++ *                          200 happy path (Admin → Support Agent
++ *                          for another user);
++ *                          400 self-demote attempt (actor.id ===
++ *                          targetId, service not called);
++ *                          400 invalid role literal (service not
++ *                          called, fields.role set);
++ *                          404 missing user (service throws);
++ *                          403 for User role.
++ *
++ *   PUT  /:id/status    — setActiveHandler:
++ *                          200 happy path (toggle another user
++ *                          off);
++ *                          400 self-deactivate attempt;
++ *                          400 missing isActive in body;
++ *                          404 missing user;
++ *                          403 for User role.
++ *
++ * `authMiddleware` and the `ticketService` are mocked so the
++ * controller is exercised in isolation. The default mock user is
++ * an Admin (id: 1) so the 200 / 400-self / 404 paths can run
++ * without each test re-stubbing the auth middleware.
++ *
++ * Per-test overrides for the 403 cases set `req.user.role`
++ * directly to a non-Admin value to exercise the gate.
+  */
+ 
+ import type { NextFunction, Request, Response } from 'express';
+ 
+-import { listActiveAgentsHandler } from './usersController';
++import {
++  listActiveAgentsHandler,
++  listAllHandler,
++  setActiveHandler,
++  setRoleHandler,
++} from './usersController';
+ 
+ jest.mock('../middleware/auth', () => ({
+   authMiddleware: (
+@@ -26,10 +55,10 @@ jest.mock('../middleware/auth', () => ({
+     next: NextFunction,
+   ): void => {
+     (req as Request & { user?: unknown }).user = {
+-      id: 7,
+-      email: 'eli@example.com',
+-      displayName: 'Eli',
+-      role: 'User',
++      id: 1,
++      email: 'admin@example.com',
++      displayName: 'Avery',
++      role: 'Admin',
+     };
+     next();
+   },
+@@ -37,8 +66,59 @@ jest.mock('../middleware/auth', () => ({
+ 
+ jest.mock('../services/ticketService', () => ({
+   listActiveAgents: jest.fn(),
++  listAllUsers: jest.fn(),
++  setUserRole: jest.fn(),
++  setUserActive: jest.fn(),
++  isUserRoleLiteral: jest.fn((v: unknown) =>
++    v === 'User' || v === 'Support Agent' || v === 'Admin',
++  ),
+ }));
+ 
++function makeFakeUser(
++  id: number,
++  overrides: Partial<{
++    email: string;
++    displayName: string;
++    role: 'User' | 'Support Agent' | 'Admin';
++    isActive: boolean;
++    lastActiveAt: Date | null;
++    createdAt: Date;
++    updatedAt: Date;
++  }> = {},
++) {
++  const createdAt = overrides.createdAt ?? new Date('2026-09-01T00:00:00.000Z');
++  const updatedAt = overrides.updatedAt ?? new Date('2026-09-02T00:00:00.000Z');
++  const user = {
++    id,
++    email: overrides.email ?? `user${id}@example.com`,
++    displayName: overrides.displayName ?? `User ${id}`,
++    role: overrides.role ?? 'User',
++    isActive: overrides.isActive ?? true,
++    lastActiveAt: overrides.lastActiveAt ?? null,
++    createdAt,
++    updatedAt,
++    get: function <T>(opts: { plain: true }): T {
++      void opts;
++      return { ...this } as unknown as T;
++    },
++  };
++  return user;
++}
++
++function makeRes() {
++  const statusMock = jest.fn();
++  const jsonMock = jest.fn();
++  const res = {
++    status: (n: number) => {
++      statusMock(n);
++      return { json: (b: unknown) => jsonMock(b) };
++    },
++  } as unknown as Response;
++  return { res, statusMock, jsonMock };
++}
++
++// ─── HD-010 (existing) ─────────────────────────────────────────────
++
+ describe('usersController.listActiveAgents (HD-010)', () => {
+   const ticketService = require('../services/ticketService');
+ 
+@@ -54,14 +134,7 @@ describe('usersController.listActiveAgents (HD-010)', () => {
+     ]);
+ 
+     const req = {} as Request;
+-    const statusMock = jest.fn();
+-    const jsonMock = jest.fn();
+-    const res = {
+-      status: (n: number) => {
+-        statusMock(n);
+-        return { json: (b: unknown) => jsonMock(b) };
+-      },
+-    } as unknown as Response;
++    const { res, statusMock, jsonMock } = makeRes();
+ 
+     await listActiveAgentsHandler(
+       req,
+@@ -84,14 +157,7 @@ describe('usersController.listActiveAgents (HD-010)', () => {
+     (ticketService.listActiveAgents as jest.Mock).mockResolvedValueOnce([]);
+ 
+     const req = {} as Request;
+-    const statusMock = jest.fn();
+-    const jsonMock = jest.fn();
+-    const res = {
+-      status: (n: number) => {
+-        statusMock(n);
+-        return { json: (b: unknown) => jsonMock(b) };
+-      },
+-    } as unknown as Response;
++    const { res, statusMock, jsonMock } = makeRes();
+ 
+     await listActiveAgentsHandler(
+       req,
+@@ -107,4 +173,499 @@ describe('usersController.listActiveAgents (HD-010)', () => {
+     expect(body.count).toBe(0);
+     expect(body.agents).toEqual([]);
+   });
+-});
+\ No newline at end of file
++});
++
++// ─── HD-014 listAllHandler ──────────────────────────────────────────
++
++describe('usersController.listAllHandler (HD-014)', () => {
++  const ticketService = require('../services/ticketService');
++
++  beforeEach(() => {
++    (ticketService.listAllUsers as jest.Mock).mockReset();
++  });
++
++  it('returns 200 with the full user list on the happy path (Admin caller)', async () => {
++    (ticketService.listAllUsers as jest.Mock).mockResolvedValueOnce([
++      makeFakeUser(1, { displayName: 'Avery', role: 'Admin' }),
++      makeFakeUser(7, {
++        displayName: 'Eli Chen',
++        role: 'User',
++        isActive: true,
++        lastActiveAt: new Date('2026-10-10T12:00:00.000Z'),
++      }),
++      makeFakeUser(11, { displayName: 'Jordan', role: 'Support Agent' }),
++      makeFakeUser(8, {
++        displayName: 'Morgan',
++        role: 'User',
++        isActive: false,
++        lastActiveAt: null,
++      }),
++      makeFakeUser(2, { displayName: 'Sam Patel', role: 'Support Agent' }),
++    ]);
++
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Avery',
++        role: 'Admin',
++      },
++    } as unknown as Request;
++    const { res, statusMock, jsonMock } = makeRes();
++
++    await listAllHandler(req, res, jest.fn() as unknown as NextFunction);
++
++    expect(ticketService.listAllUsers).toHaveBeenCalledWith();
++    expect(statusMock.mock.calls[0][0]).toBe(200);
++
++    const body = jsonMock.mock.calls[0][0] as {
++      users: Array<{
++        id: number;
++        email: string;
++        displayName: string;
++        role: string;
++        isActive: boolean;
++        lastActiveAt: string | null;
++        createdAt: string;
++        updatedAt: string;
++      }>;
++      count: number;
++    };
++    expect(body.count).toBe(5);
++    expect(body.users.length).toBe(5);
++    // All 8 UserPublic fields present on every row.
++    for (const u of body.users) {
++      expect(typeof u.id).toBe('number');
++      expect(typeof u.email).toBe('string');
++      expect(typeof u.displayName).toBe('string');
++      expect(['User', 'Support Agent', 'Admin']).toContain(u.role);
++      expect(typeof u.isActive).toBe('boolean');
++      // lastActiveAt is either a string or null; either is valid.
++      expect(['string', 'object']).toContain(typeof u.lastActiveAt);
++      expect(typeof u.createdAt).toBe('string');
++      expect(typeof u.updatedAt).toBe('string');
++    }
++    // lastActiveAt round-trips as ISO when set, null when never.
++    expect(body.users[1].lastActiveAt).toBe('2026-10-10T12:00:00.000Z');
++    expect(body.users[3].lastActiveAt).toBeNull();
++    // No passwordHash in the wire.
++    for (const u of body.users) {
++      expect((u as unknown as { passwordHash?: unknown }).passwordHash)
++        .toBeUndefined();
++    }
++  });
++
++  it('returns 403 for a User caller (non-Admin)', async () => {
++    const { HttpError } = require('../utils/errors');
++    const req = {
++      user: {
++        id: 7,
++        email: 'eli@example.com',
++        displayName: 'Eli',
++        role: 'User',
++      },
++    } as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction;
++
++    await listAllHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(403);
++    expect(err.errorCode).toBe('forbidden');
++    expect(ticketService.listAllUsers).not.toHaveBeenCalled();
++  });
++
++  it('returns 403 for a Support Agent caller (Admin only)', async () => {
++    const { HttpError } = require('../utils/errors');
++    const req = {
++      user: {
++        id: 11,
++        email: 'jordan@example.com',
++        displayName: 'Jordan',
++        role: 'Support Agent',
++      },
++    } as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction;
++
++    await listAllHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(403);
++    expect(ticketService.listAllUsers).not.toHaveBeenCalled();
++  });
++});
++
++// ─── HD-014 setRoleHandler ─────────────────────────────────────────
++
++describe('usersController.setRoleHandler (HD-014)', () => {
++  const ticketService = require('../services/ticketService');
++
++  beforeEach(() => {
++    (ticketService.setUserRole as jest.Mock).mockReset();
++  });
++
++  it('returns 200 + updated user when an Admin changes another user\'s role', async () => {
++    (ticketService.setUserRole as jest.Mock).mockResolvedValueOnce(
++      makeFakeUser(7, { displayName: 'Eli Chen', role: 'Support Agent' }),
++    );
++
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Avery',
++        role: 'Admin',
++      },
++      params: { id: '7' },
++      body: { role: 'Support Agent' },
++    } as unknown as Request;
++    const { res, statusMock, jsonMock } = makeRes();
++
++    await setRoleHandler(req, res, jest.fn() as unknown as NextFunction);
++
++    expect(ticketService.setUserRole).toHaveBeenCalledWith(7, 'Support Agent');
++    expect(statusMock.mock.calls[0][0]).toBe(200);
++    const body = jsonMock.mock.calls[0][0] as {
++      id: number;
++      role: string;
++      displayName: string;
++    };
++    expect(body.id).toBe(7);
++    expect(body.role).toBe('Support Agent');
++    expect(body.displayName).toBe('Eli Chen');
++  });
++
++  it('returns 400 + fields.actor when the Admin tries to change their own role', async () => {
++    const { HttpError } = require('../utils/errors');
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Avery',
++        role: 'Admin',
++      },
++      params: { id: '1' },
++      body: { role: 'Support Agent' },
++    } as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction;
++
++    await setRoleHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(400);
++    expect(err.errorCode).toBe('validation_error');
++    expect(err.fields).toEqual({ actor: 'self-role-change-not-allowed' });
++    expect(ticketService.setUserRole).not.toHaveBeenCalled();
++  });
++
++  it('returns 400 + fields.role when the role is missing or not a known literal', async () => {
++    const { HttpError } = require('../utils/errors');
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Avery',
++        role: 'Admin',
++      },
++      params: { id: '7' },
++      body: { role: 'Wizard' },
++    } as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction;
++
++    await setRoleHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(400);
++    expect(err.errorCode).toBe('validation_error');
++    expect(err.fields).toEqual({ role: 'invalid-role' });
++    expect(ticketService.setUserRole).not.toHaveBeenCalled();
++  });
++
++  it('returns 400 when role is missing from body', async () => {
++    const { HttpError } = require('../utils/errors');
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Avery',
++        role: 'Admin',
++      },
++      params: { id: '7' },
++      body: {},
++    } as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction;
++
++    await setRoleHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(400);
++    expect(err.errorCode).toBe('validation_error');
++    expect(err.fields).toEqual({ role: 'invalid-role' });
++  });
++
++  it('returns 404 when the target user does not exist', async () => {
++    const { HttpError } = require('../utils/errors');
++    (ticketService.setUserRole as jest.Mock).mockRejectedValueOnce(
++      new HttpError(404, 'not_found', 'User 9999 not found.'),
++    );
++
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Avery',
++        role: 'Admin',
++      },
++      params: { id: '9999' },
++      body: { role: 'Support Agent' },
++    } as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction;
++
++    await setRoleHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(404);
++  });
++
++  it('returns 403 for a User caller (Admin only)', async () => {
++    const { HttpError } = require('../utils/errors');
++    const req = {
++      user: {
++        id: 7,
++        email: 'eli@example.com',
++        displayName: 'Eli',
++        role: 'User',
++      },
++      params: { id: '11' },
++      body: { role: 'Support Agent' },
++    } as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction;
++
++    await setRoleHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(403);
++    expect(ticketService.setUserRole).not.toHaveBeenCalled();
++  });
++});
++
++// ─── HD-014 setActiveHandler ───────────────────────────────────────
++
++describe('usersController.setActiveHandler (HD-014)', () => {
++  const ticketService = require('../services/ticketService');
++
++  beforeEach(() => {
++    (ticketService.setUserActive as jest.Mock).mockReset();
++  });
++
++  it('returns 200 + updated user when an Admin toggles another user to inactive', async () => {
++    (ticketService.setUserActive as jest.Mock).mockResolvedValueOnce(
++      makeFakeUser(7, { displayName: 'Eli Chen', isActive: false }),
++    );
++
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Avery',
++        role: 'Admin',
++      },
++      params: { id: '7' },
++      body: { isActive: false },
++    } as unknown as Request;
++    const { res, statusMock, jsonMock } = makeRes();
++
++    await setActiveHandler(req, res, jest.fn() as unknown as NextFunction);
++
++    expect(ticketService.setUserActive).toHaveBeenCalledWith(7, false);
++    expect(statusMock.mock.calls[0][0]).toBe(200);
++    const body = jsonMock.mock.calls[0][0] as {
++      id: number;
++      isActive: boolean;
++    };
++    expect(body.id).toBe(7);
++    expect(body.isActive).toBe(false);
++  });
++
++  it('returns 200 + updated user when an Admin re-activates an inactive user', async () => {
++    (ticketService.setUserActive as jest.Mock).mockResolvedValueOnce(
++      makeFakeUser(8, { displayName: 'Morgan', isActive: true }),
++    );
++
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Avery',
++        role: 'Admin',
++      },
++      params: { id: '8' },
++      body: { isActive: true },
++    } as unknown as Request;
++    const { res, statusMock, jsonMock } = makeRes();
++
++    await setActiveHandler(req, res, jest.fn() as unknown as NextFunction);
++
++    expect(ticketService.setUserActive).toHaveBeenCalledWith(8, true);
++    expect(statusMock.mock.calls[0][0]).toBe(200);
++    const body = jsonMock.mock.calls[0][0] as { isActive: boolean };
++    expect(body.isActive).toBe(true);
++  });
++
++  it('returns 400 + fields.actor when the Admin tries to deactivate themselves', async () => {
++    const { HttpError } = require('../utils/errors');
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Avery',
++        role: 'Admin',
++      },
++      params: { id: '1' },
++      body: { isActive: false },
++    } as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction;
++
++    await setActiveHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(400);
++    expect(err.errorCode).toBe('validation_error');
++    expect(err.fields).toEqual({ actor: 'self-deactivate-not-allowed' });
++    expect(ticketService.setUserActive).not.toHaveBeenCalled();
++  });
++
++  it('returns 400 when isActive is missing from body', async () => {
++    const { HttpError } = require('../utils/errors');
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Avery',
++        role: 'Admin',
++      },
++      params: { id: '7' },
++      body: {},
++    } as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction;
++
++    await setActiveHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(400);
++    expect(err.errorCode).toBe('validation_error');
++    expect(err.fields).toEqual({ status: 'invalid-isActive' });
++  });
++
++  it('returns 400 when isActive is a non-boolean value', async () => {
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Avery',
++        role: 'Admin',
++      },
++      params: { id: '7' },
++      body: { isActive: 'no' },
++    } as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction;
++
++    await setActiveHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err.status).toBe(400);
++    expect(err.fields).toEqual({ status: 'invalid-isActive' });
++  });
++
++  it('returns 404 when the target user does not exist', async () => {
++    const { HttpError } = require('../utils/errors');
++    (ticketService.setUserActive as jest.Mock).mockRejectedValueOnce(
++      new HttpError(404, 'not_found', 'User 9999 not found.'),
++    );
++
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Avery',
++        role: 'Admin',
++      },
++      params: { id: '9999' },
++      body: { isActive: false },
++    } as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction;
++
++    await setActiveHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(404);
++  });
++
++  it('returns 403 for a User caller (Admin only)', async () => {
++    const { HttpError } = require('../utils/errors');
++    const req = {
++      user: {
++        id: 7,
++        email: 'eli@example.com',
++        displayName: 'Eli',
++        role: 'User',
++      },
++      params: { id: '11' },
++      body: { isActive: false },
++    } as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction;
++
++    await setActiveHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(403);
++    expect(ticketService.setUserActive).not.toHaveBeenCalled();
++  });
++});
+diff --git a/backend/src/controllers/usersController.ts b/backend/src/controllers/usersController.ts
+index ace2bc7..94ec45e 100644
+--- a/backend/src/controllers/usersController.ts
++++ b/backend/src/controllers/usersController.ts
+@@ -4,23 +4,45 @@
+  * HD-010 ships the first subroute:
+  *   GET /api/users/agents — list active Support Agents + Admins.
+  *
+- * Later stories (HD-014 admin tab) append their own (CRUD on users,
+- * role assignment, deactivate, etc.) to the same file.
++ * HD-014 (Admin Users tab) extends the file with three more:
++ *   GET  /api/users              — full user list (Admin only)
++ *   PUT  /api/users/:id/role     — change a user's role (Admin only)
++ *   PUT  /api/users/:id/status   — toggle a user's active status
++ *                                   (Admin only)
+  *
+- * No `roleGuard` on the route — the agent list is needed by every
+- * authenticated viewer of a Ticket Detail page (User / Support
+- * Agent / Admin all see the assignee dropdown). authMiddleware is
+- * the only gate.
++ * The three new handlers each inline a role gate (Admin only,
++ * mirroring `adminController.getDashboardHandler`) and the
++ * setRole / setActive handlers also enforce self-protection —
++ * the Admin viewing the page can never demote or deactivate
++ * themselves, even via a direct API call. The frontend is
++ * expected to gate the same constraint via the self-row
++ * disabled state, but the server is the source of truth.
++ *
++ * `serializeUser` mirrors the per-controller `serializeTicket`
++ * convention (see `adminController.ts` line 21-25 for the
++ * rationale on not sharing the helper across files).
+  */
+ 
+ import type { Request, Response } from 'express';
+ 
+ import { asyncHandler } from '../utils/asyncHandler';
+-import { listActiveAgents } from '../services/ticketService';
++import { HttpError } from '../utils/errors';
++import {
++  isUserRoleLiteral,
++  listActiveAgents,
++  listAllUsers,
++  setUserActive,
++  setUserRole,
++  type UserRoleLiteral,
++} from '../services/ticketService';
++import type { UserAttributes } from '../models/User';
++
++// ─── HD-010 — Agent list (unchanged) ─────────────────────────────────
+ 
+ /**
+- * Wire shape returned to the frontend. The frontend `AgentSummary`
+- * interface (services/user.service.ts) declares these three fields.
++ * Wire shape returned by `listActiveAgentsHandler`. The frontend
++ * `AgentSummary` interface (services/user.service.ts) declares
++ * these three fields.
+  */
+ interface AgentSummaryWire {
+   id: number;
+@@ -49,4 +71,186 @@ export const listActiveAgentsHandler = asyncHandler(
+     }));
+     res.status(200).json({ agents: payload, count: payload.length });
+   },
+-);
+\ No newline at end of file
++);
++
++// ─── HD-014 — Admin Users tab ───────────────────────────────────────
++
++/**
++ * Wire shape for a single user returned by every HD-014 endpoint.
++ * Matches the frontend `UserPublic` interface
++ * (`frontend/src/app/models/user.ts`).
++ */
++interface UserPublicWire {
++  id: number;
++  email: string;
++  displayName: string;
++  role: UserRoleLiteral;
++  isActive: boolean;
++  lastActiveAt: string | null;
++  createdAt: string;
++  updatedAt: string;
++}
++
++/**
++ * Map a Sequelize User row to the `UserPublic` wire.
++ *
++ * The default User scope already strips `passwordHash`, so we
++ * never serialize it. `lastActiveAt` is a Date in Sequelize but
++ * the wire is ISO 8601 (or null when the user has never logged
++ * in). `createdAt` / `updatedAt` are auto-stamped by the model
++ * and always present.
++ */
++function serializeUser(u: UserAttributes): UserPublicWire {
++  return {
++    id: u.id,
++    email: u.email,
++    displayName: u.displayName,
++    role: u.role as UserRoleLiteral,
++    isActive: u.isActive,
++    lastActiveAt: u.lastActiveAt ? u.lastActiveAt.toISOString() : null,
++    createdAt: u.createdAt.toISOString(),
++    updatedAt: u.updatedAt.toISOString(),
++  };
++}
++
++/**
++ * GET /api/users — full user list (HD-014, Admin only).
++ *
++ * Returns `{ users: UserPublic[], count: number }` sorted by
++ * `displayName ASC`. The controller is the gate: non-Admin
++ * roles get a 403 before the service is called.
++ *
++ * The page does not refetch on every action — it keeps the
++ * row list in a local signal and patches it on success. The
++ * window-focus refetch (mirrors admin-dashboard) is the only
++ * revalidation trigger.
++ */
++export const listAllHandler = asyncHandler(
++  async (req: Request, res: Response) => {
++    const role = req.user!.role;
++    if (role !== 'Admin') {
++      throw new HttpError(
++        403,
++        'forbidden',
++        'Admin role required to list users.',
++      );
++    }
++    const users = await listAllUsers();
++    const payload: UserPublicWire[] = users.map(serializeUser);
++    res.status(200).json({ users: payload, count: payload.length });
++  },
++);
++
++/**
++ * PUT /api/users/:id/role — change a user's role
++ * (HD-014, Admin only).
++ *
++ * Body shape: `{ role: 'User' | 'Support Agent' | 'Admin' }`.
++ *
++ * Errors (in order of check):
++ *   - 403 if the caller is not Admin.
++ *   - 400 with `fields.role` if the body's `role` is missing or
++ *     not a known role literal.
++ *   - 400 with `fields.actor` if the caller is trying to change
++ *     their own role (mirrors the UI's self-row protection —
++ *     defense-in-depth so a direct API call can't bypass it).
++ *   - 404 if the target user doesn't exist (raised by the service).
++ *
++ * On success, returns 200 with the updated user wire (single
++ * object, not wrapped) so the page can patch its local signal.
++ */
++export const setRoleHandler = asyncHandler(
++  async (req: Request, res: Response) => {
++    const actor = req.user!;
++    if (actor.role !== 'Admin') {
++      throw new HttpError(
++        403,
++        'forbidden',
++        'Admin role required to change roles.',
++      );
++    }
++    const targetId = Number.parseInt(req.params.id, 10);
++    if (!Number.isFinite(targetId)) {
++      throw new HttpError(
++        400,
++        'validation_error',
++        'User id must be a number.',
++      );
++    }
++    if (targetId === actor.id) {
++      throw new HttpError(
++        400,
++        'validation_error',
++        'You cannot change your own role.',
++        { actor: 'self-role-change-not-allowed' },
++      );
++    }
++    const body = (req.body ?? {}) as { role?: unknown };
++    if (!isUserRoleLiteral(body.role)) {
++      throw new HttpError(
++        400,
++        'validation_error',
++        'role must be one of: User, Support Agent, Admin.',
++        { role: 'invalid-role' },
++      );
++    }
++    const updated = await setUserRole(targetId, body.role);
++    res.status(200).json(serializeUser(updated.get({ plain: true })));
++  },
++);
++
++/**
++ * PUT /api/users/:id/status — toggle a user's active status
++ * (HD-014, Admin only).
++ *
++ * Body shape: `{ isActive: boolean }`.
++ *
++ * Errors (in order of check):
++ *   - 403 if the caller is not Admin.
++ *   - 400 with `fields.status` if `isActive` is missing or not a
++ *     boolean.
++ *   - 400 with `fields.actor` if the caller is trying to
++ *     deactivate themselves.
++ *   - 404 if the target user doesn't exist.
++ *
++ * On success, returns 200 with the updated user wire.
++ */
++export const setActiveHandler = asyncHandler(
++  async (req: Request, res: Response) => {
++    const actor = req.user!;
++    if (actor.role !== 'Admin') {
++      throw new HttpError(
++        403,
++        'forbidden',
++        'Admin role required to change status.',
++      );
++    }
++    const targetId = Number.parseInt(req.params.id, 10);
++    if (!Number.isFinite(targetId)) {
++      throw new HttpError(
++        400,
++        'validation_error',
++        'User id must be a number.',
++      );
++    }
++    if (targetId === actor.id && (req.body as { isActive?: unknown })?.isActive === false) {
++      throw new HttpError(
++        400,
++        'validation_error',
++        'You cannot deactivate yourself.',
++        { actor: 'self-deactivate-not-allowed' },
++      );
++    }
++    const body = (req.body ?? {}) as { isActive?: unknown };
++    if (typeof body.isActive !== 'boolean') {
++      throw new HttpError(
++        400,
++        'validation_error',
++        'isActive must be a boolean.',
++        { status: 'invalid-isActive' },
++      );
++    }
++    const updated = await setUserActive(targetId, body.isActive);
++    res.status(200).json(serializeUser(updated.get({ plain: true })));
++  },
++);
+diff --git a/backend/src/routes/users.ts b/backend/src/routes/users.ts
+index 2f9381e..b657f55 100644
+--- a/backend/src/routes/users.ts
++++ b/backend/src/routes/users.ts
+@@ -3,24 +3,36 @@
+  *
+  * Mounted at `/api/users` by `routes/index.ts`. Routes:
+  *
+- *   GET /agents   — list active Support Agents + Admins (HD-010).
+- *                   Used by the Ticket Detail page's assignee
+- *                   dropdown.
++ *   GET  /agents   — list active Support Agents + Admins (HD-010).
++ *                    Used by the Ticket Detail page's assignee
++ *                    dropdown.
+  *
+- * Later stories (HD-014) append:
+- *   - GET /        — full user list (Admin only)
+- *   - GET /:id     — single-user view
+- *   - PATCH /:id   — role / active toggle
+- *   - etc.
++ * HD-014 (Admin Users tab) extends the file with:
++ *   GET  /         — full user list (Admin only)
++ *   PUT  /:id/role — change a user's role (Admin only)
++ *   PUT  /:id/status — toggle a user's active status (Admin only)
++ *
++ * The three HD-014 routes are gated inline by the controller
++ * (Admin only). There is no shared `adminOnly` middleware — the
++ * pattern across the codebase is to throw `HttpError(403, ...)`
++ * inside the handler, matching the adminController approach.
+  */
+ 
+ import { Router } from 'express';
+ 
+-import { listActiveAgentsHandler } from '../controllers/usersController';
++import {
++  listActiveAgentsHandler,
++  listAllHandler,
++  setActiveHandler,
++  setRoleHandler,
++} from '../controllers/usersController';
+ import { authMiddleware } from '../middleware/auth';
+ 
+ const usersRouter = Router();
+ 
+ usersRouter.get('/agents', authMiddleware, listActiveAgentsHandler);
++usersRouter.get('/', authMiddleware, listAllHandler);
++usersRouter.put('/:id/role', authMiddleware, setRoleHandler);
++usersRouter.put('/:id/status', authMiddleware, setActiveHandler);
+ 
+-export default usersRouter;
+\ No newline at end of file
++export default usersRouter;
+diff --git a/backend/src/services/ticketService.ts b/backend/src/services/ticketService.ts
+index a1ccadd..2f7ee9f 100644
+--- a/backend/src/services/ticketService.ts
++++ b/backend/src/services/ticketService.ts
+@@ -1,5 +1,5 @@
+ /**
+- * ticketService — HD-007 + HD-008 + HD-009 + HD-010 + HD-012 + HD-013.
++ * ticketService — HD-007 + HD-008 + HD-009 + HD-010 + HD-012 + HD-013 + HD-014.
+  *
+  * Read-side helpers for the Ticket resource. Wraps the consistent
+  * `findAll` shape used by every list endpoint so controllers don't
+@@ -17,8 +17,10 @@
+  * `listForQueue()` to power the /queue board — a Support-Agent
+  * view across every ticket in the system. HD-013 (Admin
+  * Dashboard) adds `getDashboardSummary()` which returns the
+- * four-bucket shape for the /admin page. HD-015 will add
+- * combined filter / search helpers and cursor pagination.
++ * four-bucket shape for the /admin page. HD-014 (Users tab) adds
++ * `listAllUsers`, `setUserRole`, and `setUserActive` for the
++ * Admin Users tab. HD-015 will add combined filter / search
++ * helpers and cursor pagination.
+  *
+  * No pagination params are exposed yet — out of MVP per spec. The
+  * `opts` bag exists as an extension point for HD-015 if/when
+@@ -739,4 +741,90 @@ export async function listActiveAgents(): Promise<User[]> {
+     order: [['displayName', 'ASC']],
+     attributes: ['id', 'displayName', 'role'],
+   });
++}
++
++// ─── HD-014 — Admin Users tab helpers ──────────────────────────────
++
++/**
++ * Allowed role values, kept in sync with the `User.role` MySQL ENUM.
++ * Used by the controller's body validator for `PUT /:id/role` so
++ * the controller can reject bad input before reaching the DB.
++ */
++export const USER_ROLES = ['User', 'Support Agent', 'Admin'] as const;
++export type UserRoleLiteral = typeof USER_ROLES[number];
++
++export function isUserRoleLiteral(value: unknown): value is UserRoleLiteral {
++  return (
++    typeof value === 'string' &&
++    (USER_ROLES as readonly string[]).includes(value)
++  );
++}
++
++/**
++ * Full user list (HD-014 GET /api/users).
++ *
++ * Returns every user (active + inactive, all roles) sorted by
++ * `displayName ASC` so the page renders alphabetical without any
++ * client-side sort. No pagination — the MVP team is ≤20 people per
++ * the design doc, so the wire stays small.
++ *
++ * The default User scope strips `passwordHash`; we don't need it
++ * here so no `.scope('withPassword')` call. All other UserPublic
++ * fields are part of the default scope.
++ */
++export async function listAllUsers(): Promise<User[]> {
++  return User.findAll({
++    order: [['displayName', 'ASC']],
++  });
++}
++
++/**
++ * Update a user's role (HD-014 PUT /api/users/:id/role).
++ *
++ * Throws `HttpError(404, 'not_found', ...)` if the user doesn't
++ * exist. The controller is responsible for the role-must-be-an-Admin-
++ * gate (403) and the actor-cannot-change-own-role gate (400) before
++ * reaching this helper — the service trusts its caller.
++ *
++ * On success, the returned User instance reflects the new role.
++ * Activity log is intentionally NOT written here — the design
++ * doc defers that to a separate audit-trail slice; the wire-shape
++ * update + the page's row UI is the only consumer-visible effect
++ * in MVP.
++ */
++export async function setUserRole(
++  id: number,
++  role: UserRoleLiteral,
++): Promise<User> {
++  const user = await User.findByPk(id);
++  if (!user) {
++    throw new HttpError(404, 'not_found', `User ${id} not found.`);
++  }
++  user.role = role;
++  await user.save();
++  return user;
++}
++
++/**
++ * Toggle a user's active status (HD-014 PUT /api/users/:id/status).
++ *
++ * Throws `HttpError(404, 'not_found', ...)` if the user doesn't
++ * exist. The controller is responsible for the actor-cannot-deactivate-
++ * self gate (400) before reaching this helper.
++ *
++ * On success, the returned User instance reflects the new
++ * `isActive` value. As with `setUserRole`, no activity log is
++ * written here — out of scope for MVP per the design doc.
++ */
++export async function setUserActive(
++  id: number,
++  isActive: boolean,
++): Promise<User> {
++  const user = await User.findByPk(id);
++  if (!user) {
++    throw new HttpError(404, 'not_found', `User ${id} not found.`);
++  }
++  user.isActive = isActive;
++  await user.save();
++  return user;
+ }
+\ No newline at end of file
+diff --git a/frontend/src/app/components/molecules/user-row/user-row.component.spec.ts b/frontend/src/app/components/molecules/user-row/user-row.component.spec.ts
+new file mode 100644
+index 0000000..32e2967
+--- /dev/null
++++ b/frontend/src/app/components/molecules/user-row/user-row.component.spec.ts
+@@ -0,0 +1,206 @@
++/**
++ * UserRowComponent — HD-014 spec.
++ *
++ * Verifies the per-row markup + interaction wiring:
++ *   - non-self row: avatar + name + email + role select + status
++ *     toggle + last-active all rendered.
++ *   - self row: 3px left border class, disabled atom-select,
++ *     disabled status toggle, micro-label visible.
++ *   - isUpdating row: greys controls + adds `user-row--updating`
++ *     class.
++ *   - errorMessage renders below the row.
++ *   - role select change emits `roleChange` with the new role.
++ *   - status toggle click emits `activeToggle`.
++ *   - role select id is stable per user id (so test selectors
++ *     work in the page spec).
++ *   - lastActiveAt=null renders "Never" instead of a relative
++ *     time.
++ *   - active toggle aria-label flips between "Deactivate <name>"
++ *     and "Activate <name>" based on `user.isActive`.
++ */
++
++import { ComponentFixture, TestBed } from '@angular/core/testing';
++
++import { UserRowComponent } from './user-row.component';
++import type { UserPublic } from '../../../models/user';
++
++const baseUser: UserPublic = {
++  id: 7,
++  email: 'eli@example.com',
++  displayName: 'Eli Chen',
++  role: 'User',
++  isActive: true,
++  lastActiveAt: '2026-10-09T12:00:00.000Z',
++  createdAt: '2026-09-01T00:00:00.000Z',
++  updatedAt: '2026-09-02T00:00:00.000Z',
++};
++
++describe('UserRowComponent (HD-014)', () => {
++  let fixture: ComponentFixture<UserRowComponent>;
++  let component: UserRowComponent;
++
++  beforeEach(async () => {
++    await TestBed.configureTestingModule({
++      imports: [UserRowComponent],
++    }).compileComponents();
++
++    fixture = TestBed.createComponent(UserRowComponent);
++    component = fixture.componentInstance;
++  });
++
++  it('renders the row markup for a non-self, active user', () => {
++    fixture.componentRef.setInput('user', baseUser);
++    fixture.detectChanges();
++
++    const el = fixture.nativeElement as HTMLElement;
++    expect(el.querySelector('.user-row')).toBeTruthy();
++    expect(el.querySelector('.user-row--self')).toBeNull();
++    expect(el.querySelector('.user-row__display-name')?.textContent?.trim())
++      .toBe('Eli Chen');
++    expect(el.querySelector('.user-row__email')?.textContent?.trim())
++      .toBe('eli@example.com');
++    expect(el.querySelector('atom-select')).toBeTruthy();
++    const select = el.querySelector('atom-select select') as HTMLSelectElement;
++    expect(select.value).toBe('User');
++    expect(select.disabled).toBe(false);
++    const toggle = el.querySelector('.user-row__active-toggle') as HTMLButtonElement;
++    expect(toggle.disabled).toBe(false);
++    expect(toggle.classList.contains('is-active')).toBe(true);
++    expect(el.querySelector('.user-row__active-text')?.textContent?.trim())
++      .toBe('Active');
++    expect(el.querySelector('.user-row__last-active time')?.textContent?.trim())
++      .toBe('2d ago');
++    expect(el.querySelector('.user-row__self-micro-label')).toBeNull();
++  });
++
++  it('renders the inactive indicator + label for an inactive user', () => {
++    fixture.componentRef.setInput(
++      'user',
++      { ...baseUser, isActive: false },
++    );
++    fixture.detectChanges();
++
++    const el = fixture.nativeElement as HTMLElement;
++    const toggle = el.querySelector('.user-row__active-toggle') as HTMLButtonElement;
++    expect(toggle.classList.contains('is-inactive')).toBe(true);
++    expect(toggle.classList.contains('is-active')).toBe(false);
++    expect(el.querySelector('.user-row__active-text')?.textContent?.trim())
++      .toBe('Inactive');
++  });
++
++  it('renders the self-row styling + disabled controls + micro-label when isSelf=true', () => {
++    fixture.componentRef.setInput('user', baseUser);
++    fixture.componentRef.setInput('isSelf', true);
++    fixture.detectChanges();
++
++    const el = fixture.nativeElement as HTMLElement;
++    const row = el.querySelector('.user-row') as HTMLElement;
++    expect(row.classList.contains('user-row--self')).toBe(true);
++    const select = el.querySelector('atom-select select') as HTMLSelectElement;
++    expect(select.disabled).toBe(true);
++    const toggle = el.querySelector('.user-row__active-toggle') as HTMLButtonElement;
++    expect(toggle.disabled).toBe(true);
++    const label = el.querySelector('.user-row__self-micro-label');
++    expect(label?.textContent?.trim()).toBe('You cannot change your own role.');
++  });
++
++  it('renders the updating class + disables controls when isUpdating=true', () => {
++    fixture.componentRef.setInput('user', baseUser);
++    fixture.componentRef.setInput('isUpdating', true);
++    fixture.detectChanges();
++
++    const el = fixture.nativeElement as HTMLElement;
++    const row = el.querySelector('.user-row') as HTMLElement;
++    expect(row.classList.contains('user-row--updating')).toBe(true);
++    const select = el.querySelector('atom-select select') as HTMLSelectElement;
++    expect(select.disabled).toBe(true);
++    const toggle = el.querySelector('.user-row__active-toggle') as HTMLButtonElement;
++    expect(toggle.disabled).toBe(true);
++  });
++
++  it('renders an inline row error when errorMessage is set', () => {
++    fixture.componentRef.setInput('user', baseUser);
++    fixture.componentRef.setInput('errorMessage', "Couldn't update. Try again.");
++    fixture.detectChanges();
++
++    const el = fixture.nativeElement as HTMLElement;
++    const err = el.querySelector('.user-row__error');
++    expect(err?.textContent?.trim()).toBe("Couldn't update. Try again.");
++    expect(err?.getAttribute('role')).toBe('alert');
++  });
++
++  it('emits roleChange when the role select changes', () => {
++    fixture.componentRef.setInput('user', baseUser);
++    fixture.detectChanges();
++    const spy = spyOn(component.roleChange, 'emit');
++    const select = fixture.nativeElement.querySelector(
++      'atom-select select',
++    ) as HTMLSelectElement;
++    select.value = 'Support Agent';
++    select.dispatchEvent(new Event('change'));
++    expect(spy).toHaveBeenCalledWith('Support Agent');
++  });
++
++  it('emits activeToggle when the status toggle is clicked', () => {
++    fixture.componentRef.setInput('user', baseUser);
++    fixture.detectChanges();
++    const spy = spyOn(component.activeToggle, 'emit');
++    const toggle = fixture.nativeElement.querySelector(
++      '.user-row__active-toggle',
++    ) as HTMLButtonElement;
++    toggle.click();
++    expect(spy).toHaveBeenCalled();
++  });
++
++  it('does not emit roleChange when the select value is unchanged', () => {
++    fixture.componentRef.setInput('user', baseUser);
++    fixture.detectChanges();
++    const spy = spyOn(component.roleChange, 'emit');
++    const select = fixture.nativeElement.querySelector(
++      'atom-select select',
++    ) as HTMLSelectElement;
++    select.value = 'User'; // unchanged
++    select.dispatchEvent(new Event('change'));
++    expect(spy).not.toHaveBeenCalled();
++  });
++
++  it('uses a stable role select id derived from the user id', () => {
++    fixture.componentRef.setInput('user', { ...baseUser, id: 42 });
++    expect(component.roleSelectId()).toBe('user-row-role-42');
++  });
++
++  it('renders "Never" when lastActiveAt is null', () => {
++    fixture.componentRef.setInput(
++      'user',
++      { ...baseUser, lastActiveAt: null },
++    );
++    fixture.detectChanges();
++
++    const el = fixture.nativeElement as HTMLElement;
++    expect(el.querySelector('.user-row__last-active time')).toBeNull();
++    expect(el.querySelector('.user-row__never')?.textContent?.trim()).toBe('Never');
++  });
++
++  it('flips the active toggle aria-label based on isActive', () => {
++    fixture.componentRef.setInput('user', baseUser);
++    expect(component.activeAriaLabel()).toBe('Deactivate Eli Chen');
++    fixture.componentRef.setInput(
++      'user',
++      { ...baseUser, isActive: false },
++    );
++    expect(component.activeAriaLabel()).toBe('Activate Eli Chen');
++  });
++
++  it('ignores bogus role values from the select (defensive)', () => {
++    fixture.componentRef.setInput('user', baseUser);
++    fixture.detectChanges();
++    const spy = spyOn(component.roleChange, 'emit');
++    // Simulate an attacker / a future enum value landing here.
++    const select = fixture.nativeElement.querySelector(
++      'atom-select select',
++    ) as HTMLSelectElement;
++    select.value = 'Wizard';
++    select.dispatchEvent(new Event('change'));
++    expect(spy).not.toHaveBeenCalled();
++  });
++});
+\ No newline at end of file
+diff --git a/frontend/src/app/components/molecules/user-row/user-row.component.ts b/frontend/src/app/components/molecules/user-row/user-row.component.ts
+new file mode 100644
+index 0000000..8765373
+--- /dev/null
++++ b/frontend/src/app/components/molecules/user-row/user-row.component.ts
+@@ -0,0 +1,202 @@
++/**
++ * user-row — molecule (HD-014).
++ *
++ * One row in the Admin Users table. Renders per the design spec:
++ *   avatar + display name | email | role select | status toggle | last active
++ *
++ * Interaction model:
++ *   - Non-self rows: role `<atom-select>` + status toggle button are
++ *     active. Changes emit `roleChange` / `activeToggle` events; the
++ *     parent page decides whether to apply immediately or open a
++ *     confirmation dialog (Admin-demote / Admin-deactivate).
++ *   - Self rows (the Admin viewing the page): both controls render
++ *     disabled, with a 3px primary left border on the row + a muted
++ *     micro-label below the row that reads "You cannot change your
++ *     own role." The parent page sets `isSelf=true` based on a
++ *     `currentUser.id === user.id` comparison.
++ *   - Per-row update state: `isUpdating` greys the controls and
++ *     emits no events while a request is in flight. `errorMessage`
++ *     renders an inline row error below the row.
++ *
++ * The component owns the row markup only — all row geometry
++ * (64px height, hover tint, border-bottom, self-row left border,
++ * last-active column right-align) is owned by `styles.css`
++ * (mirrors the HD-013 / HD-011 / HD-012 pattern of pushing heavy
++ * rules to global so the page component's inline style budget
++ * holds under 2kB).
++ */
++
++import {
++  ChangeDetectionStrategy,
++  Component,
++  computed,
++  input,
++  output,
++} from '@angular/core';
++
++import type { UserPublic } from '../../../models/user';
++import type { UserRole } from '../../../models/enums';
++import { ChromeAvatarComponent } from '../../atoms/chrome-avatar/chrome-avatar.component';
++import { SelectComponent } from '../../atoms/select/select.component';
++import type { SelectOption } from '../../atoms/select/select.component';
++
++const ROLE_OPTIONS: SelectOption[] = [
++  { value: 'User', label: 'User' },
++  { value: 'Support Agent', label: 'Support Agent' },
++  { value: 'Admin', label: 'Admin' },
++];
++
++@Component({
++  selector: 'user-row',
++  standalone: true,
++  imports: [ChromeAvatarComponent, SelectComponent],
++  changeDetection: ChangeDetectionStrategy.OnPush,
++  template: `
++    <li
++      class="user-row"
++      [class.user-row--self]="isSelf()"
++      [class.user-row--updating]="isUpdating()"
++      [attr.data-user-id]="user().id"
++    >
++      <div class="user-row__name">
++        <chrome-avatar
++          [displayName]="user().displayName"
++          [size]="32"
++        />
++        <span class="user-row__display-name">{{ user().displayName }}</span>
++      </div>
++      <div class="user-row__email">{{ user().email }}</div>
++      <div class="user-row__role">
++        <atom-select
++          [id]="roleSelectId()"
++          [value]="user().role"
++          [options]="roleOptions"
++          [disabled]="isSelf() || isUpdating()"
++          (valueChange)="onRoleChange($event)"
++        />
++      </div>
++      <div class="user-row__status">
++        <button
++          type="button"
++          class="user-row__active-toggle"
++          [class.is-active]="user().isActive"
++          [class.is-inactive]="!user().isActive"
++          [disabled]="isSelf() || isUpdating()"
++          [attr.aria-label]="activeAriaLabel()"
++          (click)="onToggleClick()"
++        >
++          <span
++            class="user-row__active-dot"
++            [attr.aria-hidden]="true"
++          ></span>
++          <span class="user-row__active-text">
++            {{ user().isActive ? 'Active' : 'Inactive' }}
++          </span>
++        </button>
++      </div>
++      <div class="user-row__last-active">
++        @if (user().lastActiveAt !== null && user().lastActiveAt !== undefined) {
++          <time [attr.datetime]="user().lastActiveAt">
++            {{ formattedLastActive() }}
++          </time>
++        } @else {
++          <span class="user-row__never">Never</span>
++        }
++      </div>
++      @if (isSelf()) {
++        <p class="user-row__self-micro-label">
++          You cannot change your own role.
++        </p>
++      }
++      @if (errorMessage(); as err) {
++        <p class="user-row__error" role="alert">{{ err }}</p>
++      }
++    </li>
++  `,
++  styles: [`
++    :host {
++      display: contents;
++    }
++  `],
++})
++export class UserRowComponent {
++  readonly user = input.required<UserPublic>();
++  readonly isSelf = input<boolean>(false);
++  readonly isUpdating = input<boolean>(false);
++  readonly errorMessage = input<string | null>(null);
++  readonly relativeTime = input<string | null>(null);
++
++  readonly roleChange = output<UserRole>();
++  readonly activeToggle = output<void>();
++
++  readonly roleOptions = ROLE_OPTIONS;
++
++  /**
++   * The role select needs a unique DOM id for label / aria
++   * wiring. Deterministic per user id so test selectors stay
++   * stable.
++   */
++  readonly roleSelectId = computed(() => `user-row-role-${this.user().id}`);
++
++  readonly activeAriaLabel = computed(() =>
++    this.user().isActive
++      ? `Deactivate ${this.user().displayName}`
++      : `Activate ${this.user().displayName}`,
++  );
++
++  /**
++   * Pre-formatted relative time for `user().lastActiveAt`. The page
++   * passes a pre-formatted string via the `relativeTime` input when
++   * it wants to override (e.g. during a refetch the user is in a
++   * different timezone), but by default we format here so the row
++   * works in isolation (molecule spec, storybook snapshots).
++   */
++  readonly formattedLastActive = computed(() => {
++    const override = this.relativeTime();
++    if (override !== null) return override;
++    const iso = this.user().lastActiveAt;
++    if (!iso) return null;
++    return UserRowComponent.formatRelative(iso);
++  });
++
++  onRoleChange(value: string): void {
++    if (value !== 'User' && value !== 'Support Agent' && value !== 'Admin') {
++      return;
++    }
++    // Guard: <atom-select> emits on every native change event,
++    // including when the new value equals the current. Skip so the
++    // page doesn't fire a no-op update request.
++    if (value === this.user().role) {
++      return;
++    }
++    this.roleChange.emit(value);
++  }
++
++  /**
++   * Per-row "Xm ago" / "Xh ago" / ... formatter. Copied from the
++   * admin-dashboard page (HD-013) so each row renders an
++   * independently-formatted timestamp without the page wiring
++   * `relativeTime` for every row. If/when this gets refactored to
++   * a shared util, both call sites collapse to the import.
++   */
++  private static formatRelative(iso: string): string {
++    const then = new Date(iso).getTime();
++    if (Number.isNaN(then)) return '';
++    const seconds = Math.floor((Date.now() - then) / 1000);
++    if (seconds < 60) return 'just now';
++    const minutes = Math.floor(seconds / 60);
++    if (minutes < 60) return `${minutes}m ago`;
++    const hours = Math.floor(minutes / 60);
++    if (hours < 24) return `${hours}h ago`;
++    const days = Math.floor(hours / 24);
++    if (days < 30) return `${days}d ago`;
++    const months = Math.floor(days / 30);
++    if (months < 12) return `${months}mo ago`;
++    const years = Math.floor(days / 365);
++    return `${years}y ago`;
++  }
++
++  onToggleClick(): void {
++    this.activeToggle.emit();
++  }
++}
+diff --git a/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.spec.ts b/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.spec.ts
+index aef7b9c..6061c78 100644
+--- a/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.spec.ts
++++ b/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.spec.ts
+@@ -25,10 +25,13 @@ import { TestBed, ComponentFixture } from '@angular/core/testing';
+ import { Router } from '@angular/router';
+ import { provideRouter } from '@angular/router';
+ import { provideHttpClient } from '@angular/common/http';
++import { BehaviorSubject, type Observable } from 'rxjs';
+ 
+ import { AdminDashboardPageComponent } from './admin-dashboard-page.component';
+ import { TicketService } from '../../services/ticket.service';
+ import type { AdminDashboardSummary } from '../../services/ticket.service';
++import { UserService } from '../../services/user.service';
++import { AuthService } from '../../services/auth.service';
+ import { ApiError } from '../../services/api-error';
+ import type { Ticket } from '../../models/ticket';
+ import type { UserPublic } from '../../models/user';
+@@ -405,12 +408,35 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
+   });
+ });
+ 
+-describe('AdminDashboardPageComponent URL hash routing (HD-013)', () => {
++describe('AdminDashboardPageComponent URL hash routing (HD-013 + HD-014)', () => {
+   let localTicketService: { adminDashboard: jasmine.Spy };
++  let localUserService: { listAll: jasmine.Spy };
++  let localAuthService: {
++    userSnapshot: jasmine.Spy;
++    user$: Observable<UserPublic | null>;
++    refreshUser: jasmine.Spy;
++  };
+ 
+   beforeEach(async () => {
+     TestBed.resetTestingModule();
+     localTicketService = { adminDashboard: jasmine.createSpy('adminDashboard') };
++    localUserService = { listAll: jasmine.createSpy('listAll') };
++    // Stub listAll() so the embedded UsersTabPageComponent renders
++    // its success state synchronously without a real HTTP call.
++    localUserService.listAll.and.resolveTo([]);
++    // The UsersTabPageComponent wraps content in <app-chrome>, which
++    // boots via header-chrome. header-chrome calls
++    // `auth.refreshUser()` and reads `auth.user$` via `toSignal()`,
++    // so the AuthService stub needs both.
++    localAuthService = {
++      userSnapshot: jasmine
++        .createSpy('userSnapshot')
++        .and.returnValue(baseUser),
++      user$: new BehaviorSubject<UserPublic | null>(baseUser).asObservable(),
++      refreshUser: jasmine
++        .createSpy('refreshUser')
++        .and.resolveTo(),
++    };
+     await TestBed.configureTestingModule({
+       imports: [AdminDashboardPageComponent],
+       providers: [
+@@ -420,11 +446,13 @@ describe('AdminDashboardPageComponent URL hash routing (HD-013)', () => {
+         ]),
+         provideHttpClient(),
+         { provide: TicketService, useValue: localTicketService },
++        { provide: UserService, useValue: localUserService },
++        { provide: AuthService, useValue: localAuthService },
+       ],
+     }).compileComponents();
+   });
+ 
+-  it('renders the Users tab active + users-placeholder body when URL hash is #users on initial load', async () => {
++  it('renders the Users tab active + UsersTabPageComponent body when URL hash is #users on initial load', async () => {
+     const router = TestBed.inject(Router);
+     const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+ 
+@@ -444,11 +472,17 @@ describe('AdminDashboardPageComponent URL hash routing (HD-013)', () => {
+       // The Users tab is active in the template.
+       expect(newComponent.activeTab()).toBe('users');
+ 
+-      // The body renders the users-placeholder branch (HD-014 will
+-      // replace this with the real Users content).
++      // The body renders the HD-014 <app-users-tab-page> in-place.
++      // The Dashboard cards (the previous tab's content) are not
++      // rendered when the Users tab is active.
+       const compiled = newFixture.nativeElement as HTMLElement;
+-      expect(compiled.querySelector('.users-placeholder')).toBeTruthy();
++      expect(compiled.querySelector('.users-placeholder')).toBeNull();
+       expect(compiled.querySelectorAll('.card-row .card').length).toBe(0);
++      // The UsersTabPageComponent renders <section class="users-page">.
++      expect(compiled.querySelector('app-users-tab-page .users-page'))
++        .toBeTruthy();
++      // The UsersTabPageComponent called listAll() exactly once on init.
++      expect(localUserService.listAll).toHaveBeenCalledTimes(1);
+ 
+       // Heading reflects the active tab.
+       const h1 = compiled.querySelector('h1');
+diff --git a/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.ts b/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.ts
+index e0e467c..addb84f 100644
+--- a/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.ts
++++ b/frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.ts
+@@ -48,6 +48,7 @@ import { ApiError } from '../../services/api-error';
+ import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
+ import { ButtonComponent } from '../../components/atoms/button/button.component';
+ import { BadgeStatusComponent } from '../../components/atoms/badge-status/badge-status.component';
++import { UsersTabPageComponent } from '../users-tab-page/users-tab-page.component';
+ import type { Ticket } from '../../models/ticket';
+ import type { TicketStatus } from '../../models/enums';
+ 
+@@ -64,6 +65,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
+     AppChromeComponent,
+     ButtonComponent,
+     BadgeStatusComponent,
++    UsersTabPageComponent,
+   ],
+   changeDetection: ChangeDetectionStrategy.OnPush,
+   template: `
+@@ -99,18 +101,13 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
+ 
+         @switch (effectiveRenderState()) {
+           @case ('users-placeholder') {
+-            <!-- HD-014 will absorb the Users content into this page.
+-                 Until then, the tab stays on /admin#users and the
+-                 body renders a single placeholder card so the
+-                 design-doc contract (tab affordance, hash stays on
+-                 /admin) is satisfied. -->
+-            <div class="users-placeholder" role="tabpanel" aria-labelledby="admin-tab-users">
+-              <p class="users-placeholder-text">
+-                User management lands in HD-014. For now, the
+-                <a routerLink="/users" class="users-standalone-link">standalone Users page</a>
+-                is still reachable from the URL bar.
+-              </p>
+-            </div>
++            <!-- HD-014: the Users tab on /admin renders the same
++                 UsersTabPageComponent that /users mounts. The URL
++                 hash stays on /admin#users (per the design doc's
++                 "in-page tab" contract); the user can still reach
++                 the standalone /users route by typing it in the
++                 URL bar. -->
++            <app-users-tab-page />
+           }
+           @case ('loading') {
+             <div class="card-row" aria-busy="true" aria-label="Loading dashboard">
+diff --git a/frontend/src/app/pages/users-tab-page/users-tab-page.component.spec.ts b/frontend/src/app/pages/users-tab-page/users-tab-page.component.spec.ts
+new file mode 100644
+index 0000000..b9e3dec
+--- /dev/null
++++ b/frontend/src/app/pages/users-tab-page/users-tab-page.component.spec.ts
+@@ -0,0 +1,487 @@
++/**
++ * UsersTabPageComponent — HD-014.
++ *
++ * Verifies the Admin Users tab:
++ *   - 200 happy path: heading "Users", active-count micro-label,
++ *     5 user-rows rendered from listAll().
++ *   - alphabetical order: the page does NOT sort; the backend
++ *     returns the rows pre-sorted. We assert the iteration
++ *     matches the listAll() response order.
++ *   - self-row: when currentUser.id === row.user.id, the row is
++ *     styled as self (3px left border), controls are disabled,
++ *     micro-label visible.
++ *   - role dropdown change:
++ *     - non-demotion: calls userService.updateRole immediately.
++ *     - Admin-demote: opens dialog, confirm calls updateRole,
++ *       cancel reverts.
++ *   - status toggle:
++ *     - non-Admin target: calls userService.updateActive
++ *       immediately.
++ *     - Admin target → inactive: opens dialog, confirm calls
++ *       updateActive, cancel reverts.
++ *   - render states: loading skeleton, server error + Retry,
++ *     401 silent (auth interceptor redirects).
++ *   - formatRelative: "just now" / "Xm ago" / "Xh ago" / "Xd
++ *     ago" / "Xmo ago" / "Xy ago" / "" (NaN) / null → null.
++ *   - window:focus refetches when in success state.
++ *   - action error: 5xx from updateRole / updateActive reverts
++ *     the local signal and shows the row error.
++ */
++
++import { ComponentFixture, TestBed } from '@angular/core/testing';
++import { provideRouter } from '@angular/router';
++import { provideHttpClient } from '@angular/common/http';
++import { BehaviorSubject, type Observable } from 'rxjs';
++
++import { UsersTabPageComponent } from './users-tab-page.component';
++import { UserService } from '../../services/user.service';
++import { AuthService } from '../../services/auth.service';
++import { ApiError } from '../../services/api-error';
++import type { UserPublic } from '../../models/user';
++
++const baseUser = (
++  id: number,
++  overrides: Partial<UserPublic> = {},
++): UserPublic => ({
++  id,
++  email: `user${id}@example.com`,
++  displayName: `User ${id}`,
++  role: 'User',
++  isActive: true,
++  lastActiveAt: null,
++  createdAt: '2026-09-01T00:00:00.000Z',
++  updatedAt: '2026-09-02T00:00:00.000Z',
++  ...overrides,
++});
++
++const admin: UserPublic = baseUser(1, {
++  email: 'admin@example.com',
++  displayName: 'Avery',
++  role: 'Admin',
++});
++
++function makeUserList(): UserPublic[] {
++  return [
++    admin,
++    baseUser(2, { displayName: 'Eli Chen', role: 'User' }),
++    baseUser(3, { displayName: 'Jordan', role: 'Support Agent' }),
++    baseUser(4, { displayName: 'Morgan', role: 'User', isActive: false }),
++    // Sam Patel is a second Admin so the Admin-demote / Admin-
++    // deactivate flows have a real target that isn't the viewer.
++    baseUser(5, { displayName: 'Sam Patel', role: 'Admin' }),
++  ];
++}
++
++describe('UsersTabPageComponent (HD-014)', () => {
++  let fixture: ComponentFixture<UsersTabPageComponent>;
++  let component: UsersTabPageComponent;
++  let userService: {
++    listAll: jasmine.Spy;
++    updateRole: jasmine.Spy;
++    updateActive: jasmine.Spy;
++  };
++  let authService: {
++      userSnapshot: jasmine.Spy;
++      user$: Observable<UserPublic | null>;
++      refreshUser: jasmine.Spy;
++    };
++
++  beforeEach(async () => {
++    userService = {
++      listAll: jasmine.createSpy('listAll'),
++      updateRole: jasmine.createSpy('updateRole'),
++      updateActive: jasmine.createSpy('updateActive'),
++    };
++    // Minimal AuthService stub: enough to keep `<app-chrome>` +
++    // `header-chrome` running in tests. The page reads `userSnapshot()`
++    // synchronously for self-row detection; `user$` is consumed by
++    // `header-chrome` via `toSignal`; `refreshUser()` is a no-op so
++    // the chrome's bootstrap call doesn't fail.
++    const userSubject = new BehaviorSubject<UserPublic | null>(admin);
++    authService = {
++      userSnapshot: jasmine
++        .createSpy('userSnapshot')
++        .and.returnValue(admin),
++      user$: userSubject.asObservable(),
++      refreshUser: jasmine
++        .createSpy('refreshUser')
++        .and.resolveTo(),
++    };
++
++    await TestBed.configureTestingModule({
++      imports: [UsersTabPageComponent],
++      providers: [
++        provideRouter([
++          { path: 'admin', children: [] },
++          { path: 'users', children: [] },
++        ]),
++        provideHttpClient(),
++        { provide: UserService, useValue: userService },
++        { provide: AuthService, useValue: authService },
++      ],
++    }).compileComponents();
++
++    fixture = TestBed.createComponent(UsersTabPageComponent);
++    component = fixture.componentInstance;
++  });
++
++  it('renders the heading + active-count + 5 rows in success state', async () => {
++    const list = makeUserList();
++    userService.listAll.and.resolveTo(list);
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    expect(component.renderState()).toBe('success');
++
++    const compiled = fixture.nativeElement as HTMLElement;
++    expect(compiled.querySelector('h1')?.textContent?.trim()).toBe('Users');
++    expect(compiled.querySelector('.users-count')?.textContent?.trim())
++      .toBe('5 users · 4 active · 1 inactive');
++
++    const rows = compiled.querySelectorAll('.user-row');
++    expect(rows.length).toBe(5);
++    // Iteration order matches the listAll() response.
++    expect(
++      Array.from(rows).map((r) =>
++        r.querySelector('.user-row__display-name')?.textContent?.trim(),
++      ),
++    ).toEqual(['Avery', 'Eli Chen', 'Jordan', 'Morgan', 'Sam Patel']);
++  });
++
++  it('renders 5 row skeletons during the loading state', async () => {
++    let resolveFn!: (u: UserPublic[]) => void;
++    userService.listAll.and.returnValue(
++      new Promise<UserPublic[]>((r) => {
++        resolveFn = r;
++      }),
++    );
++    fixture.detectChanges();
++    fixture.detectChanges();
++
++    expect(component.renderState()).toBe('loading');
++    const skels = fixture.nativeElement.querySelectorAll('.user-row-skel');
++    expect(skels.length).toBe(5);
++
++    resolveFn(makeUserList());
++  });
++
++  it('shows inline error + Retry button on a 5xx load', async () => {
++    userService.listAll.and.rejectWith(
++      new ApiError(500, 'internal_server_error', 'boom'),
++    );
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    expect(component.renderState()).toBe('error');
++    const err = fixture.nativeElement.querySelector('.users-error-card');
++    expect(err).toBeTruthy();
++    expect(err.querySelector('.error-message')?.textContent?.trim())
++      .toBe("Couldn't load users. Refresh to try again.");
++    const retry = err.querySelector('atom-button');
++    expect(retry).toBeTruthy();
++  });
++
++  it('Retry button refetches the list', async () => {
++    let callCount = 0;
++    userService.listAll.and.callFake(() => {
++      callCount++;
++      if (callCount === 1) {
++        return Promise.reject(
++          new ApiError(500, 'internal_server_error', 'boom'),
++        );
++      }
++      return Promise.resolve(makeUserList());
++    });
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++    expect(component.renderState()).toBe('error');
++
++    component.onRefresh();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    expect(component.renderState()).toBe('success');
++    expect(userService.listAll).toHaveBeenCalledTimes(2);
++  });
++
++  it('does not render the error card on a 401 (auth interceptor redirects)', async () => {
++    userService.listAll.and.rejectWith(
++      new ApiError(401, 'unauthenticated', 'expired'),
++    );
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    expect(component.renderState()).not.toBe('error');
++  });
++
++  describe('self-row', () => {
++    it('marks the current user row as self (3px border + disabled controls + micro-label)', async () => {
++      const list = makeUserList();
++      userService.listAll.and.resolveTo(list);
++      fixture.detectChanges();
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      const rows = fixture.nativeElement.querySelectorAll('.user-row');
++      // Row 0 is Avery (admin.id === 1).
++      const selfRow = rows[0] as HTMLElement;
++      expect(selfRow.classList.contains('user-row--self')).toBe(true);
++      const selfSelect = selfRow.querySelector(
++        'atom-select select',
++      ) as HTMLSelectElement;
++      expect(selfSelect.disabled).toBe(true);
++      const selfToggle = selfRow.querySelector(
++        '.user-row__active-toggle',
++      ) as HTMLButtonElement;
++      expect(selfToggle.disabled).toBe(true);
++      const selfLabel = selfRow.querySelector(
++        '.user-row__self-micro-label',
++      );
++      expect(selfLabel?.textContent?.trim())
++        .toBe('You cannot change your own role.');
++
++      // Non-self rows are NOT styled as self.
++      const otherRow = rows[1] as HTMLElement;
++      expect(otherRow.classList.contains('user-row--self')).toBe(false);
++      const otherSelect = otherRow.querySelector(
++        'atom-select select',
++      ) as HTMLSelectElement;
++      expect(otherSelect.disabled).toBe(false);
++    });
++  });
++
++  describe('role change', () => {
++    it('non-demotion: calls updateRole immediately on dropdown change', async () => {
++      const list = makeUserList();
++      userService.listAll.and.resolveTo(list);
++      userService.updateRole.and.resolveTo(
++        baseUser(2, { displayName: 'Eli Chen', role: 'Support Agent' }),
++      );
++      fixture.detectChanges();
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      component.onRoleChange('Support Agent', list[1]);
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      expect(userService.updateRole).toHaveBeenCalledWith(2, 'Support Agent');
++    });
++
++    it('Admin-demote: opens dialog, confirm calls updateRole, cancel reverts', async () => {
++      const list = makeUserList();
++      userService.listAll.and.resolveTo(list);
++      userService.updateRole.and.resolveTo(
++        baseUser(5, { displayName: 'Sam Patel', role: 'Support Agent' }),
++      );
++      fixture.detectChanges();
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      // Sam Patel is an Admin; Admin → Support Agent triggers the
++      // confirm dialog.
++      component.onRoleChange('Support Agent', list[4]);
++      fixture.detectChanges();
++      expect(component.confirmCtx()?.kind).toBe('role-demote');
++      expect(userService.updateRole).not.toHaveBeenCalled();
++
++      // Cancel reverts (no update call, dialog clears).
++      component.onConfirmCancel();
++      fixture.detectChanges();
++      expect(component.confirmCtx()).toBeNull();
++      expect(userService.updateRole).not.toHaveBeenCalled();
++
++      // Trigger again, then confirm.
++      component.onRoleChange('Support Agent', list[4]);
++      fixture.detectChanges();
++      component.onConfirmAccept();
++      await fixture.whenStable();
++      fixture.detectChanges();
++      expect(userService.updateRole).toHaveBeenCalledWith(5, 'Support Agent');
++    });
++
++    it('non-demotion 5xx: shows inline row error', async () => {
++      const list = makeUserList();
++      userService.listAll.and.resolveTo(list);
++      userService.updateRole.and.rejectWith(
++        new ApiError(500, 'internal_server_error', 'boom'),
++      );
++      fixture.detectChanges();
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      component.onRoleChange('Support Agent', list[1]);
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      expect(component.rowError(2)).toBe("Couldn't update. Try again.");
++    });
++  });
++
++  describe('active toggle', () => {
++    it('non-Admin target: calls updateActive immediately on click', async () => {
++      const list = makeUserList();
++      userService.listAll.and.resolveTo(list);
++      userService.updateActive.and.resolveTo(
++        baseUser(2, { displayName: 'Eli Chen', isActive: false }),
++      );
++      fixture.detectChanges();
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      // Eli Chen is a User (role !== 'Admin'), so click goes
++      // straight to updateActive(false).
++      component.onActiveToggle(list[1]);
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      expect(userService.updateActive).toHaveBeenCalledWith(2, false);
++    });
++
++    it('re-activating an inactive user: calls updateActive(true) immediately', async () => {
++      const list = makeUserList();
++      userService.listAll.and.resolveTo(list);
++      userService.updateActive.and.resolveTo(
++        baseUser(4, { displayName: 'Morgan', isActive: true }),
++      );
++      fixture.detectChanges();
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      // Morgan is currently inactive; re-activating is non-destructive.
++      component.onActiveToggle(list[3]);
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      expect(userService.updateActive).toHaveBeenCalledWith(4, true);
++    });
++
++    it('Admin → inactive: opens dialog, confirm calls updateActive(false), cancel reverts', async () => {
++      const list = makeUserList();
++      userService.listAll.and.resolveTo(list);
++      userService.updateActive.and.resolveTo(
++        baseUser(5, { displayName: 'Sam Patel', isActive: false }),
++      );
++      fixture.detectChanges();
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      // Sam Patel is Admin + active; click triggers the confirm.
++      component.onActiveToggle(list[4]);
++      fixture.detectChanges();
++      expect(component.confirmCtx()?.kind).toBe('admin-deactivate');
++      expect(userService.updateActive).not.toHaveBeenCalled();
++
++      component.onConfirmCancel();
++      fixture.detectChanges();
++      expect(component.confirmCtx()).toBeNull();
++      expect(userService.updateActive).not.toHaveBeenCalled();
++
++      component.onActiveToggle(list[4]);
++      fixture.detectChanges();
++      component.onConfirmAccept();
++      await fixture.whenStable();
++      fixture.detectChanges();
++      expect(userService.updateActive).toHaveBeenCalledWith(5, false);
++    });
++
++    it('5xx: shows inline row error', async () => {
++      const list = makeUserList();
++      userService.listAll.and.resolveTo(list);
++      userService.updateActive.and.rejectWith(
++        new ApiError(500, 'internal_server_error', 'boom'),
++      );
++      fixture.detectChanges();
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      component.onActiveToggle(list[1]);
++      await fixture.whenStable();
++      fixture.detectChanges();
++
++      expect(component.rowError(2)).toBe("Couldn't update. Try again.");
++    });
++  });
++
++  describe('formatRelative', () => {
++    it('returns null for null input (renders "Never" in template)', () => {
++      expect(component.formatRelative(null)).toBeNull();
++    });
++    it('produces "just now" for < 60 seconds', () => {
++      const iso = new Date(Date.now() - 5_000).toISOString();
++      expect(component.formatRelative(iso)).toBe('just now');
++    });
++    it('produces "Xm ago" for minutes', () => {
++      const iso = new Date(Date.now() - 5 * 60_000).toISOString();
++      expect(component.formatRelative(iso)).toBe('5m ago');
++    });
++    it('produces "Xh ago" for hours', () => {
++      const iso = new Date(Date.now() - 3 * 60 * 60_000).toISOString();
++      expect(component.formatRelative(iso)).toBe('3h ago');
++    });
++    it('produces "Xd ago" for days', () => {
++      const iso = new Date(Date.now() - 2 * 24 * 60 * 60_000).toISOString();
++      expect(component.formatRelative(iso)).toBe('2d ago');
++    });
++    it('produces "Xmo ago" for months', () => {
++      const iso = new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString();
++      expect(component.formatRelative(iso)).toBe('1mo ago');
++    });
++    it('produces "Xy ago" for years', () => {
++      const iso = new Date(Date.now() - 400 * 24 * 60 * 60_000).toISOString();
++      expect(component.formatRelative(iso)).toBe('1y ago');
++    });
++    it('returns "" on NaN', () => {
++      expect(component.formatRelative('not-a-date')).toBe('');
++    });
++  });
++
++  it('window:focus refetches when in success state', async () => {
++    userService.listAll.and.resolveTo(makeUserList());
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    expect(component.renderState()).toBe('success');
++    expect(userService.listAll).toHaveBeenCalledTimes(1);
++
++    component.onWindowFocus();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    expect(userService.listAll).toHaveBeenCalledTimes(2);
++  });
++
++  it('window:focus does NOT refetch when in loading state', async () => {
++    let resolveFn!: (u: UserPublic[]) => void;
++    userService.listAll.and.returnValue(
++      new Promise<UserPublic[]>((r) => {
++        resolveFn = r;
++      }),
++    );
++    fixture.detectChanges();
++    fixture.detectChanges();
++
++    expect(component.renderState()).toBe('loading');
++    component.onWindowFocus();
++    expect(userService.listAll).toHaveBeenCalledTimes(1);
++
++    resolveFn(makeUserList());
++  });
++
++  it('does not call updateRole when the new role === current role (defensive)', async () => {
++    const list = makeUserList();
++    userService.listAll.and.resolveTo(list);
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    component.onRoleChange('User', list[1]);
++    fixture.detectChanges();
++    expect(userService.updateRole).not.toHaveBeenCalled();
++  });
++});
+\ No newline at end of file
+diff --git a/frontend/src/app/pages/users-tab-page/users-tab-page.component.ts b/frontend/src/app/pages/users-tab-page/users-tab-page.component.ts
+index 201b734..f28ddd7 100644
+--- a/frontend/src/app/pages/users-tab-page/users-tab-page.component.ts
++++ b/frontend/src/app/pages/users-tab-page/users-tab-page.component.ts
+@@ -1,26 +1,435 @@
+-import { Component } from '@angular/core';
+-
+ /**
+- * Users tab placeholder (Admin-only).
+- * Source spec: design-process/D-UX-Design/users-tab.md
+- * Real implementation: HD-014.
++ * UsersTabPageComponent — HD-014.
++ *
++ * The /users route AND the Users tab content on /admin. Mounted
++ * by both `app.routes.ts` (path: 'users') and
++ * `AdminDashboardPageComponent`'s `users-placeholder` branch.
++ *
++ * Layout (per design-process/D-UX-Design/users-tab.md):
++ *   ┌──────────────────────────────────────────────────────────┐
++ *   │  Users                                                   │
++ *   │  6 users · 5 active · 1 inactive                          │
++ *   │  ─────────────────────────────────────────────────────── │
++ *   │  NAME      EMAIL         ROLE        STATUS   LAST ACTIVE│
++ *   │  [avatar]  Eli Chen      [select]   ● Active  2d ago    │
++ *   │  Avery     admin@ex.com  [select]   ● Active  just now   │  ← self row
++ *   │  Sam Patel sam@ex.com    [select]   ● Active  3d ago     │
++ *   │  ...                                                      │
++ *   └──────────────────────────────────────────────────────────┘
++ *
++ * Self-row protection:
++ *   - The row whose `user.id === currentUser.id` renders with a
++ *     3px primary left border, disabled role select, disabled
++ *     status toggle, and a muted micro-label "You cannot change
++ *     your own role." The server enforces the same constraint
++ *     (defense in depth) — a direct API call to change own
++ *     role/active returns 400.
++ *
++ * Inline action lifecycle:
++ *   - Role change (non-demotion): dropdown selection → PATCH
++ *     immediately, no dialog. On error: dropdown reverts, inline
++ *     row error.
++ *   - Role change (Admin → Support Agent / User): dialog "Demote
++ *     <name> from Admin to <new role>? They will lose admin
++ *     access immediately." Cancel reverts, Save Demote applies.
++ *   - Active toggle (non-Admin target): click → PATCH immediately.
++ *   - Active toggle (Admin target → inactive): dialog "Deactivate
++ *     <name>? They will be logged out and unable to log in."
++ *     Cancel reverts, Deactivate applies.
+  *
+- * Reached from /admin → Users tab in HD-013, but the standalone route
+- * remains so deep links work.
++ * Render states (mutually exclusive @switch):
++ *   loading → heading + active-count + 5 row skeletons
++ *   error   → inline error card + Retry
++ *   success → the table
++ *
++ * Window focus refetches the list (mirrors admin-dashboard).
+  */
++
++import {
++  ChangeDetectionStrategy,
++  Component,
++  DestroyRef,
++  HostListener,
++  OnInit,
++  computed,
++  inject,
++  signal,
++} from '@angular/core';
++
++import { ApiError } from '../../services/api-error';
++import { AuthService } from '../../services/auth.service';
++import { UserService } from '../../services/user.service';
++import type { UserPublic } from '../../models/user';
++import type { UserRole } from '../../models/enums';
++import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
++import { ButtonComponent } from '../../components/atoms/button/button.component';
++import { DialogModalComponent } from '../../components/molecules/dialog-modal/dialog-modal.component';
++import { UserRowComponent } from '../../components/molecules/user-row/user-row.component';
++
++type RenderState = 'loading' | 'error' | 'success';
++
++interface ConfirmContext {
++  readonly kind: 'role-demote' | 'admin-deactivate';
++  readonly user: UserPublic;
++  readonly nextRole?: UserRole;
++  readonly priorRole?: UserRole;
++  readonly priorIsActive?: boolean;
++}
++
++const GENERIC_LOAD_ERROR = "Couldn't load users. Refresh to try again.";
++const GENERIC_UPDATE_ERROR = "Couldn't update. Try again.";
++
+ @Component({
+   selector: 'app-users-tab-page',
+   standalone: true,
++  imports: [
++    AppChromeComponent,
++    ButtonComponent,
++    DialogModalComponent,
++    UserRowComponent,
++  ],
++  changeDetection: ChangeDetectionStrategy.OnPush,
+   template: `
+-    <section class="placeholder-page">
+-      <div>
+-        <h1>Users</h1>
+-        <p class="placeholder-subtitle">
+-          Placeholder — full implementation lands in HD-014.
+-          <br />Route: <code>/users</code> (Admin only)
+-        </p>
+-      </div>
+-    </section>
++    <app-chrome>
++      <section class="users-page">
++        <header class="users-header">
++          <h1>Users</h1>
++          <p class="users-count">{{ activeCountLabel() }}</p>
++        </header>
++
++        @switch (renderState()) {
++          @case ('loading') {
++            <div class="users-table-wrap" aria-busy="true" aria-label="Loading users">
++              <div class="users-table-header" aria-hidden="true">
++                <span>NAME</span>
++                <span>EMAIL</span>
++                <span>ROLE</span>
++                <span>STATUS</span>
++                <span>LAST ACTIVE</span>
++              </div>
++              <ul class="users-table">
++                @for (_ of skeletonArray(); track $index) {
++                  <li class="user-row-skel" aria-hidden="true">
++                    <div class="bar bar-avatar"></div>
++                    <div class="bar bar-name"></div>
++                    <div class="bar bar-email"></div>
++                    <div class="bar bar-role"></div>
++                    <div class="bar bar-status"></div>
++                    <div class="bar bar-time"></div>
++                  </li>
++                }
++              </ul>
++            </div>
++          }
++          @case ('error') {
++            <div class="users-error-card" role="alert">
++              <p class="error-message">{{ errorMessage() }}</p>
++              <atom-button variant="primary" size="md" (pressed)="onRefresh()">
++                Retry
++              </atom-button>
++            </div>
++          }
++          @case ('success') {
++            <div class="users-table-wrap">
++              <div class="users-table-header" role="row">
++                <span role="columnheader">NAME</span>
++                <span role="columnheader">EMAIL</span>
++                <span role="columnheader">ROLE</span>
++                <span role="columnheader">STATUS</span>
++                <span role="columnheader">LAST ACTIVE</span>
++              </div>
++              <ul class="users-table" role="rowgroup">
++                @for (u of users(); track u.id) {
++                  <user-row
++                    [user]="u"
++                    [isSelf]="u.id === currentUserId()"
++                    [isUpdating]="isUpdating(u.id)"
++                    [errorMessage]="rowError(u.id)"
++                    [relativeTime]="formatRelative(u.lastActiveAt)"
++                    (roleChange)="onRoleChange($event, u)"
++                    (activeToggle)="onActiveToggle(u)"
++                  />
++                }
++              </ul>
++            </div>
++          }
++        }
++      </section>
++    </app-chrome>
++
++    @if (confirmCtx(); as ctx) {
++      <dialog-modal
++        [headline]="confirmHeadline(ctx)"
++        [cancelLabel]="'Cancel'"
++        [confirmLabel]="confirmLabel(ctx)"
++        (cancel)="onConfirmCancel()"
++        (confirm)="onConfirmAccept()"
++      />
++    }
+   `,
++  styles: [`
++    :host {
++      display: block;
++    }
++    /* All users-page rules (header, table chrome, row geometry,
++       active toggle, self-row border, error card) are owned by
++       styles.css. Mirrors the HD-011 / HD-012 / HD-013 pattern
++       so this component's inline style budget stays under 2kB. */
++  `],
+ })
+-export class UsersTabPageComponent {}
++export class UsersTabPageComponent implements OnInit {
++  private readonly userService = inject(UserService);
++  private readonly authService = inject(AuthService);
++  private readonly destroyRef = inject(DestroyRef);
++
++  readonly renderState = signal<RenderState>('loading');
++  readonly errorMessage = signal<string | null>(null);
++  readonly users = signal<UserPublic[]>([]);
++  readonly updatingIds = signal<Set<number>>(new Set());
++  readonly rowErrors = signal<Record<number, string>>({});
++  readonly confirmCtx = signal<ConfirmContext | null>(null);
++
++  /**
++   * The current user's id. Used to compute `isSelf` for each row.
++   * Reads from `authService.userSnapshot()`; null on cold load
++   * means the auth bootstrap hasn't completed yet — in that case
++   * no row is treated as self (defensive: the roleGuard on /users
++   * requires Admin login, so the snapshot is always populated by
++   * the time this page renders in normal flow).
++   */
++  readonly currentUserId = computed<number | null>(
++    () => this.authService.userSnapshot()?.id ?? null,
++  );
++
++  /**
++   * The "N users · N active · N inactive" micro-label. Only
++   * meaningful in success state; the skeleton / error renders
++   * don't display a count.
++   */
++  readonly activeCountLabel = computed(() => {
++    const list = this.users();
++    const total = list.length;
++    const active = list.filter((u) => u.isActive).length;
++    const inactive = total - active;
++    return `${total} users · ${active} active · ${inactive} inactive`;
++  });
++
++  ngOnInit(): void {
++    void this.load();
++  }
++
++  /**
++   * Refetch on window focus (mirrors admin-dashboard). When the
++   * Admin comes back to the tab after reviewing a ticket detail
++   * page, the row list reflects any external changes.
++   */
++  @HostListener('window:focus')
++  onWindowFocus(): void {
++    if (this.renderState() === 'success') {
++      void this.load();
++    }
++  }
++
++  onRefresh(): void {
++    void this.load();
++  }
++
++  /**
++   * Role dropdown change handler. Decides whether the change
++   * needs a confirmation dialog (Admin-demote) or can be
++   * applied immediately. Self-row controls are disabled by the
++   * molecule, so this handler only fires for non-self rows.
++   */
++  onRoleChange(nextRole: UserRole, user: UserPublic): void {
++    if (user.role === nextRole) return;
++    const isAdminDemote =
++      user.role === 'Admin' && nextRole !== 'Admin';
++    if (isAdminDemote) {
++      this.confirmCtx.set({
++        kind: 'role-demote',
++        user,
++        nextRole,
++        priorRole: user.role,
++      });
++      return;
++    }
++    void this.applyRoleChange(user, nextRole);
++  }
++
++  /**
++   * Status toggle click handler. Decides whether the toggle
++   * needs a confirmation dialog (Admin-deactivate) or can be
++   * applied immediately.
++   */
++  onActiveToggle(user: UserPublic): void {
++    if (!user.isActive) {
++      // Re-activating is never destructive — apply immediately.
++      void this.applyActiveChange(user, true);
++      return;
++    }
++    if (user.role === 'Admin') {
++      // Deactivating an Admin is destructive — confirm.
++      this.confirmCtx.set({
++        kind: 'admin-deactivate',
++        user,
++        priorIsActive: user.isActive,
++      });
++      return;
++    }
++    void this.applyActiveChange(user, false);
++  }
++
++  onConfirmCancel(): void {
++    // Drop the dialog. The molecule's atom-select is bound to
++    // `user().role` via the [value] input, so reverting the
++    // signal value (which we don't do here — the signal is
++    // unchanged because we never optimistically applied the
++    // change) keeps the dropdown showing the prior role.
++    this.confirmCtx.set(null);
++  }
++
++  onConfirmAccept(): void {
++    const ctx = this.confirmCtx();
++    if (!ctx) return;
++    this.confirmCtx.set(null);
++    if (ctx.kind === 'role-demote' && ctx.nextRole) {
++      void this.applyRoleChange(ctx.user, ctx.nextRole);
++    } else if (ctx.kind === 'admin-deactivate') {
++      void this.applyActiveChange(ctx.user, false);
++    }
++  }
++
++  isUpdating(id: number): boolean {
++    return this.updatingIds().has(id);
++  }
++
++  rowError(id: number): string | null {
++    return this.rowErrors()[id] ?? null;
++  }
++
++  confirmHeadline(ctx: ConfirmContext): string {
++    if (ctx.kind === 'role-demote' && ctx.nextRole) {
++      return `Demote ${ctx.user.displayName} from Admin to ${ctx.nextRole}? They will lose admin access immediately.`;
++    }
++    return `Deactivate ${ctx.user.displayName}? They will be logged out and unable to log in.`;
++  }
++
++  confirmLabel(ctx: ConfirmContext): string {
++    return ctx.kind === 'role-demote' ? 'Demote' : 'Deactivate';
++  }
++
++  /**
++   * `formatRelative(iso)` — shared with admin-dashboard-page
++   * (and 3 other pages in the codebase). Per the deferred-work
++   * note D1/D2/etc., the duplication is intentional for MVP;
++   * refactor to a shared util is a separate slice. The local
++   * copy here supports the HD-014 Last-active column. The
++   * parameter is the `lastActiveAt` ISO string from UserPublic
++   * (or null — we render "Never" in the template via the
++   * `relativeTime()` input).
++   */
++  formatRelative(iso: string | null): string | null {
++    if (iso === null) return null;
++    const then = new Date(iso).getTime();
++    if (Number.isNaN(then)) return '';
++    const seconds = Math.floor((Date.now() - then) / 1000);
++    if (seconds < 60) return 'just now';
++    const minutes = Math.floor(seconds / 60);
++    if (minutes < 60) return `${minutes}m ago`;
++    const hours = Math.floor(minutes / 60);
++    if (hours < 24) return `${hours}h ago`;
++    const days = Math.floor(hours / 24);
++    if (days < 30) return `${days}d ago`;
++    const months = Math.floor(days / 30);
++    if (months < 12) return `${months}mo ago`;
++    const years = Math.floor(days / 365);
++    return `${years}y ago`;
++  }
++
++  /**
++   * 5-element placeholder array for the loading skeleton (5 rows
++   * per the design doc's MVP team size). Mirrors the
++   * `loading-skeleton.rowArray()` pattern.
++   */
++  skeletonArray(): unknown[] {
++    return new Array(5);
++  }
++
++  private async load(): Promise<void> {
++    this.renderState.set('loading');
++    this.errorMessage.set(null);
++    try {
++      const data = await this.userService.listAll();
++      this.users.set(data);
++      this.renderState.set('success');
++    } catch (err) {
++      if (err instanceof ApiError && err.status === 401) {
++        // Auth interceptor will redirect to /login; leave the page
++        // in loading state (mirrors admin-dashboard behavior).
++        return;
++      }
++      this.errorMessage.set(GENERIC_LOAD_ERROR);
++      this.renderState.set('error');
++    }
++  }
++
++  private async applyRoleChange(
++    user: UserPublic,
++    nextRole: UserRole,
++  ): Promise<void> {
++    this.markUpdating(user.id, true);
++    this.clearRowError(user.id);
++    try {
++      const updated = await this.userService.updateRole(user.id, nextRole);
++      this.patchUser(updated);
++    } catch {
++      this.setRowError(user.id, GENERIC_UPDATE_ERROR);
++    } finally {
++      this.markUpdating(user.id, false);
++    }
++  }
++
++  private async applyActiveChange(
++    user: UserPublic,
++    isActive: boolean,
++  ): Promise<void> {
++    this.markUpdating(user.id, true);
++    this.clearRowError(user.id);
++    try {
++      const updated = await this.userService.updateActive(user.id, isActive);
++      this.patchUser(updated);
++    } catch {
++      this.setRowError(user.id, GENERIC_UPDATE_ERROR);
++    } finally {
++      this.markUpdating(user.id, false);
++    }
++  }
++
++  private patchUser(updated: UserPublic): void {
++    this.users.update((list) =>
++      list.map((u) => (u.id === updated.id ? updated : u)),
++    );
++  }
++
++  private markUpdating(id: number, value: boolean): void {
++    this.updatingIds.update((set) => {
++      const next = new Set(set);
++      if (value) next.add(id);
++      else next.delete(id);
++      return next;
++    });
++  }
++
++  private setRowError(id: number, message: string): void {
++    this.rowErrors.update((map) => ({ ...map, [id]: message }));
++  }
++
++  private clearRowError(id: number): void {
++    this.rowErrors.update((map) => {
++      if (!(id in map)) return map;
++      const next = { ...map };
++      delete next[id];
++      return next;
++    });
++  }
++}
+diff --git a/frontend/src/app/services/user.service.spec.ts b/frontend/src/app/services/user.service.spec.ts
+new file mode 100644
+index 0000000..12132fd
+--- /dev/null
++++ b/frontend/src/app/services/user.service.spec.ts
+@@ -0,0 +1,180 @@
++/**
++ * UserService — HD-014 spec.
++ *
++ * Verifies the three new methods on `UserService`:
++ *   - listAll():     GET /api/users
++ *   - updateRole():  PUT /api/users/:id/role
++ *   - updateActive(): PUT /api/users/:id/status
++ *
++ * HttpClient is exercised through HttpTestingController. The
++ * auth interceptor is bypassed (HttpClient goes straight to the
++ * controller) so the test focuses on the service contract —
++ * URL, method, body, response unwrap, ApiError conversion on
++ * non-2xx.
++ */
++
++import { TestBed } from '@angular/core/testing';
++import {
++  HttpClient,
++  provideHttpClient,
++  withInterceptorsFromDi,
++} from '@angular/common/http';
++import {
++  HttpTestingController,
++  provideHttpClientTesting,
++} from '@angular/common/http/testing';
++
++import { UserService } from './user.service';
++import { ApiError } from './api-error';
++import { environment } from '../../environments/environment';
++import type { UserPublic } from '../models/user';
++import type { UserRole } from '../models/enums';
++
++const baseUser = (overrides: Partial<UserPublic> = {}): UserPublic => ({
++  id: 1,
++  email: 'admin@example.com',
++  displayName: 'Avery',
++  role: 'Admin',
++  isActive: true,
++  lastActiveAt: null,
++  createdAt: '2026-09-01T00:00:00.000Z',
++  updatedAt: '2026-09-02T00:00:00.000Z',
++  ...overrides,
++});
++
++describe('UserService (HD-014)', () => {
++  let service: UserService;
++  let httpMock: HttpTestingController;
++
++  beforeEach(() => {
++    TestBed.configureTestingModule({
++      providers: [
++        provideHttpClient(withInterceptorsFromDi()),
++        provideHttpClientTesting(),
++        UserService,
++      ],
++    });
++    service = TestBed.inject(UserService);
++    httpMock = TestBed.inject(HttpTestingController);
++  });
++
++  afterEach(() => {
++    httpMock.verify();
++  });
++
++  describe('listAll', () => {
++    it('GETs /api/users and unwraps { users } on 200', async () => {
++      const users = [
++        baseUser({ id: 1, displayName: 'Avery' }),
++        baseUser({ id: 7, displayName: 'Eli', role: 'User' }),
++      ];
++      const p = service.listAll();
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/users`);
++      expect(req.request.method).toBe('GET');
++      expect(req.request.withCredentials).toBe(true);
++      req.flush({ users, count: users.length });
++      const result = await p;
++      expect(result).toEqual(users);
++    });
++
++    it('throws ApiError on a 500 response', async () => {
++      const p = service.listAll();
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/users`);
++      req.flush(
++        { error: 'internal_server_error', message: 'boom' },
++        { status: 500, statusText: 'Internal Server Error' },
++      );
++      let caught: unknown = null;
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        caught = err;
++      }
++      expect(caught).toBeInstanceOf(ApiError);
++      expect((caught as ApiError).status).toBe(500);
++      expect((caught as ApiError).errorCode).toBe('internal_server_error');
++    });
++  });
++
++  describe('updateRole', () => {
++    it('PUTs /api/users/:id/role with { role } and returns the user on 200', async () => {
++      const updated = baseUser({ id: 7, role: 'Support Agent' });
++      const p = service.updateRole(7, 'Support Agent');
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/users/7/role`,
++      );
++      expect(req.request.method).toBe('PUT');
++      expect(req.request.withCredentials).toBe(true);
++      expect(req.request.body).toEqual({ role: 'Support Agent' });
++      req.flush(updated);
++      const result = await p;
++      expect(result).toEqual(updated);
++    });
++
++    it('throws ApiError on a 5xx response', async () => {
++      const p = service.updateRole(7, 'Admin');
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/users/7/role`,
++      );
++      req.flush(
++        { error: 'internal_server_error', message: 'boom' },
++        { status: 500, statusText: 'Internal Server Error' },
++      );
++      await expectAsync(p).toBeRejectedWith(jasmine.any(ApiError));
++    });
++
++    it('throws ApiError on a 400 validation_error with fields.role', async () => {
++      // Cast through unknown so the test exercises the wire
++      // contract for a 400, not the UserRole type contract.
++      const p = service.updateRole(7, 'Wizard' as unknown as UserRole);
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/users/7/role`,
++      );
++      req.flush(
++        {
++          error: 'validation_error',
++          message: 'role must be one of: User, Support Agent, Admin.',
++          fields: { role: 'invalid-role' },
++        },
++        { status: 400, statusText: 'Bad Request' },
++      );
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        expect(err).toBeInstanceOf(ApiError);
++        expect((err as ApiError).status).toBe(400);
++        expect((err as ApiError).fields).toEqual({ role: 'invalid-role' });
++      }
++    });
++  });
++
++  describe('updateActive', () => {
++    it('PUTs /api/users/:id/status with { isActive } and returns the user on 200', async () => {
++      const updated = baseUser({ id: 7, isActive: false });
++      const p = service.updateActive(7, false);
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/users/7/status`,
++      );
++      expect(req.request.method).toBe('PUT');
++      expect(req.request.withCredentials).toBe(true);
++      expect(req.request.body).toEqual({ isActive: false });
++      req.flush(updated);
++      const result = await p;
++      expect(result).toEqual(updated);
++    });
++
++    it('throws ApiError on a 5xx response', async () => {
++      const p = service.updateActive(7, true);
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/users/7/status`,
++      );
++      req.flush(
++        { error: 'internal_server_error', message: 'boom' },
++        { status: 500, statusText: 'Internal Server Error' },
++      );
++      await expectAsync(p).toBeRejectedWith(jasmine.any(ApiError));
++    });
++  });
++});
+\ No newline at end of file
+diff --git a/frontend/src/app/services/user.service.ts b/frontend/src/app/services/user.service.ts
+index 154c821..1459a4e 100644
+--- a/frontend/src/app/services/user.service.ts
++++ b/frontend/src/app/services/user.service.ts
+@@ -1,20 +1,26 @@
+ /**
+- * UserService — HD-010.
++ * UserService — HD-010 + HD-014.
+  *
+  * Thin wrapper over the `/api/users/*` endpoints. HD-010 ships
+- * `listAgents()`; HD-014 (Admin Users tab) will extend this file
+- * with admin-specific helpers.
++ * `listAgents()`; HD-014 (Admin Users tab) extends this file with
++ * `listAll()`, `updateRole()`, and `updateActive()`.
+  *
+  * The Assignee dropdown on the Ticket Detail page is the only
+- * consumer today; the result is cached in a signal at the page
+- * level so a re-mount doesn't refetch.
++ * consumer of `listAgents()`; the result is cached in a signal
++ * at the page level so a re-mount doesn't refetch.
++ *
++ * The Admin Users tab (HD-014) is the consumer of the three
++ * new methods. The page keeps a local signal of `UserPublic[]`
++ * and patches it on successful updateRole / updateActive
++ * responses rather than refetching the list.
+  *
+  * Provided as `providedIn: 'root'` so any page can inject it
+  * without a module-level import dance — mirrors `TicketService`.
+  *
+  * Auth: every request goes through the `authInterceptor`, which
+  * stamps `withCredentials: true` and converts HttpErrorResponse
+- * into a typed `ApiError`.
++ * into a typed `ApiError`. Services never need to think about
++ * cookies or CORS preflight.
+  */
+ 
+ import { HttpClient } from '@angular/common/http';
+@@ -22,6 +28,7 @@ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ 
+ import { environment } from '../../environments/environment';
++import type { UserPublic } from '../models/user';
+ import type { UserRole } from '../models/enums';
+ import { apiErrorFrom } from './api-error';
+ 
+@@ -41,6 +48,37 @@ interface ListAgentsResponse {
+   count: number;
+ }
+ 
++/**
++ * Wire shape returned by GET /api/users (HD-014). The full
++ * `UserPublic` is returned per row (email, role, isActive,
++ * lastActiveAt, createdAt, updatedAt) — the Users tab page needs
++ * every field for its 5 columns.
++ */
++interface ListAllResponse {
++  users: UserPublic[];
++  count: number;
++}
++
++/**
++ * Body sent to `PUT /api/users/:id/role` (HD-014).
++ *
++ * The backend validator returns 400 `validation_error` with
++ * `fields.role` if the role is missing or not a known literal.
++ */
++export interface UpdateRolePayload {
++  role: UserRole;
++}
++
++/**
++ * Body sent to `PUT /api/users/:id/status` (HD-014).
++ *
++ * The backend validator returns 400 `validation_error` with
++ * `fields.status` if `isActive` is missing or not a boolean.
++ */
++export interface UpdateStatusPayload {
++  isActive: boolean;
++}
++
+ @Injectable({ providedIn: 'root' })
+ export class UserService {
+   private readonly http = inject(HttpClient);
+@@ -70,4 +108,88 @@ export class UserService {
+       throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
+     }
+   }
++
++  // ─── HD-014 — Admin Users tab helpers ─────────────────────────────
++
++  /**
++   * GET /api/users — full user list (HD-014, Admin only).
++   *
++   * Returns every user (active + inactive, all roles) sorted by
++   * `displayName ASC`. The Users tab page keeps the result in a
++   * local signal so updateRole / updateActive can patch single
++   * rows without a full refetch.
++   *
++   * Throws `ApiError` on any non-2xx response. The page treats
++   * 401 as session-expired (per the auth interceptor's mapping)
++   * and 5xx as a generic load failure that falls through to the
++   * error render state.
++   */
++  async listAll(): Promise<UserPublic[]> {
++    try {
++      const res = await firstValueFrom(
++        this.http.get<ListAllResponse>(
++          `${environment.apiBaseUrl}/users`,
++          { withCredentials: true },
++        ),
++      );
++      return res.users;
++    } catch (err) {
++      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
++    }
++  }
++
++  /**
++   * PUT /api/users/:id/role — change a user's role (HD-014, Admin only).
++   *
++   * Returns the updated user with every UserPublic field. The
++   * page patches its local signal with this row to avoid a
++   * refetch. Throws `ApiError` on:
++   *   - 400 `validation_error` `fields.role` if the role is
++   *     missing or not a known literal.
++   *   - 400 `validation_error` `fields.actor` if the caller is
++   *     trying to change their own role (defense-in-depth).
++   *   - 404 if the target user doesn't exist.
++   *   - 403 if the caller isn't Admin.
++   */
++  async updateRole(id: number, role: UserRole): Promise<UserPublic> {
++    try {
++      const res = await firstValueFrom(
++        this.http.put<UserPublic>(
++          `${environment.apiBaseUrl}/users/${id}/role`,
++          { role } satisfies UpdateRolePayload,
++          { withCredentials: true },
++        ),
++      );
++      return res;
++    } catch (err) {
++      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
++    }
++  }
++
++  /**
++   * PUT /api/users/:id/status — toggle a user's active status
++   * (HD-014, Admin only).
++   *
++   * Returns the updated user. Throws `ApiError` on:
++   *   - 400 `validation_error` `fields.status` if `isActive` is
++   *     missing or not a boolean.
++   *   - 400 `validation_error` `fields.actor` if the caller is
++   *     trying to deactivate themselves.
++   *   - 404 if the target user doesn't exist.
++   *   - 403 if the caller isn't Admin.
++   */
++  async updateActive(id: number, isActive: boolean): Promise<UserPublic> {
++    try {
++      const res = await firstValueFrom(
++        this.http.put<UserPublic>(
++          `${environment.apiBaseUrl}/users/${id}/status`,
++          { isActive } satisfies UpdateStatusPayload,
++          { withCredentials: true },
++        ),
++      );
++      return res;
++    } catch (err) {
++      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
++    }
++  }
+ }
+\ No newline at end of file
+diff --git a/frontend/src/styles.css b/frontend/src/styles.css
+index 4bdbce1..04ec360 100644
+--- a/frontend/src/styles.css
++++ b/frontend/src/styles.css
+@@ -554,25 +554,6 @@ a.admin-card-row:focus-visible {
+   font-size: 13px;
+   text-align: center;
+ }
+-/* HD-014 placeholder. The Users tab stays on /admin#users so
+-   the URL contract matches design §4; until HD-014, the body
+-   shows a single muted card pointing at the existing /users
+-   route. */
+-.users-placeholder {
+-  background: var(--color-surface);
+-  border: 1px solid var(--color-border);
+-  border-radius: 8px;
+-  padding: 24px;
+-}
+-.users-placeholder-text {
+-  margin: 0;
+-  color: var(--color-label);
+-  font-size: 14px;
+-  line-height: 1.5;
+-}
+-.users-standalone-link {
+-  color: var(--color-primary);
+-}
+ .admin-card-top {
+   display: flex;
+   justify-content: space-between;
+@@ -598,3 +579,247 @@ a.admin-card-row:focus-visible {
+   color: var(--color-muted);
+   border-top: 1px solid var(--color-border);
+ }
++
++/* Users Tab page chrome (HD-014). The page header, table chrome,
++   row geometry, active toggle, and self-row border are kept
++   global so the page component's inline style budget holds under
++   2kB. Mirrors the HD-011 / HD-012 / HD-013 pattern. */
++.users-page {
++  width: 100%;
++}
++.users-header {
++  margin-bottom: 24px;
++}
++.users-header h1 {
++  margin: 0;
++  font-size: 24px;
++  font-weight: 600;
++  color: var(--color-primary);
++}
++.users-count {
++  margin: 8px 0 0;
++  font-size: 12px;
++  color: var(--color-muted);
++}
++.users-error-card {
++  display: flex;
++  flex-direction: column;
++  align-items: flex-start;
++  gap: 12px;
++  padding: 16px;
++  background: var(--color-surface);
++  border: 1px solid var(--color-error);
++  border-radius: 8px;
++  margin-bottom: 16px;
++}
++.users-error-card .error-message {
++  margin: 0;
++  color: var(--color-error);
++  font-size: 14px;
++}
++.users-table-wrap {
++  background: var(--color-surface);
++  border: 1px solid var(--color-border);
++  border-radius: 8px;
++  overflow: hidden;
++}
++.users-table-header {
++  display: grid;
++  grid-template-columns: 220px 280px 160px 120px 100px;
++  gap: 16px;
++  padding: 12px 16px;
++  border-bottom: 1px solid var(--color-border);
++  background: var(--color-surface-subtle);
++  font-size: 11px;
++  font-weight: 600;
++  letter-spacing: 0.5px;
++  text-transform: uppercase;
++  color: var(--color-muted);
++}
++.users-table {
++  list-style: none;
++  margin: 0;
++  padding: 0;
++}
++
++/* Users tab row geometry (HD-014). 64px tall row, 5 columns
++   matching the design spec §Spacing "row height 64px, name 220px ·
++   email 280px · role 160px · status 120px · last active 100px".
++   Self-row gets a 3px primary left border per the design spec
++   "self-row visual differentiator" §VisualTokens. */
++.user-row {
++  position: relative;
++  display: grid;
++  grid-template-columns: 220px 280px 160px 120px 100px;
++  gap: 16px;
++  align-items: center;
++  height: 64px;
++  padding: 0 16px;
++  border-bottom: 1px solid var(--color-border);
++  transition: background-color 120ms ease;
++}
++.user-row:last-child {
++  border-bottom: 0;
++}
++.user-row:hover {
++  background: var(--color-surface-subtle);
++}
++.user-row--self {
++  background: var(--color-surface-subtle);
++  border-left: 3px solid var(--color-primary);
++  padding-left: 13px;
++}
++.user-row--self:hover {
++  background: var(--color-surface-subtle);
++}
++.user-row--updating {
++  opacity: 0.6;
++  pointer-events: none;
++}
++.user-row__name {
++  display: flex;
++  align-items: center;
++  gap: 12px;
++  min-width: 0;
++}
++.user-row__display-name {
++  font-size: 14px;
++  font-weight: 600;
++  color: var(--color-primary);
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  min-width: 0;
++}
++.user-row__email {
++  font-size: 13px;
++  color: var(--color-muted);
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  min-width: 0;
++}
++.user-row__role {
++  width: 100%;
++}
++.user-row__status {
++  display: flex;
++  align-items: center;
++}
++.user-row__active-toggle {
++  display: inline-flex;
++  align-items: center;
++  gap: 8px;
++  background: transparent;
++  border: 0;
++  padding: 4px 8px;
++  border-radius: 4px;
++  font-family: inherit;
++  font-size: 13px;
++  font-weight: 600;
++  cursor: pointer;
++  color: var(--color-primary);
++  transition: background-color 120ms ease;
++}
++.user-row__active-toggle:hover:not(:disabled) {
++  background: var(--color-surface);
++}
++.user-row__active-toggle:disabled {
++  cursor: not-allowed;
++}
++.user-row__active-toggle:focus-visible {
++  outline: var(--focus-ring-width) solid var(--focus-ring-color);
++  outline-offset: 2px;
++}
++.user-row__active-dot {
++  width: 8px;
++  height: 8px;
++  border-radius: 50%;
++  flex-shrink: 0;
++}
++.user-row__active-toggle.is-active .user-row__active-dot {
++  background: var(--color-success);
++}
++.user-row__active-toggle.is-inactive .user-row__active-dot {
++  background: transparent;
++  border: 1.5px solid var(--color-disabled);
++}
++.user-row__active-toggle.is-inactive {
++  color: var(--color-muted);
++}
++.user-row__last-active {
++  font-size: 12px;
++  color: var(--color-muted);
++  justify-self: end;
++  min-width: 0;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++.user-row__never {
++  color: var(--color-muted);
++}
++.user-row__self-micro-label {
++  position: absolute;
++  left: 16px;
++  bottom: -22px;
++  margin: 0;
++  font-size: 12px;
++  color: var(--color-muted);
++  font-style: italic;
++}
++.user-row__error {
++  position: absolute;
++  right: 16px;
++  bottom: -22px;
++  margin: 0;
++  font-size: 12px;
++  color: var(--color-error);
++}
++
++/* Users tab loading skeleton (HD-014). 5 placeholder rows render
++   during the loading state. Each row has 6 grey bars (pulsing)
++   matching the 5-column geometry above. */
++.users-table-wrap[aria-busy="true"] .users-table {
++  display: flex;
++  flex-direction: column;
++}
++.user-row-skel {
++  display: grid;
++  grid-template-columns: 220px 280px 160px 120px 100px;
++  gap: 16px;
++  align-items: center;
++  height: 64px;
++  padding: 0 16px;
++  border-bottom: 1px solid var(--color-border);
++}
++.user-row-skel .bar {
++  background: var(--color-surface-muted);
++  border-radius: 4px;
++  animation: admin-skel-pulse 1200ms ease-in-out infinite;
++}
++.user-row-skel .bar-avatar {
++  width: 32px;
++  height: 32px;
++  border-radius: 50%;
++}
++.user-row-skel .bar-name {
++  height: 14px;
++  width: 70%;
++}
++.user-row-skel .bar-email {
++  height: 12px;
++  width: 90%;
++}
++.user-row-skel .bar-role {
++  height: 24px;
++  width: 100%;
++}
++.user-row-skel .bar-status {
++  height: 16px;
++  width: 80%;
++}
++.user-row-skel .bar-time {
++  height: 12px;
++  width: 60%;
++}
