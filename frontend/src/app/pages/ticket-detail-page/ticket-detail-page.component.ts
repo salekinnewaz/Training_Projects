@@ -248,7 +248,11 @@ const COMMENT_MAX = 5000;
                 } @else {
                   <ul class="comments-list">
                     @for (c of comments(); track c.id) {
-                      <li class="comment" data-testid="comment-row">
+                      <li
+                        class="comment {{ commentRoleClass(c) }}"
+                        data-testid="comment-row"
+                        [attr.data-role]="c.author.role"
+                      >
                         <chrome-avatar
                           [displayName]="c.author.displayName"
                           [size]="24"
@@ -262,7 +266,7 @@ const COMMENT_MAX = 5000;
                               </span>
                             }
                             <time class="comment-time" [attr.datetime]="c.createdAt">
-                              {{ c.createdAt }}
+                              {{ formatCommentTimestamp(c.createdAt) }}
                             </time>
                           </p>
                           <p class="comment-text">{{ c.body }}</p>
@@ -273,7 +277,11 @@ const COMMENT_MAX = 5000;
                 }
 
                 @if (canComment()) {
-                  <div class="composer" data-testid="comment-composer">
+                  <div
+                    class="composer"
+                    data-testid="comment-composer"
+                    (keydown.enter)="onComposerKeydown($event)"
+                  >
                     <atom-textarea
                       id="comment-body"
                       [value]="composerValue()"
@@ -282,6 +290,13 @@ const COMMENT_MAX = 5000;
                       placeholder="Add a comment…"
                       (valueChange)="onComposerInput($event)"
                     />
+                    @if (commentSubmitError(); as msg) {
+                      <p
+                        class="composer-error"
+                        role="alert"
+                        data-testid="composer-inline-error"
+                      >{{ msg }}</p>
+                    }
                     <div class="composer-actions">
                       <span class="composer-counter">
                         {{ composerValue().length }} / {{ COMMENT_MAX }}
@@ -456,12 +471,18 @@ const COMMENT_MAX = 5000;
     .comment {
       display: flex;
       gap: 12px;
-      padding: 12px 0;
+      padding: 12px 0 12px 12px;
       border-bottom: 1px solid var(--color-border);
+      border-left: 3px solid transparent;
     }
     .comment:last-child {
       border-bottom: none;
     }
+    /* The comment-role-user and comment-role-agent border-left-color
+       rules are defined globally in styles.css (HD-011) so the
+       per-component style budget stays under 2 kB. The component
+       only adds the class names; the tokens are reused from
+       root. */
     .comment-body {
       flex: 1;
       min-width: 0;
@@ -504,6 +525,11 @@ const COMMENT_MAX = 5000;
       display: flex;
       flex-direction: column;
       gap: 8px;
+    }
+    .composer-error {
+      margin: 0;
+      font-size: 13px;
+      color: var(--color-error);
     }
     .composer-actions {
       display: flex;
@@ -596,6 +622,21 @@ export class TicketDetailPageComponent implements OnInit {
 
   /** Last error message for the composer (e.g. closed ticket toast). */
   readonly composerError = signal<string | null>(null);
+
+  /**
+   * HD-011: Inline error bound to the comment composer only. Set
+   * when `onSendComment` rejects; cleared on success. Rendered
+   * beneath the textarea (UX spec §3: "on failure it remains in
+   * the field with an inline error under the field: 'Couldn't
+   * send your comment. Try again.'"). Separate from `composerError`
+   * so status/priority/owner/reopen/close failures continue to use
+   * the top-of-page toast.
+   */
+  readonly commentSubmitError = signal<string | null>(null);
+
+  /** Spec-mandated copy for a failed comment submit (HD-011). */
+  private static readonly COMMENT_SUBMIT_FAILURE_COPY =
+    "Couldn't send your comment. Try again.";
 
   // ─── Static dropdown option lists ─────────────────────────────────
 
@@ -884,13 +925,70 @@ export class TicketDetailPageComponent implements OnInit {
       this.comments.update((rows) => [...rows, created]);
       this.composerValue.set('');
       this.composerError.set(null);
+      this.commentSubmitError.set(null);
     } catch (err) {
       if (err instanceof ApiError) {
         this.composerError.set(this.formatApiError(err, "Couldn't add your comment."));
+        this.commentSubmitError.set(
+          TicketDetailPageComponent.COMMENT_SUBMIT_FAILURE_COPY,
+        );
       }
     } finally {
       this.postingComment.set(false);
     }
+  }
+
+  /**
+   * HD-011: Enter key handler on the composer wrapper. Plain Enter
+   * submits (matching the UX spec "Send triggers on click or
+   * Enter"); Shift+Enter is allowed to fall through to the
+   * textarea's default newline behavior. Guarded by
+   * `canSubmitComment()` so an empty / over-limit / in-flight
+   * composer is a no-op.
+   */
+  onComposerKeydown(event: Event): void {
+    // Angular binds `(keydown.enter)` to a generic Event; the only
+    // keyboard-event-specific field we read is `shiftKey`, which
+    // exists on `KeyboardEvent`. The template-side guarantee (the
+    // `.enter` modifier) ensures this event is always a keyboard
+    // event in practice; we narrow for safety.
+    const ke = event as KeyboardEvent;
+    if (ke.shiftKey) {
+      // Let the textarea insert a newline naturally.
+      return;
+    }
+    if (!this.canSubmitComment()) {
+      return;
+    }
+    ke.preventDefault();
+    void this.onSendComment();
+  }
+
+  /**
+   * HD-011: Map a comment's author role to the row's role-border
+   * CSS class. Per UX §1, Admin displays as Support Agent here —
+   * so any non-`User` author is `comment-role-agent`.
+   */
+  commentRoleClass(c: Comment): string {
+    return c.author.role === 'User'
+      ? 'comment-role-user'
+      : 'comment-role-agent';
+  }
+
+  /**
+   * HD-011: Format a comment's `createdAt` for the comment-time
+   * line. Relative for events less than 24 h old ("5 minutes
+   * ago"), absolute `Mmm DD, YYYY · HH:mm` otherwise. Empty string
+   * for unparseable input (no `Invalid Date` / `undefined`).
+   */
+  formatCommentTimestamp(iso: string): string {
+    const then = new Date(iso).getTime();
+    if (Number.isNaN(then)) return '';
+    const diffMs = Date.now() - then;
+    if (diffMs < 24 * 60 * 60 * 1000 && diffMs >= 0) {
+      return formatRelative(then);
+    }
+    return formatAbsolute(then);
   }
 
   // ─── Loading ──────────────────────────────────────────────────────
@@ -966,4 +1064,50 @@ function validNextStatuses(
       return [_exhaustive];
     }
   }
+}
+
+/**
+ * HD-011: Relative time formatter for the comment-time line. Mirrors
+ * the helper inside `timeline-entry.component.ts` — kept inline
+ * here rather than extracted to a shared util to avoid touching
+ * the timeline-entry molecule. Returns a coarse "X minutes ago"
+ * style label.
+ */
+function formatRelative(thenMs: number): string {
+  const now = Date.now();
+  const diffMs = now - thenMs;
+  if (diffMs < 0) return 'just now';
+
+  const sec_ = Math.floor(diffMs / 1000);
+  if (sec_ < 45) return 'just now';
+  const min = Math.floor(sec_ / 60);
+  if (min < 60) return `${min} minute${min === 1 ? '' : 's'} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day} day${day === 1 ? '' : 's'} ago`;
+  const month = Math.floor(day / 30);
+  if (month < 12) return `${month} month${month === 1 ? '' : 's'} ago`;
+  const year = Math.floor(day / 365);
+  return `${year} year${year === 1 ? '' : 's'} ago`;
+}
+
+const MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/**
+ * HD-011: Absolute timestamp formatter for the comment-time line.
+ * Format: `Mmm DD, YYYY · HH:mm` in the user's local timezone.
+ * Matches the UX spec example: "Sep 14, 09:42".
+ */
+function formatAbsolute(thenMs: number): string {
+  const d = new Date(thenMs);
+  const month = MONTHS[d.getMonth()];
+  const day = d.getDate();
+  const year = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${month} ${day}, ${year} · ${hh}:${mm}`;
 }

@@ -683,4 +683,347 @@ describe('TicketDetailPageComponent (HD-010)', () => {
     expect(ticketService.patch).toHaveBeenCalledWith(47, { ownerId: 11 });
     expect(fixture.componentInstance.ticket()?.owner?.id).toBe(11);
   });
+
+  // ─── HD-011 ──────────────────────────────────────────────────────
+
+  it('HD-011: applies the role-border class to each comment row per author role', async () => {
+    const sam = makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' });
+    const admin = makeUser({ id: 22, displayName: 'Alex', role: 'Admin', email: 'alex@example.com' });
+    const eli = makeUser({ id: 7, displayName: 'Eli', role: 'User' });
+    configureTestbed({
+      user: sam,
+      ticket: makeTicket({ status: 'Open', submitter: eli }),
+      comments: [
+        makeComment({ id: 1, author: eli, body: 'still broken' }),
+        makeComment({ id: 2, author: sam, body: 'reproducing now' }),
+        makeComment({ id: 3, author: admin, body: 'taking a look' }),
+      ],
+      agents: [makeAgent()],
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const rows = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLLIElement>(
+        '[data-testid="comment-row"]',
+      ),
+    );
+    expect(rows.length).toBe(3);
+    // User → comment-role-user
+    expect(rows[0].classList.contains('comment-role-user')).toBe(true);
+    expect(rows[0].classList.contains('comment-role-agent')).toBe(false);
+    expect(rows[0].getAttribute('data-role')).toBe('User');
+    // Support Agent → comment-role-agent
+    expect(rows[1].classList.contains('comment-role-agent')).toBe(true);
+    expect(rows[1].classList.contains('comment-role-user')).toBe(false);
+    expect(rows[1].getAttribute('data-role')).toBe('Support Agent');
+    // Admin → comment-role-agent (per UX §1, Admin displays as Agent)
+    expect(rows[2].classList.contains('comment-role-agent')).toBe(true);
+    expect(rows[2].classList.contains('comment-role-user')).toBe(false);
+    expect(rows[2].getAttribute('data-role')).toBe('Admin');
+  });
+
+  it('HD-011: comment-time is relative for events less than 24 h old', async () => {
+    const eli = makeUser({ id: 7, displayName: 'Eli', role: 'User' });
+    const now = Date.now();
+    configureTestbed({
+      user: eli,
+      ticket: makeTicket({ status: 'Open' }),
+      comments: [
+        makeComment({
+          id: 1,
+          author: eli,
+          body: 'fresh',
+          createdAt: new Date(now - 5 * 60 * 1000).toISOString(),
+        }),
+        makeComment({
+          id: 2,
+          author: eli,
+          body: 'three hours',
+          createdAt: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
+        }),
+      ],
+      agents: [],
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const html = (fixture.nativeElement as HTMLElement).innerHTML;
+    expect(html).toContain('5 minutes ago');
+    expect(html).toContain('3 hours ago');
+    expect(html).not.toContain('Invalid Date');
+  });
+
+  it('HD-011: comment-time is absolute for events older than 24 h', async () => {
+    const eli = makeUser({ id: 7, displayName: 'Eli', role: 'User' });
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    configureTestbed({
+      user: eli,
+      ticket: makeTicket({ status: 'Open' }),
+      comments: [
+        makeComment({
+          id: 1,
+          author: eli,
+          body: 'old',
+          createdAt: threeDaysAgo.toISOString(),
+        }),
+      ],
+      agents: [],
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const html = (fixture.nativeElement as HTMLElement).innerHTML;
+    // formatAbsolute: "Mmm DD, YYYY · HH:mm" — assert on day + year.
+    expect(html).toContain(String(threeDaysAgo.getFullYear()));
+    expect(html).not.toContain('days ago');
+    expect(html).not.toContain('Invalid Date');
+  });
+
+  it('HD-011: comment-time renders empty for unparseable createdAt', async () => {
+    const eli = makeUser({ id: 7, displayName: 'Eli', role: 'User' });
+    configureTestbed({
+      user: eli,
+      ticket: makeTicket({ status: 'Open' }),
+      comments: [
+        makeComment({
+          id: 1,
+          author: eli,
+          body: 'weird',
+          createdAt: 'not-a-date',
+        }),
+      ],
+      agents: [],
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    // The <time> element's text content (what the user sees) should
+    // be empty — no "Invalid Date" / "undefined" / "NaN" leaks.
+    const timeEl = (fixture.nativeElement as HTMLElement).querySelector(
+      '.comment-time',
+    );
+    expect(timeEl).not.toBeNull();
+    expect(timeEl?.textContent?.trim()).toBe('');
+  });
+
+  it('HD-011: Enter key in the composer submits the comment', async () => {
+    const { ticketService } = configureTestbed({
+      user: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' }),
+      ticket: makeTicket({ status: 'Open' }),
+      comments: [],
+      agents: [],
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    fixture.componentInstance.composerValue.set('hello world');
+    fixture.detectChanges();
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      shiftKey: false,
+      bubbles: true,
+      cancelable: true,
+    });
+    const composer = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="comment-composer"]',
+    ) as HTMLElement;
+    composer.dispatchEvent(event);
+    await settle(fixture);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(ticketService.addComment).toHaveBeenCalledWith(47, 'hello world');
+  });
+
+  it('HD-011: Shift+Enter in the composer inserts a newline and does not submit', async () => {
+    const { ticketService } = configureTestbed({
+      user: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' }),
+      ticket: makeTicket({ status: 'Open' }),
+      comments: [],
+      agents: [],
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    fixture.componentInstance.composerValue.set('line1');
+    fixture.detectChanges();
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    const composer = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="comment-composer"]',
+    ) as HTMLElement;
+    composer.dispatchEvent(event);
+    await settle(fixture);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(ticketService.addComment).not.toHaveBeenCalled();
+  });
+
+  it('HD-011: Enter on an empty composer is a no-op (no API call)', async () => {
+    const { ticketService } = configureTestbed({
+      user: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' }),
+      ticket: makeTicket({ status: 'Open' }),
+      comments: [],
+      agents: [],
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    // composerValue is empty by default.
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      shiftKey: false,
+      bubbles: true,
+      cancelable: true,
+    });
+    const composer = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="comment-composer"]',
+    ) as HTMLElement;
+    composer.dispatchEvent(event);
+    await settle(fixture);
+
+    expect(ticketService.addComment).not.toHaveBeenCalled();
+  });
+
+  it('HD-011: a failed comment submit renders the inline error under the composer', async () => {
+    const { ticketService } = configureTestbed({
+      user: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' }),
+      ticket: makeTicket({ status: 'Open' }),
+      comments: [],
+      agents: [],
+    });
+    // Re-stub addComment to reject so the failure path fires.
+    ticketService.addComment.and.callFake(() =>
+      Promise.reject(
+        new ApiError(500, 'internal_server_error', 'upstream down'),
+      ),
+    );
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    fixture.componentInstance.composerValue.set('this will fail');
+    await fixture.componentInstance.onSendComment();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const inline = root.querySelector(
+      '[data-testid="composer-inline-error"]',
+    ) as HTMLElement | null;
+    expect(inline).not.toBeNull();
+    expect(inline?.getAttribute('role')).toBe('alert');
+    expect(inline?.textContent?.trim()).toBe(
+      "Couldn't send your comment. Try again.",
+    );
+    // Comment text must remain in the composer.
+    expect(fixture.componentInstance.composerValue()).toBe('this will fail');
+    // The top-of-page error-toast should also render (separate signal,
+    // unchanged behavior), and the inline error sits beneath the
+    // composer — not above the page.
+    const toast = root.querySelector('[data-testid="error-toast"]');
+    expect(toast).not.toBeNull();
+  });
+
+  it('HD-011: a successful comment submit clears the inline error', async () => {
+    const { ticketService } = configureTestbed({
+      user: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' }),
+      ticket: makeTicket({ status: 'Open' }),
+      comments: [],
+      agents: [],
+    });
+    // First call rejects, second call resolves.
+    let calls = 0;
+    ticketService.addComment.and.callFake(() => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.reject(
+          new ApiError(500, 'internal_server_error', 'upstream down'),
+        );
+      }
+      return Promise.resolve(makeComment({ id: 99, body: 'hello' }));
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    fixture.componentInstance.composerValue.set('retry me');
+    await fixture.componentInstance.onSendComment();
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="composer-inline-error"]',
+      ),
+    ).not.toBeNull();
+    expect(fixture.componentInstance.commentSubmitError()).not.toBeNull();
+
+    fixture.componentInstance.composerValue.set('retry me again');
+    await fixture.componentInstance.onSendComment();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.commentSubmitError()).toBeNull();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="composer-inline-error"]',
+      ),
+    ).toBeNull();
+    expect(fixture.componentInstance.comments().length).toBe(1);
+  });
+
+  it('HD-011: a status-change failure does NOT render the inline composer error', async () => {
+    const { ticketService } = configureTestbed({
+      user: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' }),
+      ticket: makeTicket({ status: 'Open' }),
+      agents: [],
+    });
+    // Re-stub patch to reject so the page's error path fires.
+    ticketService.patch.and.callFake(() =>
+      Promise.reject(
+        new ApiError(500, 'internal_server_error', 'Status update failed.'),
+      ),
+    );
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    await fixture.componentInstance.onStatusChange('In Progress');
+    for (let i = 0; i < 4; i += 1) {
+      await Promise.resolve();
+    }
+    fixture.detectChanges();
+
+    // Top-of-page toast renders (unchanged).
+    const toast = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="error-toast"]',
+    );
+    expect(toast).not.toBeNull();
+    // Inline composer error does NOT render (comment-only signal).
+    const inline = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="composer-inline-error"]',
+    );
+    expect(inline).toBeNull();
+    expect(fixture.componentInstance.commentSubmitError()).toBeNull();
+  });
 });
