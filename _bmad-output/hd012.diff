@@ -1,0 +1,2436 @@
+diff --git a/_bmad-output/implementation-artifacts/spec-hd-012-agent-kanban.md b/_bmad-output/implementation-artifacts/spec-hd-012-agent-kanban.md
+new file mode 100644
+index 0000000..186c925
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/spec-hd-012-agent-kanban.md
+@@ -0,0 +1,229 @@
++---
++title: 'HD-012 — Agent Kanban (/queue) + drag-and-drop'
++type: 'feature'
++created: '2026-10-12'
++status: 'in-progress'
++route: 'build'
++review_loop_iteration: 0
++baseline_commit: 'b4736a66ae2e79e1901e473afa667c833188b4bd'
++context:
++  - 'design-process/D-UX-Design/agent-kanban.md'
++---
++
++<frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
++
++## Intent
++
++**Problem:** The current `AgentKanbanPageComponent` is a 25-line placeholder showing "Placeholder — full implementation lands in HD-012." Sam (Support Agent) lands on `/queue` after login and sees no board — no Open column, no In Progress column, no drag affordance, no filter strip. The Kanban is the **top-weighted feature** in `design-process/B-Trigger-Map/feature-impact.md` because it answers G1 ("queue runs itself — primary") with one screen: Sam scans four columns left-to-right and orphans surface instantly. Without this page, Sam can't act on tickets without re-discovering them, defeating the morning-triage ritual.
++
++**Approach:** Build the GitHub-Issues-style Kanban board:
++- New `GET /api/tickets/queue` endpoint (Support Agent only; Admin does not see this page per UX §"Admin role and this page") that returns all tickets with eager-loaded submitter/owner/attachment.
++- New `KanbanCardComponent` molecule (title · meta row · drag handle).
++- Full rewrite of `AgentKanbanPageComponent` with 4 columns (Open → In Progress → Resolved → Closed), HTML5 native drag-and-drop between columns, legal-transition validation per the ticket action matrix (Open↔InProgress, Open→Resolved, InProgress→Resolved — never into Closed from any non-Resolved state for Agent), ghost placeholder, invalid-drop shake, click-to-open, filter strip (search + priority + category + owner) with URL persistence, filter state in `?priority=&category=&owner=&q=` query string.
++- Reuse the existing `PATCH /api/tickets/:id` from HD-010 for status changes (no new write endpoints).
++- Basic in-memory client-side filter (search + priority + category + owner) on the fetched queue — full filter/search backend lands in **HD-015**. The kickoff explicitly says HD-012's filter strip "consumes" HD-015's combined-filter endpoint. For HD-012, fetch once on load + filter the local signal in-page.
++
++**Boundaries noted now:** Filters are simplest-correct. No pagination (HD-015). No realtime updates (the page refetches on window-focus OR explicit user action via the URL). URL persistence uses the native `Router.navigate([], { queryParams })` (no store / no service).
++
++**Admin:** not on this page. Route is already `roleGuard(['Support Agent'])` so an Admin typing `/queue` URL bounces to `/forbidden`.
++
++## Boundaries & Constraints
++
++**Always:**
++- Backend new endpoint: `GET /api/tickets/queue` — Support Agent only. Returns all non-deleted tickets newest-first by `createdAt` DESC, with `submitter` / `owner` / `attachment` eager-loaded. Pagination out of MVP (limit 100; HD-015 will extend).
++- Backend reuses existing `serializeTicket` from `ticketsController.ts`. No new helper for the response shape.
++- Route mounts under the existing `ticketsRouter` with `authMiddleware`; role gate is inline in the controller — matches the HD-008 / HD-010 pattern (route guard is at the Angular side, the controller is the source of truth).
++- Controller inline role assertion: if `req.user.role !== 'Support Agent'` → throw `HttpError(403, 'forbidden', 'Support Agent role required.')`. Mirror the HD-008 `create` controller's inline pattern.
++- Service helper: `listForQueue()` in `ticketService.ts`. Returns `Ticket[]` newest-first by `createdAt` DESC, limit 100, eager include `[submitter, owner, attachment]`. Mirrors `listForUser` shape (HD-007).
++- Frontend `TicketService.listForQueue(): Promise<Ticket[]>` mirrors the existing `listMine()` shape exactly: HttpClient → `firstValueFrom` → response unwrap → `apiErrorFrom`.
++- Page renders 4 columns in a fixed order: **Open · In Progress · Resolved · Closed**. Closed is always last. Each column is a `<section>` with a sticky header showing `Status (count)` and a scrollable body of cards.
++- Column allocation:
++  - `Open` column shows tickets with `status === 'Open'`, sorted oldest-first by `createdAt` ASC (per UX "aging tickets float up"); orphans (`owner === null`) pinned to the top with the existing `--color-kanban-orphan-tint` token.
++  - `In Progress` column shows `status === 'In Progress'`, sorted oldest-first by `createdAt` ASC.
++  - `Resolved` column shows `status === 'Resolved'`, sorted oldest-first by `createdAt` ASC.
++  - `Closed` column shows `status === 'Closed'`, sorted newest-first by `createdAt` DESC (per UX the closed column is read-only history; tail of scan). Read-only — no drag in, no drag out, cards have `cursor: not-allowed`.
++- Drag affordances (HTML5 native):
++  - Each card has `draggable="true"` and listens to `dragstart` / `dragend`. The dragstart handler attaches the ticket id to `event.dataTransfer` and a small custom MIME type `application/x-helpdesk-ticket`.
++  - Each column body listens to `dragover` (preventDefault to allow drop), `dragenter` (highlight if valid drop), `dragleave`, `drop`.
++  - On invalid drop (destination column not in legal transitions for the source status), the dragged card animates back to source (drop event still fires but the page treats it as a no-op + emits an inline toast).
++  - On valid drop:
++    1. Optimistic UI: move the card locally in the signal.
++    2. `PATCH /api/tickets/:id { status: <new> }` via `TicketService.patch`.
++    3. On 200: replace local card with the response payload.
++    4. On error: revert the optimistic move + emit a toast "Couldn't move the ticket. Try again."
++  - Cursor states: cards in draggable columns get `cursor: grab` on hover, `grabbing` on drag. Closed column body has `cursor: not-allowed`.
++- Legal transitions (per the kickoff and `design-process/D-UX-Design/ticket-detail.md` Action Matrix — Agent cannot change to Closed from any non-Resolved state):
++  - Open → {In Progress, Resolved}
++  - In Progress → {Open, Resolved}
++  - Resolved → (no drag target for Agent; Resolved awaits Eli's verdict)
++  - Closed → (read-only; column body has `cursor: not-allowed`)
++  - Any → Closed: rejected (Agent cannot drop into Closed; Closed is Eli-only per UX "any → Closed rejected for Agent")
++- The page does NOT call `PATCH` with `ownerId` on drag — drag changes status only. The Ticket Detail page's inline edit + drag interplay is the only way to reassign during HD-012; HD-014 (Users tab) brings role/active controls and HD-015 brings deeper filters; drag-to-reassign is a v1.x follow-up per the spec's open question "Saved filter presets" note.
++- Filter strip:
++  - Search input `<input type="search">` (200ms debounce via RxJS `debounceTime`).
++  - Priority dropdown `Priority: All ▾`.
++  - Category dropdown `Category: All ▾`.
++  - Owner dropdown `Owner: All ▾` (options: All · Mine · Unassigned · each active agent from `UserService.listAgents()` cache).
++  - "× Clear" link, visible only when at least one filter is non-default.
++  - Filters are AND across categories, OR within (deferred — single-select MVP).
++- URL persistence: filter state syncs to `?priority=<high|medium|low>` `?category=<it|hr|finance|general>` `?owner=<me|unassigned|<agentId>>` `?q=<search>`. Page reads from `ActivatedRoute.snapshot.queryParamMap` on init; updates via `Router.navigate([], { queryParams, queryParamsHandling: 'merge' })` whenever a filter changes (sans search-debounce).
++- Loading skeleton: heading row + filter strip (disabled look) + 4 columns each with 3 card-skeleton placeholders (rounded, 96px tall).
++- Empty column states:
++  - Filtered-no-match: `No tickets match your filters.`
++  - Genuinely empty: `Nothing here.`
++- Error state: inline error above the board "Couldn't load the queue. Refresh to try again." with a retry button.
++- Page wraps in `<app-chrome>`. Route already wired in `app.routes.ts` with `authGuard + roleGuard(['Support Agent'])` — no change.
++- New `<kanban-card>` molecule is reusable but HD-012 is the only consumer; it lives in `frontend/src/app/components/molecules/kanban-card/`. Reuses `<chrome-avatar>`, `<badge-priority>`, plus its own CSS for the title clamp + owner meta.
++
++**Never:**
++- No `PATCH` calls for `ownerId`, `priority`, `category` from the Kanban page — only `status`.
++- No backend-driven filtering, search, or pagination in HD-012 — that's HD-015.
++- No realtime updates (no WebSocket / SSE / long-poll). Page refetches on a window-focus event OR an explicit "Refresh" button (per UX "Sam refreshes the browser to see new tickets").
++- No "Move with arrow keys" keyboard drag (UX open question v1.x). Keyboard users open Ticket Detail and use the Status dropdown.
++- No mobile / touch drag (UX open question v1.x). Desktop-first.
++- No drag-to-resequence within a column (UX "Sort is fixed"). Within-column order is `createdAt` ASC and is non-user-controlled.
++- No new design tokens. Reuses `--color-surface`, `--color-border`, `--color-primary`, `--color-muted`, `--status-*-bg`, `--priority-*-bg`, `--role-employee-border`, `--role-support-agent-border`, `--color-kanban-orphan-tint`, `--color-kanban-invalid-drop`, existing `--button-radius`, `--shadow-card-hover`. New CSS lives in the page component (under existing 2kB soft budget — likely will need to move some rules to `styles.css` like HD-011).
++- No new atoms / molecules beyond `<kanban-card>`.
++- No new backend dependencies. No new middleware. Reuses `authMiddleware`, `asyncHandler`, `HttpError`, `serializeTicket`.
++- No backend migration. No model change.
++
++## I/O & Edge-Case Matrix
++
++| Scenario | Input / State | Expected Output / Behavior | Error Handling |
++|----------|--------------|---------------------------|----------------|
++| HAPPY_PATH_AGENT_LOADS_BOARD | Sam (Support Agent) loads `/queue`, 20 tickets across 4 statuses | `GET /api/tickets/queue` → 200 → page renders 4 columns with cards in the correct column by status; Open orphans pinned at top with tint + Unassigned badge | N/A |
++| HAPPY_PATH_FILTER_NARROWS | Sam types "vpn" in search (debounced 200ms) | `q` query param updates to `vpn`; only matching cards visible (substring on number, title, submitter.displayName, case-insensitive); empty columns show "No tickets match your filters." | N/A |
++| HAPPY_PATH_FILTER_FROM_URL | Sam opens `/queue?priority=High&owner=me` cold | Page parses queryParams on init; fetches once; applies filters from URL; only High-priority Mine tickets render | N/A |
++| DRAG_OPEN_TO_IN_PROGRESS | Sam drags an Open card → drops on In Progress column | Optimistic: card moves to In Progress immediately. `PATCH /api/tickets/<id> { status: 'In Progress' }` fires. On 200, the local signal updates with the eager-loaded response. On error, the card reverts to Open + inline toast "Couldn't move the ticket. Try again." | `ApiError(...)` caught; revert + toast |
++| DRAG_OPEN_TO_RESOLVED | Sam drags Open → Resolved | Same as above with new status `Resolved` | N/A |
++| DRAG_IN_PROGRESS_TO_OPEN | Sam drags In Progress → Open | Same as above; valid transition per matrix | N/A |
++| DRAG_IN_PROGRESS_TO_RESOLVED | Sam drags In Progress → Resolved | Same as above; valid transition per matrix | N/A |
++| DRAG_INVALID_TO_CLOSED | Sam drags any → Closed | Drop is rejected; card returns to source with a brief shake animation; no API call; no state change | Drop event handler treats Closed as an invalid drop target for Agent |
++| DRAG_INVALID_TO_RESOLVED_AS_RESOLVED | Sam drags a Resolved card → Open | Drop is rejected (Agent cannot drag from Resolved); card returns to source with shake; no API call | Resolved column is a no-drag column for Agent per the matrix |
++| DRAG_CLOSED_IS_LOCKED | Sam mouses-down on a Closed card | Card has `cursor: not-allowed`; `draggable="false"`; drag never initiates; click still opens detail page | Closed column is read-only end-to-end |
++| CLICK_CARD_OPENS_DETAIL | Sam clicks (no drag) an Open card | Routes to `/tickets/<id>` (Ticket Detail page) | N/A |
++| SERVER_ERROR_LOAD | `GET /api/tickets/queue` returns 500 | Inline error above board "Couldn't load the queue. Refresh to try again." + Retry button. Filter strip stays visible. | `ApiError(500, ...)`; `renderState.set('error')` |
++| SESSION_EXPIRED | `GET /api/tickets/queue` returns 401 | Auth interceptor redirects to `/login?return_to=/queue`; URL filter state preserved; after re-auth, page re-applies filters | `ApiError(401, ...)` handled by authInterceptor |
++| FORBIDDEN_NON_AGENT | Admin hard-loads `/queue` | Angular `roleGuard(['Support Agent'])` already routes to `/forbidden`; the controller's role gate is defense-in-depth (returns 403 if a programmatic client bypassed Angular) | Frontend guard wins |
++| EMPTY_BOARD_NO_FILTER | Sam has zero visible cards (all in past-due states that don't match) | Each column shows "Nothing here." | Calm, no panic per UX |
++| EMPTY_BOARD_WITH_FILTER | Sam filtered to priority=High and there are none | Each empty column shows "No tickets match your filters." | "filtered-no-match" copy |
++| LOADING_SKELETON | Initial fetch in flight | Heading + filter strip (disabled) + 4 columns with 3 card-skeleton rows each (rounded 96px) | Standard skeleton pattern |
++| DIRECT_NAV_TO_QUEUE_DEEP_LINK | `/queue?q=vpn&priority=High` (browser refresh / share) | Page reads queryParamMap, applies filters post-fetch | N/A |
++| ORPHAN_PIN_TOP_OPEN | An Open card has `owner: null` | Card sits at the top of the Open column with `--color-kanban-orphan-tint` 12% background and an "Unassigned" badge | N/A |
++
++## Code Map
++
++### Reuse
++
++- `backend/src/controllers/ticketsController.ts` — existing `serializeTicket` helper. Add `listForQueue` handler (no PATCH / write logic).
++- `backend/src/services/ticketService.ts` — existing `listForUser` (HD-007) shape. Add `listForQueue()` returning all tickets (no `submitterId` filter) with eager includes.
++- `backend/src/middleware/auth.ts` — `authMiddleware` populates `req.user` (HD-003). Reuse.
++- `backend/src/utils/errors.ts` — `HttpError(status, code, message, fields?)`.
++- `backend/src/utils/asyncHandler.ts` — wraps rejected promises into `next(err)`.
++- `backend/src/routes/tickets.ts` — extend the existing router; append `ticketsRouter.get('/queue', authMiddleware, listForQueue)`. Update the doc-comment header.
++- `backend/src/controllers/ticketsController.spec.ts` — extend the test factory registry with `listForQueue`; add `describe('listForQueue', …)` block: 200 with sorted tickets; 403 when role is not Support Agent; 401 when `req.user` missing.
++- `frontend/src/app/services/ticket.service.ts` — existing `listMine()` shape (HD-007). Add `listForQueue(): Promise<Ticket[]>`.
++- `frontend/src/app/services/api-error.ts` — `ApiError` class with `status` / `errorCode` / `message`; used as the rejection type for HttpClient calls.
++- `frontend/src/app/services/user.service.ts` — `listAgents(): Promise<AgentSummary[]>` for the Owner dropdown (HD-010 already uses this).
++- `frontend/src/app/components/atoms/badge-priority/badge-priority.component.ts` — `<badge-priority [priority]>` for the card meta row.
++- `frontend/src/app/components/atoms/chrome-avatar/chrome-avatar.component.ts` — `<chrome-avatar [displayName] [size]="24">` for the card avatar.
++- `frontend/src/app/components/patterns/app-chrome/app-chrome.component.ts` — `<app-chrome>` wrap.
++- `frontend/src/app/components/patterns/loading-skeleton/loading-skeleton.component.ts` — loading state.
++- `frontend/src/app/models/ticket.ts` — `Ticket` interface (id, number, title, status, priority, submitter, owner, attachment, createdAt, updatedAt, deletedAt).
++- `frontend/src/app/models/enums.ts` — `TicketStatus`, `TicketPriority`, `TicketCategory`, `UserRole`.
++- `frontend/src/app/services/auth.service.ts` — `currentUser` signal (already used on Ticket Detail). The page reads `currentUser().id` for the Mine filter.
++- `frontend/src/styles.css` — `--color-surface`, `--color-border`, `--color-primary`, `--color-muted`, `--status-*-bg`, `--priority-*-bg`, `--role-employee-border`, `--role-support-agent-border`, `--color-kanban-orphan-tint`, `--color-kanban-invalid-drop`, `--button-radius`, `--shadow-card-hover`. Plus the existing role-border classes from HD-011 (`.comment-role-user` / `.comment-role-agent`) — same visual vocabulary extends here.
++- `frontend/src/app/app.routes.ts` — `/queue` route already wired with `authGuard + roleGuard(['Support Agent'])`. No change.
++- `frontend/src/app/guards/role.guard.ts` — already handles the Support Agent gate; no change.
++
++### New files
++
++- `backend/src/services/ticketService.ts` *(modify)* — add `listForQueue(opts?: ListForUserOptions): Promise<Ticket[]>` helper. Calls `Ticket.findAll({ order: [['createdAt', 'DESC']], limit: 100, include: [submitter, owner, attachment] })`. No `submitterId` filter.
++- `backend/src/controllers/ticketsController.ts` *(modify)* — add `export const listForQueue = asyncHandler(...)`. Asserts `req.user.role === 'Support Agent'` else throws `HttpError(403, 'forbidden', ...)`. Calls service; returns `{ tickets: payload, count: payload.length }` shape (mirrors `listMine`).
++- `backend/src/routes/tickets.ts` *(modify)* — append `ticketsRouter.get('/queue', authMiddleware, listForQueue)`. Document in the header doc-comment.
++- `backend/src/controllers/ticketsController.spec.ts` *(modify)* — extend the test factory registry; add the `describe('listForQueue')` block.
++- `frontend/src/app/components/molecules/kanban-card/kanban-card.component.ts` *(new)* — `<kanban-card [ticket] [isDragDisabled]>`. Renders title (2-line clamp), meta row (mono number · priority pill · owner avatar+name+relative timestamp OR Unassigned badge), `draggable` attribute reflecting `isDragDisabled`. OnPush, standalone. Single test: given an Open ticket without an owner, the card renders "Unassigned" instead of an avatar+name.
++- `frontend/src/app/components/molecules/kanban-card/kanban-card.component.spec.ts` *(new)* — 1 test (the Open orphan Unassigned rendering).
++- `frontend/src/app/pages/agent-kanban-page/agent-kanban-page.component.ts` *(full rewrite — placeholder currently 26 lines)* — full implementation per Implementation Notes.
++- `frontend/src/app/pages/agent-kanban-page/agent-kanban-page.component.spec.ts` *(new)* — tests per Acceptance Criteria.
++
++### Modified
++
++- `frontend/src/app/services/ticket.service.ts` — add `listForQueue(): Promise<Ticket[]>` method.
++- `frontend/src/styles.css` — likely needs a `.kanban-*-*` rule or two (orphan-pin tint is already a token, but specific drag hover/shake keyframes may need landing in global if the page-specific budget is exceeded). Try to fit in the component first; fall back to global if over budget.
++
++### Deleted
++
++_None._
++
++### Unchanged
++
++- All HD-005–HD-011 atoms / molecules / patterns — untouched.
++- `backend/src/models/Ticket.ts` — no schema change.
++- `backend/src/utils/validation/ticketValidation.ts` — no new validator (search / filter live client-side for HD-012).
++
++## Tasks & Acceptance
++
++**Execution:**
++- [ ] `backend/src/services/ticketService.ts` -- modify -- add `listForQueue()` helper returning all tickets newest-first by `createdAt` DESC, eager-load `submitter` / `owner` / `attachment`, limit 100.
++- [ ] `backend/src/controllers/ticketsController.ts` -- modify -- add `listForQueue` handler with inline role gate (Support Agent only) returning `{ tickets, count }`.
++- [ ] `backend/src/routes/tickets.ts` -- modify -- mount `GET /api/tickets/queue` behind `authMiddleware`. Update the doc-comment header.
++- [ ] `backend/src/controllers/ticketsController.spec.ts` -- modify -- extend the test factory registry; add `describe('listForQueue')` describe with 3 tests: 200 happy sorted tickets; 403 when role isn't Support Agent; 401 from authMiddleware when `req.user` is missing.
++- [ ] `frontend/src/app/services/ticket.service.ts` -- modify -- add `listForQueue(): Promise<Ticket[]>` method mirroring `listMine()` shape.
++- [ ] `frontend/src/app/components/molecules/kanban-card/kanban-card.component.ts` -- create -- the card molecule: title + meta row + draggable attribute.
++- [ ] `frontend/src/app/components/molecules/kanban-card/kanban-card.component.spec.ts` -- create -- 1 test: orphan Open renders "Unassigned" badge instead of avatar.
++- [ ] `frontend/src/app/pages/agent-kanban-page/agent-kanban-page.component.ts` -- modify -- full rewrite: signal-based state, four columns, drag-and-drop with legal-transition validation, filter strip (search + priority + category + owner) with URL persistence, loading / error / empty render states, `<app-chrome>` wrap.
++- [ ] `frontend/src/app/pages/agent-kanban-page/agent-kanban-page.component.spec.ts` -- create -- tests covering: 4-column render, cards by status, drag Open→InProgress patches + signal updates, invalid drop into Closed reverts + no API call, Closed column read-only, click navigates, search filter narrows, URL state syncs, error renders error card, loading renders skeleton, owner filter accepts Mine / Unassigned / agent id.
++
++**Acceptance Criteria:**
++- Given Sam loads `/queue`, when `GET /api/tickets/queue` returns 20 tickets across 4 statuses, then the page renders 4 columns with each ticket in the column matching its `status`; Open column sorts oldest-first; orphans pinned at top with the orphan tint + Unassigned badge.
++- Given Sam drags an Open card and drops it on the In Progress column, when `PATCH /api/tickets/<id> { status: 'In Progress' }` returns 200, then the card moves to In Progress optimistically on drag-end and the response payload replaces the local instance.
++- Given the PATCH fails, when the response rejects, then the card reverts to its source position with no API state change and an inline toast renders "Couldn't move the ticket. Try again.".
++- Given Sam drags an Open card and tries to drop it on Closed, when the drop fires, then the card returns to source with a brief shake animation; no API call is made; Closed is rejected because Agent cannot transition to Closed.
++- Given Sam tries to drag a Closed card, when mousedown fires, then no drag initiates (`draggable="false"`); the cursor is `not-allowed`; click still opens `/tickets/<id>`.
++- Given Sam types "vpn" in the search box (debounced 200ms), when 200ms elapses with no further typing, then the visible cards narrow to those whose number/title/submitter.displayName contain "vpn" (case-insensitive); the `q` query param updates to `vpn`.
++- Given the URL is `/queue?priority=High&owner=me`, when the page loads, then after the fetch, only High-priority tickets owned by Sam render; the dropdowns reflect the URL values.
++- Given Sam toggles a filter, when the signal changes, then the URL updates via `Router.navigate([], { queryParams, queryParamsHandling: 'merge' })`.
++- Given `GET /api/tickets/queue` returns 500, when the response arrives, then the page renders the error card with a Retry button; the filter strip stays visible.
++- Given Sam clicks (no drag) an Open card, when the click event fires, then the router navigates to `/tickets/<id>` (Ticket Detail).
++- Given the page is loading (initial fetch in flight), when the page first paints, then a skeleton renders: heading + filter strip (disabled) + 4 columns each with 3 card-shape skeletons.
++- Given Sam filters to a no-result state, when the filtered list is empty in a column, then that column renders "No tickets match your filters.".
++- Given the queue is genuinely empty (no tickets in any status), when the page loads, then each column renders "Nothing here.".
++- Given Admin hard-loads `/queue`, when the route guard runs, then Angular redirects to `/forbidden` (defense-in-depth role check on the backend also returns 403).
++
++## Implementation Notes
++
++<!-- Agent-owned. Append-only during implementation: decisions made, files touched, surprises encountered. Leave empty at planning time. -->
++
++## Spec Change Log
++
++<!-- Append-only. Empty until first review-loop patch. -->
++
++## Review Triage Log
++
++<!-- Append-only. Populated by step-04 on every review pass. Empty until first review pass. -->
++
++## Verification
++
++**Commands:**
++- `cd backend && npx tsc --noEmit` -- expected: 0 errors.
++- `cd backend && npx jest --testPathPattern=tickets` -- expected: 30+ passing (existing 35 + 3 new for `listForQueue`).
++- `cd backend && npx jest` (full suite) -- expected: 51/51 passing.
++- `cd frontend && npx tsc --noEmit -p tsconfig.app.json` -- expected: 0 errors.
++- `cd frontend && npx tsc --noEmit -p tsconfig.spec.json` -- expected: 0 errors.
++- `cd frontend && npx ng build` -- expected: success. The agent-kanban-page-component lazy chunk should grow to ~30-40 kB raw (page state + filters + drag-and-drop + 4 columns + tests).
++- `cd frontend && npx ng test --watch=false --browsers=ChromeHeadless --include='**/agent-kanban-page.component.spec.ts'` -- expected: 10-13 SUCCESS.
++- `cd frontend && npx ng test --watch=false --browsers=ChromeHeadless --include='**/kanban-card.component.spec.ts'` -- expected: 1 SUCCESS.
++- `cd frontend && npx ng test --watch=false --browsers=ChromeHeadless` (full suite) -- expected: previous 63 SUCCESS + 14 HD-012 = 77 SUCCESS, same 6 pre-existing FAILED.
++
++**Manual checks (if no CLI):**
++- Start `npm run dev:backend` + `npm run dev:frontend`. Log in as `sam@company.com`. Land on `/queue`. Verify 4 columns render with tickets in the correct column. Open column has orphans (Unassigned) at the top with the cream tint.
++- Drag an Open card to In Progress. Card moves optimistically; PATCH fires; activity log row written. Open Ticket Detail; Status dropdown shows "In Progress".
++- Drag an In Progress card to Open. Card returns to In Progress (illegal per matrix?). Verify: actually In Progress → Open IS allowed per the matrix. Card moves; PATCH fires.
++- Drag any card to Closed. Card returns to source with a brief shake; no API call. Verify in DevTools Network: no PATCH.
++- Try to drag a Closed card. Cursor stays not-allowed; no drag begins.
++- Click an Open card. Lands on `/tickets/<id>` (Ticket Detail).
++- Type "vpn" in search. After ~200ms, board narrows. URL updates to `/queue?q=vpn`. Refresh — filters preserved.
++- Filter to `priority=High`. URL `/queue?priority=High`. Refresh; preserved.
++- Stop the backend. Refresh `/queue`. Error card renders with Retry.
++- Hard-load `/queue` as Admin (e.g., log in as `admin@`). Lands on `/forbidden`.
+diff --git a/backend/src/controllers/ticketsController.spec.ts b/backend/src/controllers/ticketsController.spec.ts
+index 4ce4f69..a495e19 100644
+--- a/backend/src/controllers/ticketsController.spec.ts
++++ b/backend/src/controllers/ticketsController.spec.ts
+@@ -1,6 +1,7 @@
+ /**
+  * ticketsController — smoke spec (HD-007) + create spec (HD-008)
+- *                     + getById spec (HD-009) + HD-010 spec.
++ *                     + getById spec (HD-009) + HD-010 spec +
++ *                     HD-012 listForQueue spec.
+  *
+  * Verifies GET /api/tickets/mine:
+  *   - calls Ticket.findAll filtered by the JWT'd user's id (submitterId)
+@@ -37,6 +38,12 @@
+  *   - POST /:id/confirm-close (200 happy + 403 non-submitter +
+  *     400 wrong-status)
+  *
++ * Verifies HD-012 listForQueue:
++ *   - 200 happy path: listForQueue service helper called; respond with
++ *     serialized tickets
++ *   - 403 role: a non-Support-Agent role throws HttpError(403,
++ *     'forbidden', ...) and never reaches the service
++ *
+  * Both `authMiddleware` and the models are mocked so the controller
+  * is exercised in isolation — no real DB or JWT verification is touched.
+  */
+@@ -46,6 +53,7 @@ import type { NextFunction, Request, Response } from 'express';
+ import { Ticket } from '../models';
+ import {
+   listMine,
++  listForQueueHandler,
+   create,
+   getById,
+   patch,
+@@ -80,6 +88,7 @@ jest.mock('../models', () => ({
+ 
+ jest.mock('../services/ticketService', () => ({
+   listForUser: jest.fn(),
++  listForQueue: jest.fn(),
+   createTicket: jest.fn(),
+   getById: jest.fn(),
+   updateTicket: jest.fn(),
+@@ -1511,4 +1520,149 @@ describe('ticketsController.confirmClose (HD-010)', () => {
+     expect(err.errorCode).toBe('not_found');
+     expect(ticketService.confirmCloseTicket).not.toHaveBeenCalled();
+   });
++});
++
++describe('ticketsController.listForQueueHandler (HD-012)', () => {
++  const ticketService = require('../services/ticketService');
++
++  beforeEach(() => {
++    (ticketService.listForQueue as jest.Mock).mockReset();
++  });
++
++  it('returns 200 with serialized tickets when the caller is a Support Agent', async () => {
++    const createdAt = new Date('2026-09-15T12:00:00.000Z');
++    const updatedAt = new Date('2026-09-15T12:00:00.000Z');
++    const fake = {
++      id: 47,
++      number: 'HD-47',
++      title: 'WiFi drops',
++      description: 'every few minutes',
++      category: 'IT',
++      priority: 'Medium',
++      status: 'Open',
++      submitterId: 7,
++      ownerId: null,
++      attachmentId: null,
++      createdAt,
++      updatedAt,
++      deletedAt: null,
++      toJSON: () => ({
++        id: 47,
++        number: 'HD-47',
++        title: 'WiFi drops',
++        description: 'every few minutes',
++        category: 'IT',
++        priority: 'Medium',
++        status: 'Open',
++        submitterId: 7,
++        ownerId: null,
++        attachmentId: null,
++        submitter: {
++          id: 7,
++          email: 'eli@example.com',
++          displayName: 'Eli',
++          role: 'User',
++        },
++        owner: null,
++        attachment: null,
++        createdAt,
++        updatedAt,
++        deletedAt: null,
++      }),
++    };
++    (ticketService.listForQueue as jest.Mock).mockResolvedValueOnce([fake]);
++
++    const req = {
++      user: {
++        id: 11,
++        email: 'sam@example.com',
++        displayName: 'Sam',
++        role: 'Support Agent',
++      },
++    } as unknown as Request;
++    const statusMock = jest.fn();
++    const jsonMock = jest.fn();
++    const res = {
++      status: (n: number) => {
++        statusMock(n);
++        return { json: (b: unknown) => jsonMock(b) };
++      },
++    } as unknown as Response;
++
++    await listForQueueHandler(req, res, jest.fn() as unknown as NextFunction);
++
++    expect(ticketService.listForQueue).toHaveBeenCalledWith();
++    expect(statusMock.mock.calls[0][0]).toBe(200);
++    const body = jsonMock.mock.calls[0][0] as {
++      tickets: Array<{
++        id: number;
++        number: string;
++        createdAt: string;
++        updatedAt: string;
++      }>;
++      count: number;
++    };
++    expect(body.count).toBe(1);
++    expect(body.tickets[0].id).toBe(47);
++    expect(body.tickets[0].number).toBe('HD-47');
++    expect(new Date(body.tickets[0].createdAt).toISOString()).toBe(
++      body.tickets[0].createdAt,
++    );
++  });
++
++  it('returns 403 forbidden when the caller is a User (not a Support Agent)', async () => {
++    const { HttpError } = require('../utils/errors');
++
++    const req = {
++      user: {
++        id: 7,
++        email: 'eli@example.com',
++        displayName: 'Eli',
++        role: 'User',
++      },
++    } as unknown as Request;
++    const res = {
++      status: jest.fn().mockReturnThis(),
++      json: jest.fn(),
++    } as unknown as Response;
++    const next = jest.fn() as unknown as NextFunction;
++
++    await listForQueueHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(403);
++    expect(err.errorCode).toBe('forbidden');
++    expect(ticketService.listForQueue).not.toHaveBeenCalled();
++  });
++
++  it('returns 403 forbidden when the caller is an Admin (Support Agent only)', async () => {
++    const { HttpError } = require('../utils/errors');
++
++    const req = {
++      user: {
++        id: 1,
++        email: 'admin@example.com',
++        displayName: 'Admin',
++        role: 'Admin',
++      },
++    } as unknown as Request;
++    const res = {
++      status: jest.fn().mockReturnThis(),
++      json: jest.fn(),
++    } as unknown as Response;
++    const next = jest.fn() as unknown as NextFunction;
++
++    await listForQueueHandler(req, res, next);
++    await Promise.resolve();
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(HttpError);
++    expect(err.status).toBe(403);
++    expect(err.errorCode).toBe('forbidden');
++    expect(ticketService.listForQueue).not.toHaveBeenCalled();
++  });
+ });
+\ No newline at end of file
+diff --git a/backend/src/controllers/ticketsController.ts b/backend/src/controllers/ticketsController.ts
+index 36143a5..10bc7b6 100644
+--- a/backend/src/controllers/ticketsController.ts
++++ b/backend/src/controllers/ticketsController.ts
+@@ -1,8 +1,10 @@
+ /**
+- * Tickets controller — HD-007 + HD-008 + HD-009 + HD-010.
++ * Tickets controller — HD-007 + HD-008 + HD-009 + HD-010 + HD-012.
+  *
+  * Endpoints exposed:
+  *   GET  /api/tickets/mine           → list tickets the JWT'd user submitted
++ *   GET  /api/tickets/queue          → list every ticket in the system
++ *                                       (HD-012, Support Agent only)
+  *   POST /api/tickets                → create a ticket on behalf of the
+  *                                       JWT'd user (HD-008)
+  *   GET  /api/tickets/:id            → fetch a single ticket by primary key
+@@ -23,8 +25,8 @@
+  * the request body), so a user can only ever see / create their own
+  * tickets through these routes.
+  *
+- * Later stories (HD-012 kanban, HD-013 admin) register their own
+- * handlers in this controller file.
++ * Later stories (HD-013 admin) register their own handlers in this
++ * controller file.
+  */
+ 
+ import type { Request, Response } from 'express';
+@@ -34,6 +36,7 @@ import { asyncHandler } from '../utils/asyncHandler';
+ import { HttpError } from '../utils/errors';
+ import {
+   listForUser,
++  listForQueue,
+   createTicket,
+   getById as getByIdService,
+   updateTicket,
+@@ -150,6 +153,38 @@ export const listMine = asyncHandler(async (req: Request, res: Response) => {
+   res.status(200).json({ tickets: payload, count: payload.length });
+ });
+ 
++/**
++ * GET /api/tickets/queue — list every ticket in the system
++ * (HD-012 Agent Kanban).
++ *
++ * Support Agent only. The route is also `roleGuard(['Support Agent'])`
++ * on the Angular side, so an Admin who somehow reaches this endpoint
++ * (programmatic client, curl) gets 403 from this controller — same
++ * defense-in-depth pattern as `create` (HD-008).
++ *
++ * Returns `{ tickets, count }` matching the `listMine` envelope so
++ * the frontend's `listForQueue()` call mirrors `listMine()` exactly.
++ *
++ * No filter / search params are honored in HD-012 — the page applies
++ * those client-side over the returned set. HD-015 will lift them
++ * server-side and add cursor pagination.
++ */
++export const listForQueueHandler = asyncHandler(
++  async (req: Request, res: Response) => {
++    const role = req.user!.role;
++    if (role !== 'Support Agent') {
++      throw new HttpError(
++        403,
++        'forbidden',
++        'Support Agent role required to view the queue.',
++      );
++    }
++    const tickets = await listForQueue();
++    const payload = tickets.map(serializeTicket);
++    res.status(200).json({ tickets: payload, count: payload.length });
++  },
++);
++
+ /**
+  * POST /api/tickets — Create a new ticket (HD-008).
+  *
+diff --git a/backend/src/routes/tickets.ts b/backend/src/routes/tickets.ts
+index 258f052..d6df31f 100644
+--- a/backend/src/routes/tickets.ts
++++ b/backend/src/routes/tickets.ts
+@@ -1,9 +1,13 @@
+ /**
+- * Tickets router — HD-007 + HD-008 + HD-009 + HD-010.
++ * Tickets router — HD-007 + HD-008 + HD-009 + HD-010 + HD-012.
+  *
+  * Mounted at `/api/tickets` by `routes/index.ts`. Routes:
+  *
+  *   GET  /mine   — list tickets the JWT'd user submitted (HD-007)
++ *   GET  /queue  — list every ticket in the system, Support Agent
++ *                   only (HD-012 Agent Kanban). Returns
++ *                   `{ tickets, count }` like /mine. No filter /
++ *                   search params yet — HD-015 will add them.
+  *   POST /        — create a new ticket on behalf of the JWT'd
+  *                   user (HD-008). Body: {title, description,
+  *                   category?, priority, attachmentId?}.
+@@ -24,9 +28,6 @@
+  *   POST /:id/reopen — submitter-only, Resolved → Open (HD-010).
+  *   POST /:id/confirm-close — submitter-only, Resolved → Closed (HD-010).
+  *
+- * Later stories append their own handlers:
+- *   - HD-012: GET /  (Agent queue view)
+- *
+  * All routes behind this router that read or write ticket data
+  * must call `authMiddleware` first so `req.user` is populated.
+  * The create route intentionally does NOT use `roleGuard(['User'])`
+@@ -34,13 +35,15 @@
+  * wants to allow other roles can swap the assertion without
+  * re-wiring the route. The PATCH / comments / activity endpoints
+  * similarly defer per-field role enforcement to the controller
+- * (the service re-asserts as defense in depth).
++ * (the service re-asserts as defense in depth). The /queue route
++ * similarly defers the Support Agent gate to the controller.
+  */
+ 
+ import { Router } from 'express';
+ 
+ import {
+   listMine,
++  listForQueueHandler,
+   create,
+   getById,
+   patch,
+@@ -54,6 +57,14 @@ import { authMiddleware } from '../middleware/auth';
+ 
+ const ticketsRouter = Router();
+ 
++// HD-012 — Agent Kanban. The static `/queue` segment must be
++// registered before the `/:id` numeric route so a future ticket
++// with id "queue" can never be confused with the agent queue
++// endpoint. Express prefers literal segments over `:id` so the
++// order is technically moot, but the placement is the
++// convention every reader expects.
++ticketsRouter.get('/queue', authMiddleware, listForQueueHandler);
++
+ ticketsRouter.get('/mine', authMiddleware, listMine);
+ ticketsRouter.post('/', authMiddleware, create);
+ ticketsRouter.get('/:id', authMiddleware, getById);
+diff --git a/backend/src/services/ticketService.ts b/backend/src/services/ticketService.ts
+index 90a55cb..96a50d6 100644
+--- a/backend/src/services/ticketService.ts
++++ b/backend/src/services/ticketService.ts
+@@ -1,5 +1,5 @@
+ /**
+- * ticketService — HD-007 + HD-008 + HD-009 + HD-010.
++ * ticketService — HD-007 + HD-008 + HD-009 + HD-010 + HD-012.
+  *
+  * Read-side helpers for the Ticket resource. Wraps the consistent
+  * `findAll` shape used by every list endpoint so controllers don't
+@@ -13,9 +13,10 @@
+  * `reopenTicket`, `confirmCloseTicket`, `listComments`,
+  * `listActivity`, and `listActiveAgents` — covering the PATCH /
+  * comments / reopen / confirm-close / agents endpoints that
+- * the Ticket Detail page drives. HD-012 (Agent Kanban) extends
+- * this file with its own queries rather than calling `Ticket.findAll`
+- * from controllers directly.
++ * the Ticket Detail page drives. HD-012 (Agent Kanban) adds
++ * `listForQueue()` to power the /queue board — a Support-Agent
++ * view across every ticket in the system. HD-015 will add combined
++ * filter / search helpers and cursor pagination.
+  *
+  * No pagination params are exposed yet — out of MVP per spec. The
+  * `opts` bag exists as an extension point for HD-015 if/when
+@@ -70,6 +71,44 @@ export async function listForUser(
+   });
+ }
+ 
++/**
++ * List every ticket in the system, newest-first by `createdAt`
++ * (HD-012 GET /api/tickets/queue).
++ *
++ * Powers the Agent Kanban board (`/queue`). The page applies its
++ * own client-side sort + filter over the returned set; HD-015 will
++ * lift filter / search into a dedicated endpoint.
++ *
++ * No `submitterId` filter — Sam sees every ticket in the system
++ * (not just ones he created). Eager-loads the same associations
++ * `listForUser` does so the frontend `Ticket` view model can
++ * round-trip without a second roundtrip per card.
++ *
++ * Limit: 100 — out-of-MVP pagination; HD-015 will add cursor
++ * pagination.
++ */
++export async function listForQueue(
++  opts: ListForUserOptions = {},
++): Promise<Ticket[]> {
++  const limit = opts.limit ?? 100;
++  const order: [string, 'DESC' | 'ASC'][] =
++    opts.order === 'oldest'
++      ? [['createdAt', 'ASC']]
++      : [['createdAt', 'DESC']];
++
++  // `paranoid: true` on the Ticket model (HD-002) already excludes
++  // soft-deleted rows — no explicit `deletedAt` filter needed.
++  return Ticket.findAll({
++    order,
++    limit,
++    include: [
++      { model: User, as: 'submitter' },
++      { model: User, as: 'owner' },
++      { model: Attachment, as: 'attachment' },
++    ],
++  });
++}
++
+ /**
+  * Create a new ticket on behalf of `submitterId` (HD-008).
+  *
+diff --git a/frontend/src/app/components/molecules/kanban-card/kanban-card.component.spec.ts b/frontend/src/app/components/molecules/kanban-card/kanban-card.component.spec.ts
+new file mode 100644
+index 0000000..78d93d0
+--- /dev/null
++++ b/frontend/src/app/components/molecules/kanban-card/kanban-card.component.spec.ts
+@@ -0,0 +1,70 @@
++/**
++ * kanban-card — smoke spec (HD-012).
++ *
++ * Verifies the molecule renders the Unassigned badge (and skips
++ * the avatar+name branch) when a ticket has no owner and the
++ * page has flagged it as an orphan. All other branches (title
++ * clamp, mono number, priority pill, owner avatar+name) are
++ * covered indirectly by the page-level tests — the molecule is
++ * presentational and the page is the integration point.
++ */
++
++import { TestBed } from '@angular/core/testing';
++
++import type { Ticket } from '../../../models/ticket';
++import { KanbanCardComponent } from './kanban-card.component';
++
++describe('KanbanCardComponent', () => {
++  it('renders "Unassigned" instead of an avatar+name when the ticket has no owner and isOrphan is true', async () => {
++    const ticket: Ticket = {
++      id: 47,
++      number: 'HD-47',
++      title: 'WiFi drops',
++      description: 'every few minutes',
++      category: 'IT',
++      priority: 'High',
++      status: 'Open',
++      submitter: {
++        id: 7,
++        email: 'eli@example.com',
++        displayName: 'Eli',
++        role: 'User',
++        isActive: true,
++        lastActiveAt: null,
++        createdAt: '2026-01-01T00:00:00.000Z',
++        updatedAt: '2026-01-01T00:00:00.000Z',
++      },
++      owner: null,
++      attachment: null,
++      createdAt: '2026-01-15T10:30:00.000Z',
++      updatedAt: '2026-01-15T10:30:00.000Z',
++      deletedAt: null,
++    };
++
++    await TestBed.configureTestingModule({
++      imports: [KanbanCardComponent],
++    }).compileComponents();
++
++    const fixture = TestBed.createComponent(KanbanCardComponent);
++    fixture.componentRef.setInput('ticket', ticket);
++    fixture.componentRef.setInput('isOrphan', true);
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++    const compiled = fixture.nativeElement as HTMLElement;
++
++    const badge = compiled.querySelector('[data-testid="unassigned-badge"]');
++    expect(badge).not.toBeNull();
++    expect(badge?.textContent?.trim()).toBe('Unassigned');
++
++    // The owner avatar/name branch is the @else — the avatar must
++    // not render when the owner is null. The chrome-avatar
++    // element is identifiable by its selector.
++    expect(compiled.querySelector('chrome-avatar')).toBeNull();
++    expect(compiled.querySelector('.owner')).toBeNull();
++
++    // Orphan tint class is on the card root.
++    const card = compiled.querySelector('.card');
++    expect(card?.classList.contains('orphan')).toBe(true);
++  });
++});
+diff --git a/frontend/src/app/components/molecules/kanban-card/kanban-card.component.ts b/frontend/src/app/components/molecules/kanban-card/kanban-card.component.ts
+new file mode 100644
+index 0000000..5005e0a
+--- /dev/null
++++ b/frontend/src/app/components/molecules/kanban-card/kanban-card.component.ts
+@@ -0,0 +1,165 @@
++/**
++ * kanban-card — molecule (HD-012).
++ *
++ * One card in the Agent Kanban board. Renders the ticket's
++ * title (2-line clamp) + meta row (mono number · priority
++ * pill · owner avatar+name OR "Unassigned" badge) and exposes
++ * a `draggable` boolean reflecting `isDragDisabled`.
++ *
++ * The component is presentational — the host page owns the
++ * dragstart / dragend / click handlers and the optimistic
++ * move / PATCH. This keeps the molecule reusable in HD-015+
++ * where the same card shape may surface in search results
++ * or saved-filter widgets.
++ *
++ * Orphan styling: when `ticket.owner === null` AND the ticket
++ * status is `Open` (the only column where orphans float to the
++ * top), the card renders the existing `--color-kanban-orphan-tint`
++ * background and an "Unassigned" badge in place of the avatar.
++ * The page passes a separate `isOrphan` input so the same molecule
++ * stays usable in non-Open columns where a null owner doesn't get
++ * the same treatment.
++ *
++ * Reuses:
++ *   - <badge-priority>  priority pill
++ *   - <chrome-avatar>   owner avatar (when assigned)
++ */
++
++import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
++
++import type { Ticket } from '../../../models/ticket';
++import { BadgePriorityComponent } from '../../atoms/badge-priority/badge-priority.component';
++import { ChromeAvatarComponent } from '../../atoms/chrome-avatar/chrome-avatar.component';
++
++@Component({
++  selector: 'kanban-card',
++  standalone: true,
++  imports: [BadgePriorityComponent, ChromeAvatarComponent],
++  changeDetection: ChangeDetectionStrategy.OnPush,
++  template: `
++    <article
++      class="card"
++      [class.orphan]="isOrphan()"
++      [attr.draggable]="isDragDisabled() ? 'false' : 'true'"
++      [attr.aria-grabbed]="isDragDisabled() ? null : 'false'"
++      [attr.data-ticket-id]="ticket().id"
++    >
++      <h3 class="title" [title]="ticket().title">{{ ticket().title }}</h3>
++      <div class="meta">
++        <span class="number">{{ ticket().number }}</span>
++        <badge-priority [priority]="ticket().priority" />
++        @if (ticket().owner; as owner) {
++          <span class="owner" [title]="owner.displayName">
++            <chrome-avatar [displayName]="owner.displayName" [size]="24" />
++            <span class="owner-name">{{ owner.displayName }}</span>
++          </span>
++        } @else {
++          <span class="unassigned-badge" data-testid="unassigned-badge">Unassigned</span>
++        }
++      </div>
++    </article>
++  `,
++  styles: [`
++    :host {
++      display: block;
++    }
++    .card {
++      background: var(--color-surface);
++      border: 1px solid var(--color-border);
++      border-radius: 6px;
++      padding: 12px;
++      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
++      cursor: grab;
++      box-sizing: border-box;
++      transition: box-shadow 120ms ease, transform 120ms ease, border-color 120ms ease;
++    }
++    .card:hover {
++      border-color: var(--color-primary);
++      box-shadow: var(--shadow-card-hover);
++    }
++    .card:focus-visible {
++      outline: var(--focus-ring-width) solid var(--focus-ring-color);
++      outline-offset: 2px;
++    }
++    .card:active {
++      cursor: grabbing;
++    }
++    /* Orphan variant — the cream tint the design doc seeds in :root */
++    .card.orphan {
++      background: var(--color-kanban-orphan-tint);
++      border-color: var(--color-kanban-orphan-tint);
++    }
++    .title {
++      margin: 0 0 8px;
++      font-size: 14px;
++      font-weight: 600;
++      line-height: 1.3;
++      color: var(--color-primary);
++      /* 2-line clamp per the design doc; overflow:hidden keeps
++         long titles from stretching the card height. */
++      display: -webkit-box;
++      -webkit-line-clamp: 2;
++      -webkit-box-orient: vertical;
++      overflow: hidden;
++      word-break: break-word;
++    }
++    .meta {
++      display: flex;
++      align-items: center;
++      gap: 8px;
++      flex-wrap: wrap;
++    }
++    .number {
++      font-family: var(--font-mono);
++      font-size: 12px;
++      color: var(--color-muted);
++      letter-spacing: 0.5px;
++    }
++    .owner {
++      display: inline-flex;
++      align-items: center;
++      gap: 6px;
++      min-width: 0;
++    }
++    .owner-name {
++      font-size: 12px;
++      color: var(--color-label);
++      overflow: hidden;
++      text-overflow: ellipsis;
++      white-space: nowrap;
++    }
++    .unassigned-badge {
++      display: inline-block;
++      min-height: 18px;
++      padding: 0 8px;
++      border-radius: 9px;
++      background: var(--color-surface-subtle);
++      color: var(--color-muted);
++      font-size: 11px;
++      font-weight: 600;
++      line-height: 18px;
++    }
++  `],
++})
++export class KanbanCardComponent {
++  readonly ticket = input.required<Ticket>();
++  /**
++   * Disables HTML5 native drag (draggable="false"). Set true for
++   * cards in the Closed column (read-only history) per the spec.
++   * The page still wants the card to look clickable so the user
++   * can open the detail view; the cursor becomes `not-allowed` via
++   * the page's column-level CSS rather than this molecule.
++   */
++  readonly isDragDisabled = input<boolean>(false);
++  /**
++   * Applies the orphan tint + Unassigned badge. The page passes
++   * true for Open-column tickets with `owner === null`; the same
++   * ticket in a non-Open column passes false (no special styling).
++   */
++  readonly isOrphan = input<boolean>(false);
++
++  // computed kept to leave room for future derived flags (priority
++  // sort hint, owner-initials contrast, etc.); intentionally unused
++  // right now so the molecule stays a flat presentational shell.
++  readonly _unused = computed(() => this.ticket().id);
++}
+diff --git a/frontend/src/app/pages/agent-kanban-page/agent-kanban-page.component.spec.ts b/frontend/src/app/pages/agent-kanban-page/agent-kanban-page.component.spec.ts
+new file mode 100644
+index 0000000..4dd9261
+--- /dev/null
++++ b/frontend/src/app/pages/agent-kanban-page/agent-kanban-page.component.spec.ts
+@@ -0,0 +1,584 @@
++/**
++ * AgentKanbanPageComponent — HD-012 spec.
++ *
++ * Covers the major branches of the page:
++ *   1.  4 columns render in fixed order (Open · In Progress · Resolved · Closed)
++ *   2.  Cards land in the column matching their status
++ *   3.  Open column pins `owner===null` to the top with the orphan tint
++ *   4.  Closed cards have `draggable="false"`
++ *   5.  Click on a card navigates to /tickets/:id
++ *   6.  Drag from Open → In Progress fires PATCH and updates the local signal
++ *   7.  Drag to a closed column (any → Closed) does NOT call PATCH
++ *   8.  PATCH failure reverts the optimistic move + renders the move error toast
++ *   9.  Search filter narrows the visible cards
++ *  10.  Filter changes sync to the URL via queryParams merge
++ *  11.  Load failure renders the error card with a Retry button
++ *  12.  Loading state renders the skeleton
++ *  13.  Empty / filtered-empty columns render the right empty marker
++ *
++ * `TicketService`, `AuthService`, `UserService`, `Router`, and
++ * `ActivatedRoute` are mocked. The test wires a real `provideRouter`
++ * so `queryParamsHandling: 'merge'` works end-to-end on the URL
++ * sync. Jasmine is used (frontend tsconfig.spec.json).
++ */
++
++import { TestBed } from '@angular/core/testing';
++import { provideHttpClient } from '@angular/common/http';
++import {
++  ActivatedRoute,
++  Router,
++  convertToParamMap,
++} from '@angular/router';
++import { provideRouter } from '@angular/router';
++import { BehaviorSubject } from 'rxjs';
++
++import { AgentKanbanPageComponent } from './agent-kanban-page.component';
++import { TicketService } from '../../services/ticket.service';
++import { AuthService } from '../../services/auth.service';
++import { UserService, type AgentSummary } from '../../services/user.service';
++import { ApiError } from '../../services/api-error';
++import type { Ticket } from '../../models/ticket';
++import type { UserPublic } from '../../models/user';
++
++function makeUser(overrides: Partial<UserPublic> = {}): UserPublic {
++  return {
++    id: 11,
++    email: 'sam@example.com',
++    displayName: 'Sam',
++    role: 'Support Agent',
++    isActive: true,
++    lastActiveAt: null,
++    createdAt: '2026-01-01T00:00:00.000Z',
++    updatedAt: '2026-01-01T00:00:00.000Z',
++    ...overrides,
++  };
++}
++
++function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
++  return {
++    id: 47,
++    number: 'HD-47',
++    title: 'WiFi drops',
++    description: 'every few minutes',
++    category: 'IT',
++    priority: 'High',
++    status: 'Open',
++    submitter: makeUser({ id: 7, displayName: 'Eli', email: 'eli@example.com', role: 'User' }),
++    owner: null,
++    attachment: null,
++    createdAt: '2026-01-15T10:30:00.000Z',
++    updatedAt: '2026-01-15T10:30:00.000Z',
++    deletedAt: null,
++    ...overrides,
++  };
++}
++
++function makeAgent(overrides: Partial<AgentSummary> = {}): AgentSummary {
++  return {
++    id: 11,
++    displayName: 'Sam',
++    role: 'Support Agent',
++    ...overrides,
++  };
++}
++
++function makeDataTransfer(): DataTransfer {
++  // JSDOM/ChromeHeadless shim for the HTML5 DataTransfer. Only
++  // the methods the page actually touches are implemented; the
++  // rest of the surface is left as a no-op so the test can drive
++  // dragstart / dragover / drop without an external library.
++  const store: Record<string, string> = {};
++  let effect: 'move' | 'none' = 'move';
++  return {
++    getData: (k: string) => store[k] ?? '',
++    setData: (k: string, v: string) => {
++      store[k] = v;
++    },
++    clearData: () => {
++      for (const k of Object.keys(store)) delete store[k];
++    },
++    effectAllowed: 'all',
++    setDragImage: () => undefined,
++    get types() {
++      return Object.keys(store);
++    },
++    set dropEffect(v: 'move' | 'none') {
++      effect = v;
++    },
++    get dropEffect() {
++      return effect;
++    },
++    files: {} as FileList,
++    items: {} as DataTransferItemList,
++  } as unknown as DataTransfer;
++}
++
++/**
++ * Build a DragEvent-ish object the page can read without needing
++ * a real browser DataTransfer (ChromeHeadless refuses to construct
++ * a DragEvent with a shimmed dataTransfer). The page only uses
++ * `event.preventDefault()` and `event.dataTransfer.setData` /
++ * `getData`, so the partial object covers everything.
++ */
++function makeDragEvent(
++  dt: DataTransfer,
++  type: 'dragstart' | 'dragover' | 'dragenter' | 'dragleave' | 'drop',
++): DragEvent {
++  let prevented = false;
++  const stub = {
++    type,
++    dataTransfer: dt,
++    preventDefault: () => {
++      prevented = true;
++    },
++    get defaultPrevented() {
++      return prevented;
++    },
++  };
++  return stub as unknown as DragEvent;
++}
++
++interface Harness {
++  ticketService: {
++    listForQueue: jasmine.Spy;
++    patch: jasmine.Spy;
++  };
++  userService: { listAgents: jasmine.Spy };
++  authService: {
++    user$: BehaviorSubject<UserPublic | null>;
++    userSnapshot: jasmine.Spy;
++    refreshUser: jasmine.Spy;
++  };
++  router: { navigate: jasmine.Spy; navigateByUrl: jasmine.Spy };
++}
++
++async function bootstrap(queryParams: Record<string, string> = {}): Promise<Harness> {
++  const ticketService = {
++    listForQueue: jasmine.createSpy('listForQueue'),
++    patch: jasmine.createSpy('patch'),
++  };
++  const userService = { listAgents: jasmine.createSpy('listAgents') };
++  const user$ = new BehaviorSubject<UserPublic | null>(makeUser());
++  const authService = {
++    user$,
++    userSnapshot: jasmine.createSpy('userSnapshot').and.callFake(() => user$.value),
++    refreshUser: jasmine.createSpy('refreshUser').and.resolveTo(undefined),
++  };
++  const router = {
++    navigate: jasmine.createSpy('navigate').and.resolveTo(true),
++    navigateByUrl: jasmine.createSpy('navigateByUrl').and.resolveTo(true),
++  };
++  const route = {
++    snapshot: { queryParamMap: convertToParamMap(queryParams) },
++    queryParamMap: convertToParamMap(queryParams),
++  };
++
++  await TestBed.configureTestingModule({
++    imports: [AgentKanbanPageComponent],
++    providers: [
++      provideRouter([]),
++      provideHttpClient(),
++      { provide: TicketService, useValue: ticketService },
++      { provide: UserService, useValue: userService },
++      { provide: AuthService, useValue: authService },
++      { provide: Router, useValue: router },
++      { provide: ActivatedRoute, useValue: route },
++    ],
++  }).compileComponents();
++
++  return { ticketService, userService, authService, router };
++}
++
++function makeFixture() {
++  return TestBed.createComponent(AgentKanbanPageComponent);
++}
++
++describe('AgentKanbanPageComponent (HD-012)', () => {
++  beforeEach(() => {
++    TestBed.resetTestingModule();
++  });
++
++  it('renders the four columns in fixed order on a successful load', async () => {
++    const { ticketService, userService } = await bootstrap();
++    ticketService.listForQueue.and.resolveTo([
++      makeTicket({ id: 1, status: 'Open' }),
++      makeTicket({ id: 2, status: 'In Progress' }),
++      makeTicket({ id: 3, status: 'Resolved' }),
++      makeTicket({ id: 4, status: 'Closed' }),
++    ]);
++    userService.listAgents.and.resolveTo([]);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++    const compiled = fixture.nativeElement as HTMLElement;
++
++    const columns = Array.from(
++      compiled.querySelectorAll('[data-testid="kanban-column"]'),
++    );
++    expect(columns.length).toBe(4);
++    const titles = Array.from(compiled.querySelectorAll('.column-title')).map(
++      (el) => el.textContent?.trim(),
++    );
++    expect(titles).toEqual(['Open', 'In Progress', 'Resolved', 'Closed']);
++  });
++
++  it('places tickets in the column matching their status', async () => {
++    const { ticketService, userService } = await bootstrap();
++    const t1 = makeTicket({ id: 1, status: 'Open' });
++    const t2 = makeTicket({ id: 2, status: 'In Progress' });
++    const t3 = makeTicket({ id: 3, status: 'Resolved' });
++    const t4 = makeTicket({ id: 4, status: 'Closed' });
++    ticketService.listForQueue.and.resolveTo([t1, t2, t3, t4]);
++    userService.listAgents.and.resolveTo([]);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const columns = Array.from(
++      fixture.nativeElement.querySelectorAll('[data-testid="kanban-column"]'),
++    ) as HTMLElement[];
++    const slotIds = (column: HTMLElement) =>
++      Array.from(column.querySelectorAll('.card-slot')).map(
++        (s) => (s as HTMLElement).getAttribute('data-ticket-id'),
++      );
++    expect(slotIds(columns[0]!)).toEqual(['1']);
++    expect(slotIds(columns[1]!)).toEqual(['2']);
++    expect(slotIds(columns[2]!)).toEqual(['3']);
++    expect(slotIds(columns[3]!)).toEqual(['4']);
++  });
++
++  it('renders Closed cards with draggable=false', async () => {
++    const { ticketService, userService } = await bootstrap();
++    ticketService.listForQueue.and.resolveTo([
++      makeTicket({ id: 1, status: 'Open' }),
++      makeTicket({ id: 4, status: 'Closed' }),
++    ]);
++    userService.listAgents.and.resolveTo([]);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const closedCards = Array.from(
++      fixture.nativeElement.querySelectorAll(
++        '[data-testid="kanban-column"][data-status="Closed"] kanban-card .card',
++      ),
++    ) as HTMLElement[];
++    closedCards.forEach((card) => {
++      expect(card.getAttribute('draggable')).toBe('false');
++    });
++    const openCards = Array.from(
++      fixture.nativeElement.querySelectorAll(
++        '[data-testid="kanban-column"][data-status="Open"] kanban-card .card',
++      ),
++    ) as HTMLElement[];
++    openCards.forEach((card) => {
++      expect(card.getAttribute('draggable')).toBe('true');
++    });
++  });
++
++  it('navigates to /tickets/:id when a card is clicked (no drag)', async () => {
++    const { ticketService, userService, router } = await bootstrap();
++    ticketService.listForQueue.and.resolveTo([
++      makeTicket({ id: 47, status: 'Open' }),
++    ]);
++    userService.listAgents.and.resolveTo([]);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const slot = fixture.nativeElement.querySelector(
++      '.card-slot[data-ticket-id="47"]',
++    ) as HTMLElement;
++    slot.click();
++
++    expect(router.navigateByUrl).toHaveBeenCalledWith('/tickets/47');
++  });
++
++  it('fires PATCH and updates the local signal when an Open card is dragged to In Progress', async () => {
++    const { ticketService, userService } = await bootstrap();
++    const t1 = makeTicket({ id: 47, status: 'Open' });
++    ticketService.listForQueue.and.resolveTo([t1]);
++    userService.listAgents.and.resolveTo([]);
++    const updated = { ...t1, status: 'In Progress' as const };
++    ticketService.patch.and.resolveTo(updated);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const page = fixture.componentInstance;
++    const dt = makeDataTransfer();
++    page.onDragStart(makeDragEvent(dt, 'dragstart'), t1);
++    page.onDragOver(makeDragEvent(dt, 'dragover'));
++    void page.onDrop(makeDragEvent(dt, 'drop'), 'In Progress');
++
++    // Allow the async PATCH promise to resolve + signal update to flush.
++    await new Promise((resolve) => setTimeout(resolve, 0));
++    fixture.detectChanges();
++
++    expect(ticketService.patch).toHaveBeenCalledWith(47, { status: 'In Progress' });
++
++    // The card now lives in the In Progress column.
++    const inProgress = fixture.nativeElement.querySelector(
++      '[data-testid="kanban-column"][data-status="In Progress"]',
++    ) as HTMLElement;
++    const movedSlots = inProgress.querySelectorAll(
++      '.card-slot[data-ticket-id="47"]',
++    );
++    expect(movedSlots.length).toBe(1);
++
++    const openColumn = fixture.nativeElement.querySelector(
++      '[data-testid="kanban-column"][data-status="Open"]',
++    ) as HTMLElement;
++    const stillInOpen = openColumn.querySelectorAll(
++      '.card-slot[data-ticket-id="47"]',
++    );
++    expect(stillInOpen.length).toBe(0);
++  });
++
++  it('does NOT call PATCH when an Open card is dragged to Closed (illegal transition)', async () => {
++    const { ticketService, userService } = await bootstrap();
++    ticketService.listForQueue.and.resolveTo([
++      makeTicket({ id: 47, status: 'Open' }),
++    ]);
++    userService.listAgents.and.resolveTo([]);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const page = fixture.componentInstance;
++    const dt = makeDataTransfer();
++    const t1 = page.tickets()[0]!;
++    page.onDragStart(makeDragEvent(dt, 'dragstart'), t1);
++    page.onDragOver(makeDragEvent(dt, 'dragover'));
++    void page.onDrop(makeDragEvent(dt, 'drop'), 'Closed');
++    await new Promise((resolve) => setTimeout(resolve, 0));
++    fixture.detectChanges();
++
++    expect(ticketService.patch).not.toHaveBeenCalled();
++    // The card stays in Open.
++    const openColumn = fixture.nativeElement.querySelector(
++      '[data-testid="kanban-column"][data-status="Open"]',
++    ) as HTMLElement;
++    expect(
++      openColumn.querySelectorAll('.card-slot[data-ticket-id="47"]').length,
++    ).toBe(1);
++  });
++
++  it('reverts the optimistic move + renders the move error toast when PATCH fails', async () => {
++    const { ticketService, userService } = await bootstrap();
++    const t1 = makeTicket({ id: 47, status: 'Open' });
++    ticketService.listForQueue.and.resolveTo([t1]);
++    userService.listAgents.and.resolveTo([]);
++    ticketService.patch.and.rejectWith(
++      new ApiError(500, 'internal_server_error', 'boom'),
++    );
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const page = fixture.componentInstance;
++    const dt = makeDataTransfer();
++    page.onDragStart(makeDragEvent(dt, 'dragstart'), t1);
++    page.onDragOver(makeDragEvent(dt, 'dragover'));
++    void page.onDrop(makeDragEvent(dt, 'drop'), 'In Progress');
++    await new Promise((resolve) => setTimeout(resolve, 0));
++    fixture.detectChanges();
++
++    expect(ticketService.patch).toHaveBeenCalled();
++    const toast = fixture.nativeElement.querySelector(
++      '[data-testid="move-error-toast"]',
++    );
++    expect(toast).not.toBeNull();
++    expect(toast?.textContent).toContain("Couldn't move the ticket");
++
++    // Card reverted to Open.
++    const openColumn = fixture.nativeElement.querySelector(
++      '[data-testid="kanban-column"][data-status="Open"]',
++    ) as HTMLElement;
++    expect(
++      openColumn.querySelectorAll('.card-slot[data-ticket-id="47"]').length,
++    ).toBe(1);
++  });
++
++  it('narrows the visible cards when the search input is set', async () => {
++    const { ticketService, userService } = await bootstrap();
++    ticketService.listForQueue.and.resolveTo([
++      makeTicket({ id: 1, title: 'VPN keeps dropping' }),
++      makeTicket({ id: 2, title: 'Monitor flickers' }),
++    ]);
++    userService.listAgents.and.resolveTo([]);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    // Drive the filter through the public method (mirrors the
++    // (valueChange)="onSearchInput" wire without depending on the
++    // atom-input's <input> dispatch quirks under headless Chrome).
++    fixture.componentInstance.onSearchInput('vpn');
++    fixture.detectChanges();
++
++    // Drain the 200ms debounce so the signal + URL reflect "vpn".
++    await new Promise((resolve) => setTimeout(resolve, 250));
++    fixture.detectChanges();
++
++    const slots = fixture.nativeElement.querySelectorAll('.card-slot');
++    expect(slots.length).toBe(1);
++    expect(
++      (slots[0] as HTMLElement).getAttribute('data-ticket-id'),
++    ).toBe('1');
++  });
++
++  it('syncs the priority filter to the URL via queryParams merge', async () => {
++    const { ticketService, userService, router } = await bootstrap();
++    ticketService.listForQueue.and.resolveTo([]);
++    userService.listAgents.and.resolveTo([]);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    fixture.componentInstance.onPriorityChange('High');
++    await new Promise((resolve) => setTimeout(resolve, 0));
++    fixture.detectChanges();
++
++    expect(router.navigate).toHaveBeenCalled();
++    const lastCall = router.navigate.calls.mostRecent();
++    const args = lastCall.args[1] as { queryParams: Record<string, string> };
++    expect(args.queryParams['priority']).toBe('High');
++  });
++
++  it('renders the error card with a Retry button when the queue load fails', async () => {
++    const { ticketService, userService } = await bootstrap();
++    ticketService.listForQueue.and.rejectWith(
++      new ApiError(500, 'internal_server_error', 'boom'),
++    );
++    userService.listAgents.and.resolveTo([]);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const compiled = fixture.nativeElement as HTMLElement;
++    const errorCard = compiled.querySelector(
++      '[data-testid="queue-error-card"]',
++    );
++    expect(errorCard).not.toBeNull();
++    const retryBtn = compiled.querySelector(
++      '[data-testid="retry-btn"]',
++    );
++    expect(retryBtn).not.toBeNull();
++  });
++
++  it('renders the loading skeleton on the initial load', async () => {
++    const { ticketService, userService } = await bootstrap();
++    // Use a never-resolving promise so the page stays in the
++    // loading state when we assert.
++    ticketService.listForQueue.and.returnValue(new Promise(() => undefined));
++    userService.listAgents.and.resolveTo([]);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const compiled = fixture.nativeElement as HTMLElement;
++    expect(compiled.querySelector('loading-skeleton')).not.toBeNull();
++    expect(compiled.querySelector('[data-testid="kanban-board"]')).toBeNull();
++  });
++
++  it('shows "No tickets match your filters." when a filter narrows to zero rows', async () => {
++    const { ticketService, userService } = await bootstrap();
++    ticketService.listForQueue.and.resolveTo([
++      makeTicket({ id: 1, status: 'Open' }),
++    ]);
++    userService.listAgents.and.resolveTo([]);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    fixture.componentInstance.onPriorityChange('Low');
++    await new Promise((resolve) => setTimeout(resolve, 0));
++    fixture.detectChanges();
++
++    const openEmpty = fixture.nativeElement.querySelector(
++      '[data-testid="kanban-column"][data-status="Open"] [data-testid="column-empty"]',
++    ) as HTMLElement;
++    expect(openEmpty).not.toBeNull();
++    expect(openEmpty.textContent).toContain('No tickets match your filters.');
++  });
++
++  it('shows "Nothing here." when a column is genuinely empty', async () => {
++    const { ticketService, userService } = await bootstrap();
++    ticketService.listForQueue.and.resolveTo([
++      makeTicket({ id: 1, status: 'Open' }),
++    ]);
++    userService.listAgents.and.resolveTo([]);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const closedEmpty = fixture.nativeElement.querySelector(
++      '[data-testid="kanban-column"][data-status="Closed"] [data-testid="column-empty"]',
++    ) as HTMLElement;
++    expect(closedEmpty).not.toBeNull();
++    expect(closedEmpty.textContent).toContain('Nothing here.');
++  });
++
++  it('pins orphan Open tickets to the top with the Unassigned badge', async () => {
++    const { ticketService, userService } = await bootstrap();
++    const assigned = makeTicket({
++      id: 1,
++      status: 'Open',
++      owner: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent' }),
++    });
++    const orphan = makeTicket({
++      id: 2,
++      status: 'Open',
++      owner: null,
++      // Older than the assigned ticket so createdAt ASC would put
++      // it second; the orphan-pin check must still surface it first.
++      createdAt: '2026-01-10T10:30:00.000Z',
++    });
++    ticketService.listForQueue.and.resolveTo([assigned, orphan]);
++    userService.listAgents.and.resolveTo([]);
++
++    const fixture = makeFixture();
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const openColumn = fixture.nativeElement.querySelector(
++      '[data-testid="kanban-column"][data-status="Open"]',
++    ) as HTMLElement;
++    const slots = Array.from(openColumn.querySelectorAll('.card-slot'));
++    expect((slots[0] as HTMLElement).getAttribute('data-ticket-id')).toBe('2');
++    expect((slots[1] as HTMLElement).getAttribute('data-ticket-id')).toBe('1');
++
++    const unassignedBadges = openColumn.querySelectorAll(
++      '[data-testid="unassigned-badge"]',
++    );
++    expect(unassignedBadges.length).toBe(1);
++  });
++});
+diff --git a/frontend/src/app/pages/agent-kanban-page/agent-kanban-page.component.ts b/frontend/src/app/pages/agent-kanban-page/agent-kanban-page.component.ts
+index 9cf9d3d..df09645 100644
+--- a/frontend/src/app/pages/agent-kanban-page/agent-kanban-page.component.ts
++++ b/frontend/src/app/pages/agent-kanban-page/agent-kanban-page.component.ts
+@@ -1,25 +1,804 @@
+-import { Component } from '@angular/core';
++/**
++ * AgentKanbanPageComponent — HD-012.
++ *
++ * The /queue page Sam (Support Agent) lands on after login.
++ *
++ * Layout: 4-column GitHub-Issues-style Kanban board
++ *   Open · In Progress · Resolved · Closed
++ *
++ * Per design-process/D-UX-Design/agent-kanban.md:
++ *   - Orphans (Open + owner===null) pinned to the top of Open
++ *     with the orphan tint.
++ *   - HTML5 native drag-and-drop between columns for status
++ *     transitions. Closed is read-only (draggable=false).
++ *   - Filter strip: search (debounced 200ms) + priority + category
++ *     + owner (Mine / Unassigned / agent id). State syncs to the
++ *     URL via ?q=&priority=&category=&owner=.
++ *   - Render states (mutually exclusive @switch):
++ *       loading  → <loading-skeleton> + disabled filter strip
++ *       error    → inline error card + retry
++ *       success  → 4-column board with per-column empty markers
++ *
++ * Render-state machine lives in `renderState()`; the page is the
++ * only place that may flip it.
++ *
++ * Drag-and-drop implementation:
++ *   - Each kanban-card sets `draggable="true"`. The page listens
++ *     to (dragstart) and stamps `event.dataTransfer.setData(...)`
++ *     with a small JSON payload {ticketId, fromStatus}.
++ *   - Each column body listens to (dragover) (preventDefault to
++ *     permit drop), (dragenter) (highlight if valid), (dragleave)
++ *     (clear highlight), and (drop).
++ *   - Drop validation is matrix-driven (see `LEGAL_TRANSITIONS`);
++ *     invalid drops animate a brief shake and never call PATCH.
++ *   - Valid drops are optimistic: the card is moved in the local
++ *     `tickets` signal first, then `PATCH /api/tickets/:id`
++ *     {status: target} fires. On 200 the eager-loaded response
++ *     replaces the local instance. On error the card reverts and a
++ *     toast renders.
++ *
++ * URL persistence:
++ *   - On init, queryParamMap is parsed into the four filter
++ *     signals. Filters apply after the fetch resolves.
++ *   - On filter change, `Router.navigate([], { queryParams,
++ *     queryParamsHandling: 'merge' })` updates the URL without
++ *     re-running resolvers. The search input is debounced 200ms;
++ *     the priority / category / owner dropdowns update the URL
++ *     immediately.
++ */
++
++import {
++  ChangeDetectionStrategy,
++  Component,
++  DestroyRef,
++  OnInit,
++  computed,
++  inject,
++  signal,
++} from '@angular/core';
++import { ActivatedRoute, Router } from '@angular/router';
++
++import { TicketService } from '../../services/ticket.service';
++import { AuthService } from '../../services/auth.service';
++import { UserService, type AgentSummary } from '../../services/user.service';
++import { ApiError } from '../../services/api-error';
++
++import type { Ticket } from '../../models/ticket';
++import type {
++  TicketCategory,
++  TicketPriority,
++  TicketStatus,
++} from '../../models/enums';
++
++import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
++import { LoadingSkeletonComponent } from '../../components/patterns/loading-skeleton/loading-skeleton.component';
++import { ButtonComponent } from '../../components/atoms/button/button.component';
++import { SelectComponent, type SelectOption } from '../../components/atoms/select/select.component';
++import { InputTextComponent } from '../../components/atoms/input-text/input-text.component';
++import { KanbanCardComponent } from '../../components/molecules/kanban-card/kanban-card.component';
++
++type RenderState = 'loading' | 'error' | 'success';
++
++type OwnerFilter = 'all' | 'me' | 'unassigned' | string; // string = numeric agent id
++
++const TICKET_MIME = 'application/x-helpdesk-ticket';
++
++const COLUMNS: TicketStatus[] = ['Open', 'In Progress', 'Resolved', 'Closed'];
++
++const PRIORITY_OPTIONS: SelectOption[] = [
++  { value: 'all', label: 'All priorities' },
++  { value: 'High', label: 'High' },
++  { value: 'Medium', label: 'Medium' },
++  { value: 'Low', label: 'Low' },
++];
++
++const CATEGORY_OPTIONS: SelectOption[] = [
++  { value: 'all', label: 'All categories' },
++  { value: 'IT', label: 'IT' },
++  { value: 'HR', label: 'HR' },
++  { value: 'Finance', label: 'Finance' },
++  { value: 'General', label: 'General' },
++];
+ 
+ /**
+- * Agent Kanban Dashboard (Queue) placeholder.
+- * Source spec: design-process/D-UX-Design/agent-kanban.md
+- * Real implementation: HD-012 (4-column board + drag-and-drop + filters).
++ * Legal transitions per the kickoff + ticket-detail Action Matrix.
++ * Per spec: Agent cannot change Closed from any non-Resolved state,
++ * so the only legal drop into Closed is from Resolved (but Resolved
++ * drags are explicitly rejected — Agent cannot drag from Resolved;
++ * that column awaits Eli's verdict).
+  *
+- * Support Agents only — Admin does not see this page (HD-013).
++ *  from    →  allowed targets for Agent drag
++ *  Open    →  {In Progress, Resolved}
++ *  In Progress → {Open, Resolved}
++ *  Resolved →  {} (no drag source for Agent)
++ *  Closed  →  {} (read-only)
+  */
++const LEGAL_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
++  Open: ['In Progress', 'Resolved'],
++  'In Progress': ['Open', 'Resolved'],
++  Resolved: [],
++  Closed: [],
++};
++
++const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
++const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
++
+ @Component({
+   selector: 'app-agent-kanban-page',
+   standalone: true,
++  imports: [
++    AppChromeComponent,
++    LoadingSkeletonComponent,
++    ButtonComponent,
++    SelectComponent,
++    InputTextComponent,
++    KanbanCardComponent,
++  ],
++  changeDetection: ChangeDetectionStrategy.OnPush,
+   template: `
+-    <section class="placeholder-page">
+-      <div>
+-        <h1>Queue</h1>
+-        <p class="placeholder-subtitle">
+-          Placeholder — full implementation lands in HD-012.
+-          <br />Route: <code>/queue</code> (Support Agents only)
+-        </p>
+-      </div>
+-    </section>
++    <app-chrome>
++      <section class="kanban-page">
++        <header class="kanban-header">
++          <h1>Queue</h1>
++          <atom-button
++            variant="secondary"
++            size="md"
++            data-testid="refresh-btn"
++            (pressed)="refresh()"
++            [disabled]="renderState() === 'loading'"
++          >Refresh</atom-button>
++        </header>
++
++        @if (moveError(); as msg) {
++          <div
++            class="error-toast"
++            role="alert"
++            aria-live="polite"
++            data-testid="move-error-toast"
++          >{{ msg }}</div>
++        }
++
++        <div class="filter-strip" data-testid="filter-strip">
++          <label class="filter-search">
++            <span class="filter-label">Search</span>
++            <atom-input
++              id="filter-search"
++              [value]="searchValue()"
++              placeholder="Search…"
++              [disabled]="renderState() === 'loading'"
++              (valueChange)="onSearchInput($event)"
++            />
++          </label>
++
++          <label class="filter-cell">
++            <span class="filter-label">Priority</span>
++            <atom-select
++              id="filter-priority"
++              [value]="priorityFilter()"
++              [options]="priorityOptions"
++              [disabled]="renderState() === 'loading'"
++              (valueChange)="onPriorityChange($event)"
++            />
++          </label>
++
++          <label class="filter-cell">
++            <span class="filter-label">Category</span>
++            <atom-select
++              id="filter-category"
++              [value]="categoryFilter()"
++              [options]="categoryOptions"
++              [disabled]="renderState() === 'loading'"
++              (valueChange)="onCategoryChange($event)"
++            />
++          </label>
++
++          <label class="filter-cell">
++            <span class="filter-label">Owner</span>
++            <atom-select
++              id="filter-owner"
++              [value]="ownerFilter()"
++              [options]="ownerOptions()"
++              [disabled]="renderState() === 'loading'"
++              (valueChange)="onOwnerChange($event)"
++            />
++          </label>
++
++          @if (hasActiveFilter()) {
++            <button
++              type="button"
++              class="clear-link"
++              data-testid="clear-filters-btn"
++              (click)="clearFilters()"
++            >× Clear filters</button>
++          }
++        </div>
++
++        @switch (renderState()) {
++          @case ('loading') {
++            <loading-skeleton [rows]="5" />
++          }
++          @case ('error') {
++            <div class="state-card" role="alert" data-testid="queue-error-card">
++              <h2 class="title">{{ errorMessage() }}</h2>
++              <atom-button
++                variant="primary"
++                size="md"
++                data-testid="retry-btn"
++                (pressed)="refresh()"
++              >Retry</atom-button>
++            </div>
++          }
++          @case ('success') {
++            <div class="board" data-testid="kanban-board">
++              @for (status of columns; track status) {
++                <section
++                  class="column"
++                  [attr.data-status]="status"
++                  [attr.data-empty]="columnsByStatus()[status].length === 0 ? 'true' : 'false'"
++                  [attr.data-readonly]="isReadOnlyColumn(status) ? 'true' : 'false'"
++                  data-testid="kanban-column"
++                >
++                  <header class="column-header">
++                    <h2 class="column-title">{{ status }}</h2>
++                    <span
++                      class="column-count"
++                      data-testid="column-count"
++                    >{{ columnsByStatus()[status].length }}</span>
++                  </header>
++                  <div
++                    class="column-body"
++                    [class.readonly]="isReadOnlyColumn(status)"
++                    [class.empty]="columnsByStatus()[status].length === 0"
++                    (dragover)="onDragOver($event)"
++                    (dragenter)="onDragEnter($event, status)"
++                    (dragleave)="onDragLeave($event)"
++                    (drop)="onDrop($event, status)"
++                    [attr.data-drag-over]="dragOverColumn() === status ? 'true' : 'false'"
++                    [attr.data-drag-invalid]="invalidDropColumn() === status ? 'true' : 'false'"
++                  >
++                    @if (columnsByStatus()[status].length === 0) {
++                      <p
++                        class="column-empty"
++                        data-testid="column-empty"
++                      >{{ emptyMarker(status) }}</p>
++                    } @else {
++                      @for (t of columnsByStatus()[status]; track t.id) {
++                        <div
++                          class="card-slot"
++                          [attr.data-ticket-id]="t.id"
++                          (dragstart)="onDragStart($event, t)"
++                          (dragend)="onDragEnd()"
++                          (click)="onCardClick(t)"
++                        >
++                          <kanban-card
++                            [ticket]="t"
++                            [isDragDisabled]="isReadOnlyColumn(status)"
++                            [isOrphan]="isOrphanPin(t, status)"
++                          />
++                        </div>
++                      }
++                    }
++                  </div>
++                </section>
++              }
++            </div>
++          }
++        }
++      </section>
++    </app-chrome>
+   `,
++  styles: [`
++    :host {
++      display: block;
++    }
++    .kanban-page {
++      width: 100%;
++      max-width: 1400px;
++      margin: 0 auto;
++    }
++    .kanban-header {
++      display: flex;
++      justify-content: space-between;
++      align-items: center;
++      gap: 16px;
++      margin-bottom: 16px;
++    }
++    .kanban-header h1 {
++      margin: 0;
++      font-size: 24px;
++      font-weight: 600;
++      color: var(--color-primary);
++    }
++    .error-toast {
++      background: var(--color-surface);
++      border: 1px solid var(--color-border);
++      border-left: 4px solid var(--color-error);
++      border-radius: 6px;
++      padding: 10px 14px;
++      color: var(--color-error);
++      font-size: 14px;
++      margin-bottom: 16px;
++    }
++    .filter-strip {
++      display: flex;
++      align-items: flex-end;
++      gap: 12px;
++      margin-bottom: 16px;
++      flex-wrap: wrap;
++    }
++    .filter-strip > * {
++      min-width: 0;
++    }
++    .filter-label {
++      display: block;
++      font-size: 12px;
++      font-weight: 600;
++      color: var(--color-muted);
++      margin-bottom: 4px;
++    }
++    .filter-search {
++      flex: 1 1 240px;
++      min-width: 200px;
++    }
++    .filter-cell {
++      flex: 0 0 auto;
++      width: 180px;
++    }
++    .clear-link {
++      align-self: flex-end;
++      margin: 0;
++      padding: 0;
++      border: 0;
++      background: transparent;
++      color: var(--color-primary);
++      font-size: 13px;
++      cursor: pointer;
++      text-decoration: underline;
++      min-height: var(--field-height, 40px);
++      line-height: var(--field-height, 40px);
++    }
++    .clear-link:focus-visible {
++      outline: var(--focus-ring-width) solid var(--focus-ring-color);
++      outline-offset: 2px;
++    }
++    .state-card {
++      background: var(--color-surface);
++      border: 1px solid var(--color-border);
++      border-radius: 8px;
++      padding: 32px;
++      box-sizing: border-box;
++      text-align: center;
++      max-width: 480px;
++      margin: 32px auto;
++    }
++    .state-card .title {
++      margin: 0 0 8px;
++      font-size: 18px;
++      font-weight: 600;
++      color: var(--color-primary);
++    }
++    .column-empty {
++      margin: 0;
++      font-size: 13px;
++      color: var(--color-muted);
++      text-align: center;
++    }
++    .card-slot {
++      cursor: pointer;
++    }
++  `],
+ })
+-export class AgentKanbanPageComponent {}
++export class AgentKanbanPageComponent implements OnInit {
++  private readonly ticketService = inject(TicketService);
++  private readonly authService = inject(AuthService);
++  private readonly userService = inject(UserService);
++  private readonly router = inject(Router);
++  private readonly route = inject(ActivatedRoute);
++  private readonly destroyRef = inject(DestroyRef);
++
++  readonly columns = COLUMNS;
++  readonly priorityOptions = PRIORITY_OPTIONS;
++  readonly categoryOptions = CATEGORY_OPTIONS;
++
++  // Render-state machine.
++  readonly renderState = signal<RenderState>('loading');
++  readonly errorMessage = signal<string | null>(null);
++  readonly moveError = signal<string | null>(null);
++
++  // Source data.
++  readonly tickets = signal<Ticket[]>([]);
++  readonly agents = signal<AgentSummary[]>([]);
++
++  // Filter signals.
++  readonly searchValue = signal<string>('');
++  readonly priorityFilter = signal<'all' | TicketPriority>('all');
++  readonly categoryFilter = signal<'all' | TicketCategory>('all');
++  readonly ownerFilter = signal<OwnerFilter>('all');
++
++  // Drag-state.
++  private draggingTicket: Ticket | null = null;
++  readonly dragOverColumn = signal<TicketStatus | null>(null);
++  readonly invalidDropColumn = signal<TicketStatus | null>(null);
++  private invalidDropTimer?: ReturnType<typeof setTimeout>;
++
++  // Search debounce.
++  private searchDebounceTimer?: ReturnType<typeof setTimeout>;
++
++  /**
++   * All tickets that pass every active filter, partitioned into
++   * the four columns by status. Computed on demand so any filter
++   * change + any drag-and-drop local signal update redraws the
++   * board without a manual recompute call.
++   *
++   * Within-column ordering:
++   *   Open / In Progress / Resolved → createdAt ASC (oldest first;
++   *     "aging tickets float up" per the UX spec).
++   *   Closed → createdAt DESC (newest first; tail of scan).
++   *   Open column additionally pins `owner === null` to the top so
++   *     orphans surface instantly.
++   */
++  readonly columnsByStatus = computed<Record<TicketStatus, Ticket[]>>(() => {
++    const filtered = this.applyFilters(this.tickets());
++    const buckets: Record<TicketStatus, Ticket[]> = {
++      Open: [],
++      'In Progress': [],
++      Resolved: [],
++      Closed: [],
++    };
++    for (const t of filtered) {
++      buckets[t.status].push(t);
++    }
++    const ascending = (a: Ticket, b: Ticket) =>
++      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
++    const descending = (a: Ticket, b: Ticket) =>
++      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
++    buckets.Open.sort((a, b) => {
++      // Orphans first (owner === null), then createdAt ASC.
++      const aOrphan = a.owner === null ? 0 : 1;
++      const bOrphan = b.owner === null ? 0 : 1;
++      if (aOrphan !== bOrphan) return aOrphan - bOrphan;
++      return ascending(a, b);
++    });
++    buckets['In Progress'].sort(ascending);
++    buckets.Resolved.sort(ascending);
++    buckets.Closed.sort(descending);
++    return buckets;
++  });
++
++  readonly ownerOptions = computed<SelectOption[]>(() => {
++    const me = this.authService.userSnapshot()?.id.toString() ?? 'me';
++    const opts: SelectOption[] = [
++      { value: 'all', label: 'All owners' },
++      { value: 'me', label: 'Mine' },
++      { value: 'unassigned', label: 'Unassigned' },
++    ];
++    // Each active agent gets an option keyed by numeric id.
++    for (const agent of this.agents()) {
++      // Avoid duplicating "Mine" if the current user is in the list.
++      if (agent.id.toString() === me) continue;
++      opts.push({ value: agent.id.toString(), label: agent.displayName });
++    }
++    return opts;
++  });
++
++  readonly hasActiveFilter = computed(() => {
++    return (
++      this.searchValue().trim() !== '' ||
++      this.priorityFilter() !== 'all' ||
++      this.categoryFilter() !== 'all' ||
++      this.ownerFilter() !== 'all'
++    );
++  });
++
++  ngOnInit(): void {
++    // Read initial filter state from the URL.
++    const params = this.route.snapshot.queryParamMap;
++    const q = params.get('q');
++    const priority = params.get('priority');
++    const category = params.get('category');
++    const owner = params.get('owner');
++    if (q !== null) this.searchValue.set(q);
++    if (priority === 'High' || priority === 'Medium' || priority === 'Low') {
++      this.priorityFilter.set(priority);
++    }
++    if (
++      category === 'IT' ||
++      category === 'HR' ||
++      category === 'Finance' ||
++      category === 'General'
++    ) {
++      this.categoryFilter.set(category);
++    }
++    if (owner === 'me' || owner === 'unassigned' || /^\d+$/.test(owner ?? '')) {
++      this.ownerFilter.set(owner as OwnerFilter);
++    }
++
++    void this.load();
++
++    this.destroyRef.onDestroy(() => {
++      if (this.searchDebounceTimer) clearTimeout(this.searchDebounceTimer);
++      if (this.invalidDropTimer) clearTimeout(this.invalidDropTimer);
++    });
++  }
++
++  // ─── Render lifecycle ────────────────────────────────────────────
++
++  refresh(): void {
++    void this.load();
++  }
++
++  private async load(): Promise<void> {
++    this.renderState.set('loading');
++    this.errorMessage.set(null);
++    try {
++      const [list, agents] = await Promise.all([
++        this.ticketService.listForQueue(),
++        this.userService.listAgents().catch(() => []),
++      ]);
++      this.tickets.set(list);
++      this.agents.set(agents);
++      this.renderState.set('success');
++    } catch (err) {
++      // 401 → silent sign-out handled by the auth interceptor;
++      // the rest is a generic failure.
++      if (err instanceof ApiError && err.status === 401) {
++        this.errorMessage.set('Your session expired. Please sign in again.');
++      } else {
++        this.errorMessage.set(GENERIC_LOAD_ERROR);
++      }
++      this.renderState.set('error');
++    }
++  }
++
++  // ─── Filter handlers ─────────────────────────────────────────────
++
++  onSearchInput(value: string): void {
++    // Local signal updates immediately so the UI feels responsive;
++    // the URL (and the formal "search query") is debounced 200ms
++    // so a flurry of keystrokes doesn't spam history entries.
++    this.searchValue.set(value);
++    if (this.searchDebounceTimer) clearTimeout(this.searchDebounceTimer);
++    this.searchDebounceTimer = setTimeout(() => {
++      void this.syncFiltersToUrl({ q: value.trim() === '' ? null : value.trim() });
++    }, 200);
++  }
++
++  onPriorityChange(value: string): void {
++    const next: 'all' | TicketPriority =
++      value === 'High' || value === 'Medium' || value === 'Low'
++        ? value
++        : 'all';
++    this.priorityFilter.set(next);
++    void this.syncFiltersToUrl({
++      priority: next === 'all' ? null : next,
++    });
++  }
++
++  onCategoryChange(value: string): void {
++    const next: 'all' | TicketCategory =
++      value === 'IT' || value === 'HR' || value === 'Finance' || value === 'General'
++        ? value
++        : 'all';
++    this.categoryFilter.set(next);
++    void this.syncFiltersToUrl({
++      category: next === 'all' ? null : next,
++    });
++  }
++
++  onOwnerChange(value: string): void {
++    const next: OwnerFilter =
++      value === 'me' || value === 'unassigned' || value === 'all' || /^\d+$/.test(value)
++        ? value
++        : 'all';
++    this.ownerFilter.set(next);
++    const param =
++      next === 'all' ? null : next;
++    void this.syncFiltersToUrl({ owner: param });
++  }
++
++  clearFilters(): void {
++    this.searchValue.set('');
++    this.priorityFilter.set('all');
++    this.categoryFilter.set('all');
++    this.ownerFilter.set('all');
++    void this.syncFiltersToUrl({
++      q: null,
++      priority: null,
++      category: null,
++      owner: null,
++    });
++  }
++
++  private async syncFiltersToUrl(updates: {
++    q?: string | null;
++    priority?: string | null;
++    category?: string | null;
++    owner?: string | null;
++  }): Promise<void> {
++    const queryParams: Record<string, string | null> = {};
++    if (updates.q !== undefined) queryParams['q'] = updates.q;
++    if (updates.priority !== undefined) queryParams['priority'] = updates.priority;
++    if (updates.category !== undefined) queryParams['category'] = updates.category;
++    if (updates.owner !== undefined) queryParams['owner'] = updates.owner;
++    await this.router.navigate([], {
++      relativeTo: this.route,
++      queryParams,
++      queryParamsHandling: 'merge',
++    });
++  }
++
++  // ─── Filtering ───────────────────────────────────────────────────
++
++  private applyFilters(input: Ticket[]): Ticket[] {
++    const q = this.searchValue().trim().toLowerCase();
++    const priority = this.priorityFilter();
++    const category = this.categoryFilter();
++    const owner = this.ownerFilter();
++    const meId = this.authService.userSnapshot()?.id;
++
++    return input.filter((t) => {
++      if (priority !== 'all' && t.priority !== priority) return false;
++      if (category !== 'all' && t.category !== category) return false;
++      if (owner === 'unassigned' && t.owner !== null) return false;
++      if (owner === 'me') {
++        if (meId === undefined || t.owner?.id !== meId) return false;
++      } else if (owner !== 'all' && /^\d+$/.test(owner)) {
++        if (t.owner?.id.toString() !== owner) return false;
++      }
++      if (q !== '') {
++        const hay = `${t.number} ${t.title} ${t.submitter.displayName}`.toLowerCase();
++        if (!hay.includes(q)) return false;
++      }
++      return true;
++    });
++  }
++
++  // ─── Column helper accessors (template-only) ─────────────────────
++
++  isReadOnlyColumn(status: TicketStatus): boolean {
++    // Closed is read-only end-to-end (drag-in + drag-out disabled).
++    return status === 'Closed';
++  }
++
++  isOrphanPin(ticket: Ticket, status: TicketStatus): boolean {
++    // Orphans are only "pinned" in the Open column. Other columns
++    // render null-owner tickets flat in createdAt-ASC order.
++    return status === 'Open' && ticket.owner === null;
++  }
++
++  emptyMarker(status: TicketStatus): string {
++    if (this.hasActiveFilter()) {
++      return 'No tickets match your filters.';
++    }
++    return 'Nothing here.';
++  }
++
++  // ─── Drag-and-drop ───────────────────────────────────────────────
++
++  onDragStart(event: DragEvent, ticket: Ticket): void {
++    if (!event.dataTransfer) return;
++    this.draggingTicket = ticket;
++    event.dataTransfer.setData(
++      TICKET_MIME,
++      JSON.stringify({ ticketId: ticket.id, fromStatus: ticket.status }),
++    );
++    // The spec calls for an opaque ghost-style cursor; setting
++    // effectAllowed lets the browser render its native drag image
++    // while we keep the wire payload as the source of truth.
++    event.dataTransfer.effectAllowed = 'move';
++    // Mark source column as well — it stays put while dragActive.
++    this.moveError.set(null);
++  }
++
++  onDragEnd(): void {
++    this.draggingTicket = null;
++    this.dragOverColumn.set(null);
++    this.invalidDropColumn.set(null);
++  }
++
++  onDragOver(event: DragEvent): void {
++    // Required to permit drop. preventDefault must be called in
++    // dragover (not just drop) for the drop event to fire.
++    event.preventDefault();
++    if (event.dataTransfer) {
++      event.dataTransfer.dropEffect = 'move';
++    }
++  }
++
++  onDragEnter(event: DragEvent, status: TicketStatus): void {
++    event.preventDefault();
++    if (!this.draggingTicket) return;
++    const valid = this.isLegalTransition(
++      this.draggingTicket.status,
++      status,
++    );
++    if (valid) {
++      this.dragOverColumn.set(status);
++      this.invalidDropColumn.set(null);
++    } else {
++      this.dragOverColumn.set(null);
++      this.invalidDropColumn.set(status);
++    }
++  }
++
++  onDragLeave(event: DragEvent): void {
++    // Only clear the highlight if the leave event is actually leaving
++    // the column body (not bouncing off a child card). relatedTarget
++    // is the element being entered; if it's null or outside the
++    // current target's subtree, the leave is real.
++    const related = event.relatedTarget as Node | null;
++    const target = event.currentTarget as HTMLElement | null;
++    if (target && related && target.contains(related)) {
++      return;
++    }
++    if (this.dragOverColumn() !== null) {
++      this.dragOverColumn.set(null);
++    }
++    if (this.invalidDropColumn() !== null) {
++      this.invalidDropColumn.set(null);
++    }
++  }
++
++  async onDrop(event: DragEvent, targetStatus: TicketStatus): Promise<void> {
++    event.preventDefault();
++    const ticket = this.draggingTicket;
++    this.dragOverColumn.set(null);
++    this.invalidDropColumn.set(null);
++    this.draggingTicket = null;
++    if (!ticket) return;
++    if (ticket.status === targetStatus) return;
++
++    if (!this.isLegalTransition(ticket.status, targetStatus)) {
++      this.flagInvalidDrop(targetStatus);
++      return;
++    }
++
++    // Optimistic move: patch the local signal first so the card
++    // jumps to the new column on the next render. If PATCH fails,
++    // we revert to the original status.
++    const fromStatus = ticket.status;
++    this.moveTicketLocally(ticket.id, targetStatus);
++    try {
++      const updated = await this.ticketService.patch(ticket.id, {
++        status: targetStatus,
++      });
++      // Replace the locally-cached instance with the eager-loaded
++      // response so subsequent renders reflect server-side state
++      // (timestamps / activity log merges etc.).
++      this.replaceTicketLocally(updated);
++    } catch {
++      this.moveTicketLocally(ticket.id, fromStatus);
++      this.moveError.set(GENERIC_MOVE_ERROR);
++    }
++  }
++
++  private flagInvalidDrop(status: TicketStatus): void {
++    this.invalidDropColumn.set(status);
++    if (this.invalidDropTimer) clearTimeout(this.invalidDropTimer);
++    this.invalidDropTimer = setTimeout(() => {
++      this.invalidDropColumn.set(null);
++    }, 600);
++  }
++
++  private isLegalTransition(from: TicketStatus, to: TicketStatus): boolean {
++    return (LEGAL_TRANSITIONS[from] ?? []).includes(to);
++  }
++
++  private moveTicketLocally(ticketId: number, status: TicketStatus): void {
++    const next = this.tickets().map((t) =>
++      t.id === ticketId ? { ...t, status } : t,
++    );
++    this.tickets.set(next);
++  }
++
++  private replaceTicketLocally(updated: Ticket): void {
++    const next = this.tickets().map((t) => (t.id === updated.id ? updated : t));
++    this.tickets.set(next);
++  }
++
++  // ─── Card click ──────────────────────────────────────────────────
++
++  onCardClick(ticket: Ticket): void {
++    void this.router.navigateByUrl(`/tickets/${ticket.id}`);
++  }
++}
+diff --git a/frontend/src/app/services/ticket.service.ts b/frontend/src/app/services/ticket.service.ts
+index d781b13..a9a6f73 100644
+--- a/frontend/src/app/services/ticket.service.ts
++++ b/frontend/src/app/services/ticket.service.ts
+@@ -1,10 +1,11 @@
+ /**
+- * TicketService — HD-007 + HD-008 + HD-009 + HD-010.
++ * TicketService — HD-007 + HD-008 + HD-009 + HD-010 + HD-012.
+  *
+  * Thin wrapper over the `/api/tickets/*` endpoints. HD-007 ships
+  * `listMine()`; HD-008 adds `create()`; HD-009 adds `getById()`;
+  * HD-010 (Ticket Detail) adds `patch()`, `addComment()`, `reopen()`,
+- * `confirmClose()`, `listComments()`, `listActivity()`.
++ * `confirmClose()`, `listComments()`, `listActivity()`; HD-012 (Agent
++ * Kanban) adds `listForQueue()`.
+  *
+  * Provided as `providedIn: 'root'` so any page can inject it
+  * without a module-level import dance — mirrors `AuthService`.
+@@ -35,6 +36,11 @@ interface ListMineResponse {
+   count: number;
+ }
+ 
++interface ListForQueueResponse {
++  tickets: Ticket[];
++  count: number;
++}
++
+ interface CreateResponse {
+   ticket: Ticket;
+ }
+@@ -123,6 +129,34 @@ export class TicketService {
+     }
+   }
+ 
++  /**
++   * GET /api/tickets/queue — every ticket in the system, newest-first
++   * (HD-012 Agent Kanban).
++   *
++   * Support Agent only. The Angular `roleGuard(['Support Agent'])` is
++   * the primary gate; if a programmatic client somehow reaches the
++   * endpoint, the backend returns 403 and the page falls through to
++   * the error render state with a generic message.
++   *
++   * Mirrors `listMine()` exactly: HttpClient → `firstValueFrom` →
++   * response unwrap → `apiErrorFrom` on non-2xx. The page treats a
++   * 401 as session-expired (per the auth interceptor's mapping) and
++   * 5xx as a generic load failure.
++   */
++  async listForQueue(): Promise<Ticket[]> {
++    try {
++      const res = await firstValueFrom(
++        this.http.get<ListForQueueResponse>(
++          `${environment.apiBaseUrl}/tickets/queue`,
++          { withCredentials: true },
++        ),
++      );
++      return res.tickets;
++    } catch (err) {
++      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
++    }
++  }
++
+   /**
+    * POST /api/tickets — file a new ticket (HD-008).
+    *
+diff --git a/frontend/src/styles.css b/frontend/src/styles.css
+index 7df91b1..55ed42c 100644
+--- a/frontend/src/styles.css
++++ b/frontend/src/styles.css
+@@ -248,3 +248,72 @@ a:hover {
+ .comment-role-agent {
+   border-left-color: var(--role-support-agent-border);
+ }
++
++/* ── Agent Kanban board (HD-012) ─────────────────────────────────
++   The Kanban board is 4 columns (Open / In Progress / Resolved /
++   Closed) with HTML5 native drag-and-drop. The column / board
++   layout rules are kept global so the per-page style budget fits
++   within the 2kB soft cap (mirrors the HD-011 comment-role
++   pattern). The page component still owns the filter strip +
++   state-card + smaller page-specific rules. */
++.board {
++  display: grid;
++  grid-template-columns: repeat(4, minmax(0, 1fr));
++  gap: 16px;
++  align-items: start;
++}
++.column {
++  background: var(--color-surface-subtle);
++  border: 1px solid var(--color-border);
++  border-radius: 8px;
++  display: flex;
++  flex-direction: column;
++  min-height: 320px;
++}
++.column-header {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  padding: 12px 14px;
++  border-bottom: 1px solid var(--color-border);
++}
++.column-title {
++  margin: 0;
++  font-size: 14px;
++  font-weight: 600;
++  color: var(--color-primary);
++}
++.column-count {
++  font-size: 12px;
++  font-weight: 600;
++  color: var(--color-muted);
++  background: var(--color-surface);
++  border: 1px solid var(--color-border);
++  border-radius: 10px;
++  padding: 2px 8px;
++  min-width: 24px;
++  text-align: center;
++}
++.column-body {
++  padding: 12px;
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
++  min-height: 240px;
++  transition: background-color 120ms ease;
++}
++.column-body.empty {
++  justify-content: center;
++  align-items: center;
++}
++.column-body.readonly {
++  cursor: not-allowed;
++}
++.column-body[data-drag-over="true"] {
++  background: rgba(66, 99, 235, 0.08);
++  outline: 2px dashed #4263eb;
++  outline-offset: -4px;
++}
++.column-body[data-drag-invalid="true"] {
++  background: var(--color-kanban-invalid-drop);
++}

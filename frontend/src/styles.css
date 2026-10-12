@@ -248,3 +248,72 @@ a:hover {
 .comment-role-agent {
   border-left-color: var(--role-support-agent-border);
 }
+
+/* ── Agent Kanban board (HD-012) ─────────────────────────────────
+   The Kanban board is 4 columns (Open / In Progress / Resolved /
+   Closed) with HTML5 native drag-and-drop. The column / board
+   layout rules are kept global so the per-page style budget fits
+   within the 2kB soft cap (mirrors the HD-011 comment-role
+   pattern). The page component still owns the filter strip +
+   state-card + smaller page-specific rules. */
+.board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.column {
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+}
+.column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+.column-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+.column-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 2px 8px;
+  min-width: 24px;
+  text-align: center;
+}
+.column-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 240px;
+  transition: background-color 120ms ease;
+}
+.column-body.empty {
+  justify-content: center;
+  align-items: center;
+}
+.column-body.readonly {
+  cursor: not-allowed;
+}
+.column-body[data-drag-over="true"] {
+  background: rgba(66, 99, 235, 0.08);
+  outline: 2px dashed #4263eb;
+  outline-offset: -4px;
+}
+.column-body[data-drag-invalid="true"] {
+  background: var(--color-kanban-invalid-drop);
+}

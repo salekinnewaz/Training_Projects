@@ -1,8 +1,10 @@
 /**
- * Tickets controller — HD-007 + HD-008 + HD-009 + HD-010.
+ * Tickets controller — HD-007 + HD-008 + HD-009 + HD-010 + HD-012.
  *
  * Endpoints exposed:
  *   GET  /api/tickets/mine           → list tickets the JWT'd user submitted
+ *   GET  /api/tickets/queue          → list every ticket in the system
+ *                                       (HD-012, Support Agent only)
  *   POST /api/tickets                → create a ticket on behalf of the
  *                                       JWT'd user (HD-008)
  *   GET  /api/tickets/:id            → fetch a single ticket by primary key
@@ -23,8 +25,8 @@
  * the request body), so a user can only ever see / create their own
  * tickets through these routes.
  *
- * Later stories (HD-012 kanban, HD-013 admin) register their own
- * handlers in this controller file.
+ * Later stories (HD-013 admin) register their own handlers in this
+ * controller file.
  */
 
 import type { Request, Response } from 'express';
@@ -34,6 +36,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { HttpError } from '../utils/errors';
 import {
   listForUser,
+  listForQueue,
   createTicket,
   getById as getByIdService,
   updateTicket,
@@ -149,6 +152,38 @@ export const listMine = asyncHandler(async (req: Request, res: Response) => {
 
   res.status(200).json({ tickets: payload, count: payload.length });
 });
+
+/**
+ * GET /api/tickets/queue — list every ticket in the system
+ * (HD-012 Agent Kanban).
+ *
+ * Support Agent only. The route is also `roleGuard(['Support Agent'])`
+ * on the Angular side, so an Admin who somehow reaches this endpoint
+ * (programmatic client, curl) gets 403 from this controller — same
+ * defense-in-depth pattern as `create` (HD-008).
+ *
+ * Returns `{ tickets, count }` matching the `listMine` envelope so
+ * the frontend's `listForQueue()` call mirrors `listMine()` exactly.
+ *
+ * No filter / search params are honored in HD-012 — the page applies
+ * those client-side over the returned set. HD-015 will lift them
+ * server-side and add cursor pagination.
+ */
+export const listForQueueHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const role = req.user!.role;
+    if (role !== 'Support Agent') {
+      throw new HttpError(
+        403,
+        'forbidden',
+        'Support Agent role required to view the queue.',
+      );
+    }
+    const tickets = await listForQueue();
+    const payload = tickets.map(serializeTicket);
+    res.status(200).json({ tickets: payload, count: payload.length });
+  },
+);
 
 /**
  * POST /api/tickets — Create a new ticket (HD-008).

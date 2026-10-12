@@ -1,9 +1,13 @@
 /**
- * Tickets router — HD-007 + HD-008 + HD-009 + HD-010.
+ * Tickets router — HD-007 + HD-008 + HD-009 + HD-010 + HD-012.
  *
  * Mounted at `/api/tickets` by `routes/index.ts`. Routes:
  *
  *   GET  /mine   — list tickets the JWT'd user submitted (HD-007)
+ *   GET  /queue  — list every ticket in the system, Support Agent
+ *                   only (HD-012 Agent Kanban). Returns
+ *                   `{ tickets, count }` like /mine. No filter /
+ *                   search params yet — HD-015 will add them.
  *   POST /        — create a new ticket on behalf of the JWT'd
  *                   user (HD-008). Body: {title, description,
  *                   category?, priority, attachmentId?}.
@@ -24,9 +28,6 @@
  *   POST /:id/reopen — submitter-only, Resolved → Open (HD-010).
  *   POST /:id/confirm-close — submitter-only, Resolved → Closed (HD-010).
  *
- * Later stories append their own handlers:
- *   - HD-012: GET /  (Agent queue view)
- *
  * All routes behind this router that read or write ticket data
  * must call `authMiddleware` first so `req.user` is populated.
  * The create route intentionally does NOT use `roleGuard(['User'])`
@@ -34,13 +35,15 @@
  * wants to allow other roles can swap the assertion without
  * re-wiring the route. The PATCH / comments / activity endpoints
  * similarly defer per-field role enforcement to the controller
- * (the service re-asserts as defense in depth).
+ * (the service re-asserts as defense in depth). The /queue route
+ * similarly defers the Support Agent gate to the controller.
  */
 
 import { Router } from 'express';
 
 import {
   listMine,
+  listForQueueHandler,
   create,
   getById,
   patch,
@@ -53,6 +56,14 @@ import {
 import { authMiddleware } from '../middleware/auth';
 
 const ticketsRouter = Router();
+
+// HD-012 — Agent Kanban. The static `/queue` segment must be
+// registered before the `/:id` numeric route so a future ticket
+// with id "queue" can never be confused with the agent queue
+// endpoint. Express prefers literal segments over `:id` so the
+// order is technically moot, but the placement is the
+// convention every reader expects.
+ticketsRouter.get('/queue', authMiddleware, listForQueueHandler);
 
 ticketsRouter.get('/mine', authMiddleware, listMine);
 ticketsRouter.post('/', authMiddleware, create);
