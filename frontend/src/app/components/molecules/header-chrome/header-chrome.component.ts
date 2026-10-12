@@ -1,5 +1,5 @@
 /**
- * header-chrome — molecule (HD-004).
+ * header-chrome — molecule (HD-004 + HD-018).
  *
  * The 64px persistent chrome strip rendered above every post-login
  * page. Three regions:
@@ -8,7 +8,9 @@
  *   2. Spacer.
  *   3. Profile trigger (right) — avatar + name + caret. Toggles a
  *      dropdown-panel containing the user header (avatar, name,
- *      role badge), a divider, and the Log out action.
+ *      role badge), a divider, a "Change password" entry
+ *      (HD-018 → /profile/password), another divider, and the
+ *      "Log out" action.
  *
  * Clicking "Log out" opens a dialog-modal confirmation; on confirm,
  * AuthService.logout() runs and the user is redirected to /login.
@@ -95,6 +97,13 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
                 <badge-role [role]="u.role" />
               </div>
             </div>
+            <divider-hr />
+            <button
+              type="button"
+              class="profile-action"
+              data-testid="change-password-link"
+              (click)="goChangePassword()"
+            >Change password</button>
             <divider-hr />
             <button
               type="button"
@@ -257,6 +266,17 @@ export class HeaderChromeComponent {
   goHome(): void {
     this.dropdownOpen.set(false);
     void this.router.navigateByUrl(this.auth.roleHomePath());
+  }
+
+  /**
+   * HD-018: navigate to the change-password page. Closes the
+   * dropdown so the user sees the form, not the floating panel.
+   * The /profile/password route is authGuard'd; a session that
+   * expired between the open and the click will bounce to /login.
+   */
+  goChangePassword(): void {
+    this.dropdownOpen.set(false);
+    void this.router.navigateByUrl('/profile/password');
   }
 
   toggleDropdown(): void {

@@ -33,15 +33,16 @@ describe('OpenAPI spec (HD-015)', () => {
     expect(spec.info.title).toBe('HelpDesk Lite API');
     expect(typeof spec.info.version).toBe('string');
 
-    // ── All 20 paths (covering 22 HTTP methods across 6 routers) ──
+    // ── All 21 paths (covering 23 HTTP methods across 6 routers) ──
     // Note: GET and PATCH on /tickets/{id} share one path entry,
-    // so 20 paths × 22 methods. The list below is the union of
+    // so 21 paths × 23 methods. The list below is the union of
     // every documented operation.
     const expectedPaths = [
       '/health',
       '/auth/login',
       '/auth/logout',
       '/auth/me',
+      '/auth/me/password',
       '/auth/register',
       '/tickets',
       '/tickets/mine',
@@ -97,6 +98,7 @@ describe('OpenAPI spec (HD-015)', () => {
       'CreateTicketRequest',
       'UpdateTicketRequest',
       'AddCommentRequest',
+      'ChangePasswordRequest',
       'UpdateRoleRequest',
       'UpdateStatusRequest',
       'AttachmentUploadResponse',

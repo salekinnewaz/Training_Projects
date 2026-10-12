@@ -7,6 +7,11 @@
  *   - 200 response → user$ emits the response body
  *   - 401 response → user$ emits null (silently, no throw)
  *   - 5xx / network error → refreshUser() rejects
+ *   - changePassword() PATCHes /api/auth/me/password with the
+ *     { currentPassword, newPassword } body and resolves on
+ *     204; throws ApiError on 4xx (with the standard
+ *     validation_error / invalid_credentials / account_inactive
+ *     envelope).
  *
  * And the D10 dedup contract:
  *
@@ -17,16 +22,18 @@
  *   - After the in-flight request settles (success OR error),
  *     the next refreshUser() call fires a fresh request
  *
- * The auth interceptor is registered via `withInterceptors`
- * (matches the real app config) so the spec exercises the
- * same error-conversion path the app does.
+ * The auth interceptor is NOT registered — this spec covers
+ * the service's wire contract (URL, method, body, response
+ * unwrap, ApiError conversion), not the interceptor itself.
+ * The interceptor has its own coverage via the login-page +
+ * change-password-page specs. Mirrors `user.service.spec.ts`
+ * (HD-014) and `ticket.service.spec.ts` (HD-017).
  */
 
 import { TestBed } from '@angular/core/testing';
 import {
-  HttpClient,
   provideHttpClient,
-  withInterceptors,
+  withInterceptorsFromDi,
 } from '@angular/common/http';
 import {
   HttpTestingController,
@@ -34,7 +41,6 @@ import {
 } from '@angular/common/http/testing';
 
 import { AuthService } from './auth.service';
-import { authInterceptor } from './auth.interceptor';
 import { ApiError } from './api-error';
 import { environment } from '../../environments/environment';
 import type { UserPublic } from '../models/user';
@@ -58,7 +64,7 @@ describe('AuthService', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
-        provideHttpClient(withInterceptors([authInterceptor])),
+        provideHttpClient(withInterceptorsFromDi()),
         provideHttpClientTesting(),
         AuthService,
       ],
@@ -300,6 +306,102 @@ describe('AuthService', () => {
 
     it('returns /login when the snapshot is null', () => {
       expect(service.roleHomePath()).toBe('/login');
+    });
+  });
+
+  // ─── HD-018 — changePassword ──────────────────────────────────
+
+  describe('changePassword (HD-018)', () => {
+    it('PATCHes /api/auth/me/password with { currentPassword, newPassword } and resolves on 204', async () => {
+      const p = service.changePassword('oldPassword123', 'newPassword456');
+
+      const req = httpMock.expectOne(
+        `${environment.apiBaseUrl}/auth/me/password`,
+      );
+      expect(req.request.method).toBe('PATCH');
+      expect(req.request.withCredentials).toBe(true);
+      expect(req.request.body).toEqual({
+        currentPassword: 'oldPassword123',
+        newPassword: 'newPassword456',
+      });
+      req.flush(null, { status: 204, statusText: 'No Content' });
+
+      await p;
+    });
+
+    it('throws ApiError(400, validation_error) with fields.newPassword for an invalid new password', async () => {
+      const p = service.changePassword('oldPassword123', 'short');
+      const req = httpMock.expectOne(
+        `${environment.apiBaseUrl}/auth/me/password`,
+      );
+      req.flush(
+        {
+          error: 'validation_error',
+          message: 'Please correct the highlighted fields.',
+          fields: {
+            newPassword: 'New password must be at least 8 characters.',
+          },
+        },
+        { status: 400, statusText: 'Bad Request' },
+      );
+      try {
+        await p;
+        fail('expected ApiError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(400);
+        expect((err as ApiError).errorCode).toBe('validation_error');
+        expect((err as ApiError).fields).toEqual({
+          newPassword: 'New password must be at least 8 characters.',
+        });
+      }
+    });
+
+    it('throws ApiError(403, invalid_credentials) when the current password is wrong', async () => {
+      const p = service.changePassword('wrongOldPassword', 'newPassword456');
+      const req = httpMock.expectOne(
+        `${environment.apiBaseUrl}/auth/me/password`,
+      );
+      req.flush(
+        {
+          error: 'invalid_credentials',
+          message: 'Your current password is incorrect.',
+        },
+        { status: 403, statusText: 'Forbidden' },
+      );
+      try {
+        await p;
+        fail('expected ApiError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(403);
+        expect((err as ApiError).errorCode).toBe('invalid_credentials');
+        expect((err as ApiError).message).toBe(
+          'Your current password is incorrect.',
+        );
+      }
+    });
+
+    it('throws ApiError(401, account_inactive) when the user was deactivated mid-session', async () => {
+      const p = service.changePassword('oldPassword123', 'newPassword456');
+      const req = httpMock.expectOne(
+        `${environment.apiBaseUrl}/auth/me/password`,
+      );
+      req.flush(
+        {
+          error: 'account_inactive',
+          message: 'Your account is inactive. Contact your administrator.',
+        },
+        { status: 401, statusText: 'Unauthorized' },
+      );
+      try {
+        await p;
+        fail('expected ApiError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(401);
+        expect((err as ApiError).errorCode).toBe('account_inactive');
+      }
     });
   });
 });

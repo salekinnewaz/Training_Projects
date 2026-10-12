@@ -372,6 +372,25 @@ const sharedComponents = {
         body: { type: 'string', minLength: 1, maxLength: 5000 },
       },
     },
+    ChangePasswordRequest: {
+      type: 'object',
+      required: ['currentPassword', 'newPassword'],
+      description:
+        'Body for PATCH /auth/me/password. currentPassword is checked against the stored hash; newPassword must be 8..128 chars and include at least one letter and at least one number.',
+      properties: {
+        currentPassword: {
+          type: 'string',
+          minLength: 1,
+          example: 'oldPassword123',
+        },
+        newPassword: {
+          type: 'string',
+          minLength: 8,
+          maxLength: 128,
+          example: 'newPassword456',
+        },
+      },
+    },
     UpdateRoleRequest: {
       type: 'object',
       required: ['role'],
