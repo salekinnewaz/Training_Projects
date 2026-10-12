@@ -90,12 +90,36 @@ export class AuthService {
   }
 
   /**
+   * In-flight memo for `refreshUser()`. When three callers race
+   * (authGuard + roleGuard + header-chrome's mount effect all
+   * fire on a cold load), this lets them share a single GET
+   * /me round-trip instead of three. Cleared in `finally` so
+   * the next cold load still hits the network.
+   *
+   * D10 fix — see `_bmad-output/implementation-artifacts/spec-d10-roleguard-race.md`.
+   */
+  private inflightRefresh: Promise<void> | null = null;
+
+  /**
    * GET /api/auth/me. Fills user$ from the response body.
    *
    * 401 is silently swallowed → user$ = null (no redirect, no error).
    * Any other non-2xx is surfaced as ApiError so callers can react.
+   *
+   * Concurrent callers share a single in-flight request via
+   * `inflightRefresh` — see field doc above.
    */
-  async refreshUser(): Promise<void> {
+  refreshUser(): Promise<void> {
+    if (this.inflightRefresh) {
+      return this.inflightRefresh;
+    }
+    this.inflightRefresh = this.doRefreshUser().finally(() => {
+      this.inflightRefresh = null;
+    });
+    return this.inflightRefresh;
+  }
+
+  private async doRefreshUser(): Promise<void> {
     try {
       const res = await firstValueFrom(
         this.http.get<{ user: UserPublic }>(
