@@ -1,7 +1,7 @@
 /**
  * TicketDetailPageComponent — HD-010 spec.
  *
- * 19 tests (the spec calls for 8-9; we cover the major branches
+ * 21 tests (the spec calls for 8-9; we cover the major branches
  * plus the step-04 review patches for onPriorityChange /
  * onAssigneeChange / onSelfAssign / onCategoryChange direct-call
  * coverage and the composerError toast render):
@@ -24,6 +24,11 @@
  *  17. onCategoryChange patches + signal updates (patch B)
  *  18. onAssigneeChange patches + signal updates (patch C4)
  *  19. onSelfAssign click invokes patch with current user id (patch C4)
+ *  20. (HD-011) comment-time formats
+ *  21. (HD-011) composer key bindings + error states
+ *  22. (HD-016) attachment row render
+ *  23. (HD-017) refetches activity after a successful addComment
+ *  24. (HD-017) post-addComment activity refetch failure is non-blocking
  *
  * `TicketService`, `AuthService`, `UserService`, and the Angular
  * `Router` are mocked at the class level so the page can be exercised
@@ -1101,5 +1106,105 @@ describe('TicketDetailPageComponent (HD-010)', () => {
     // as `http://test/api/attachments/<id>`.
     expect(link.getAttribute('href')).toBe('http://test/api/attachments/47');
     expect(link.getAttribute('download')).toBe('screenshot.png');
+  });
+
+  // ─── HD-017 — selective activity refetch after addComment ────────
+
+  it('HD-017: refetches the activity timeline after a successful addComment', async () => {
+    // Initial activity (loaded in ngOnInit).
+    const initialActivity = [
+      makeActivity({ id: 1, eventType: 'Created' }),
+    ];
+    // Activity returned by the post-addComment refetch — includes
+    // the new "CommentAdded" entry the backend wrote in-tx.
+    const refreshedActivity = [
+      makeActivity({ id: 2, eventType: 'CommentAdded' }),
+      makeActivity({ id: 1, eventType: 'Created' }),
+    ];
+
+    const { ticketService } = configureTestbed({
+      user: makeUser({
+        id: 11,
+        displayName: 'Sam',
+        role: 'Support Agent',
+        email: 'sam@example.com',
+      }),
+      ticket: makeTicket({ status: 'Open' }),
+      comments: [],
+      activity: initialActivity,
+      agents: [],
+    });
+    // The first listActivity call is the init load; the second
+    // is the post-addComment refetch. Return different payloads.
+    let listActivityCalls = 0;
+    ticketService.listActivity.and.callFake(() => {
+      listActivityCalls += 1;
+      return Promise.resolve(
+        listActivityCalls === 1 ? initialActivity : refreshedActivity,
+      );
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(listActivityCalls).toBe(1);
+    expect(fixture.componentInstance.activity()).toEqual(initialActivity);
+
+    fixture.componentInstance.composerValue.set('hello');
+    await fixture.componentInstance.onSendComment();
+
+    // addComment + the post-success refetch.
+    expect(ticketService.addComment).toHaveBeenCalledWith(47, 'hello');
+    expect(listActivityCalls).toBe(2);
+    expect(ticketService.listActivity).toHaveBeenCalledWith(47);
+    // The activity signal must be replaced with the refreshed payload.
+    expect(fixture.componentInstance.activity()).toEqual(refreshedActivity);
+  });
+
+  it('HD-017: the post-addComment activity refetch failure is non-blocking', async () => {
+    const initialActivity = [
+      makeActivity({ id: 1, eventType: 'Created' }),
+    ];
+
+    const { ticketService } = configureTestbed({
+      user: makeUser({
+        id: 11,
+        displayName: 'Sam',
+        role: 'Support Agent',
+        email: 'sam@example.com',
+      }),
+      ticket: makeTicket({ status: 'Open' }),
+      comments: [],
+      activity: initialActivity,
+      agents: [],
+    });
+    // First listActivity call (init) resolves; second (refetch)
+    // rejects — the page must not surface this to the user.
+    let listActivityCalls = 0;
+    ticketService.listActivity.and.callFake(() => {
+      listActivityCalls += 1;
+      if (listActivityCalls === 1) {
+        return Promise.resolve(initialActivity);
+      }
+      return Promise.reject(
+        new ApiError(503, 'internal_server_error', 'activity feed down'),
+      );
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    fixture.componentInstance.composerValue.set('hello');
+    await fixture.componentInstance.onSendComment();
+
+    // Comment is in the local signal.
+    expect(fixture.componentInstance.comments().length).toBe(1);
+    // Activity signal is untouched (still the init payload).
+    expect(fixture.componentInstance.activity()).toEqual(initialActivity);
+    // No inline composer error and no top-of-page error toast — the
+    // refetch failure is swallowed.
+    expect(fixture.componentInstance.composerError()).toBeNull();
+    expect(fixture.componentInstance.commentSubmitError()).toBeNull();
   });
 });
