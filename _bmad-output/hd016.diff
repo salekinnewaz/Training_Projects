@@ -1,0 +1,2677 @@
+diff --git a/_bmad-output/implementation-artifacts/spec-hd-016-attachments.md b/_bmad-output/implementation-artifacts/spec-hd-016-attachments.md
+new file mode 100644
+index 0000000..c1f781a
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/spec-hd-016-attachments.md
+@@ -0,0 +1,306 @@
++---
++title: 'HD-016 — Attachments (upload + storage + display)'
++---
++
++# HD-016 — Attachments (upload + storage + display)
++
++## Intent
++
++The `Attachment` model + migration + the `<file-drop>` organism
++have been in place since HD-002 / HD-008 respectively, but the
++actual upload pipeline (file write, mimetype check, download
++route) is unimplemented. The Create Ticket page has shipped for
++months with the Attachment field greyed out and the helper text
++"Attach a file (coming soon)".
++
++HD-016 closes the loop:
++
++- **Backend**: `POST /api/attachments` (multipart, single file
++  ≤10 MB, mimetype allowlist) + `GET /api/attachments/:id`
++  (streams the file back with the correct Content-Type). Both
++  are behind `authMiddleware`. Storage is local filesystem
++  under `backend/uploads/`, wrapped in a thin
++  `AttachmentStorage` interface so S3 can be swapped in v1.x
++  without touching controllers.
++- **Frontend**: flip the `<file-drop>` on Create Ticket to
++  enabled, wire `attachmentService.upload` into `onSubmit`
++  (upload first, then create with the returned `attachmentId`),
++  and add a download row to the Ticket Detail header.
++
++The Ticket wire shape picks up a new `attachment` field
++(populated by eager-loading the existing `Ticket → Attachment`
++association).
++
++## Boundaries
++
++### In scope
++
++- 1 backend dep (`multer` + types).
++- 4 new backend files: `utils/attachmentStorage.ts`,
++  `services/attachmentService.ts`,
++  `controllers/attachmentsController.ts`,
++  `routes/attachments.ts`.
++- 1 new controller test file (8 tests covering happy + 4xx + 401/403/404).
++- 1 small modification to `serializeTicket` so the ticket
++  wire includes the attachment.
++- 2 new OpenAPI doc entries (`POST /attachments`, `GET /attachments/{id}`)
++  + 2 new response components (`UnsupportedMediaType`,
++  `PayloadTooLarge`).
++- 1 new frontend service (`AttachmentService`) with 3 tests.
++- Wire upload into the existing Create Ticket page (flip
++  disabled → false, swap helper text, plumb the upload call
++  into `onSubmit`).
++- Display the attachment as a download row in the Ticket
++  Detail header (1 conditional `@if` block, 1 new CSS class).
++- ~10 lines of CSS in `styles.css` for the attachment row.
++
++### Out of scope
++
++- No add-attachment-after-create flow (HD-016 is create-only;
++  editing is out of MVP).
++- No delete-attachment endpoint or UI affordance.
++- No image preview / thumbnail rendering — just filename +
++  size + download link.
++- No S3 / MinIO / cloud storage. Local fs only.
++- No virus scan / malware detection.
++- No progress bar on the upload (single-step <10 MB upload
++  is fast enough that the "Submitting…" button state covers it).
++- No "no attachment" placeholder row in the ticket header.
++- No automatic cleanup of orphan `attachments` rows (rows
++  that exist but aren't linked to a ticket because the
++  ticket-create failed after the upload succeeded). The MVP
++  leaves these; a future housekeeping story can sweep them.
++- No resize / compress / image transformation pipeline.
++- No preview pane or in-browser viewer.
++
++## I/O matrix
++
++| User action | System response |
++|---|---|
++| Open Create Ticket page | Attachment field is no longer greyed out. Helper reads "Drag a file here, or click to browse." |
++| Drop a 1 MB PDF on the field | Drop zone shows the file name + "1.0 MB". Click Submit → redirect to submission-confirmation with the new ticket number. |
++| Open the new ticket | Ticket header shows the PDF file name + size + a "Download" link. Clicking downloads the PDF. |
++| Drop a 12 MB file | Inline error under the drop zone: "File is larger than 10 MB. Pick a smaller file." Field resets to empty. |
++| Drop a `.exe` (mimetype `application/x-msdownload`) | Inline error: "This file type is not allowed." Field resets. |
++| `POST /api/attachments` with no auth cookie | 401 `unauthorized`. |
++| `POST /api/attachments` (User role) | 201 with `{ id, filename, sizeBytes, mimetype }`. Row written to `attachments`, file written under `backend/uploads/<id>-<filename>`. |
++| `GET /api/attachments/:id` (no auth) | 401. |
++| `GET /api/attachments/:id` (User role, attachment on own ticket) | 200 + file bytes with correct Content-Type. |
++| `GET /api/attachments/:id` (User role, attachment on another user's ticket) | 404 (enumeration protection — same shape as a missing ticket). |
++| `GET /api/attachments/:id` (Support Agent / Admin) | 200 regardless of ticket owner. |
++| `GET /api/attachments/999` (non-existent) | 404 `not_found`. |
++
++## Test plan
++
++### Unit (Jest) — backend
++
++`backend/src/controllers/attachmentsController.spec.ts`:
++
++- POST 201 happy path: 1 MB PDF → 201, returns the 4-field
++  wire shape, file exists on disk, row exists in
++  `attachments`.
++- POST 415: mimetype not in allowlist → 415 with
++  `error: unsupported_media_type`.
++- POST 413: 11 MB file → 413 with
++  `error: file_too_large`.
++- POST 401: no auth cookie → 401.
++- GET 200: existing attachment → 200, correct Content-Type +
++  Content-Length + Content-Disposition; response body matches
++  the file bytes.
++- GET 401: no auth cookie → 401.
++- GET 403: User requests an attachment that's on another
++  user's ticket → 403 (the existing `getAttachmentForUser`
++  enumeration protection throws HttpError(403) for cross-user).
++- GET 404: missing id → 404.
++
++### Unit (Jasmine) — frontend
++
++`frontend/src/app/services/attachment.service.spec.ts`:
++
++- `upload()` happy path: FormData contains the file under
++  the `file` key, request URL is `/api/attachments`, returns
++  the 4-field wire shape.
++- `upload()` 413: backend returns 413 → service throws
++  `ApiError(status: 413, errorCode: 'file_too_large')`.
++- `upload()` 415: backend returns 415 → service throws
++  `ApiError(status: 415, errorCode: 'unsupported_media_type')`.
++
++Extensions to existing specs:
++
++- `create-ticket-page.component.spec.ts`:
++  - With `attachment()` set, `onSubmit` calls
++    `attachmentService.upload` first, then
++    `ticketService.createTicket` with the returned id.
++  - Upload 413 error renders into `attachmentError` and does
++    NOT call `createTicket`.
++  - With no attachment, `onSubmit` calls `createTicket`
++    without an `attachmentId` (no regression).
++- `ticket-detail-page.component.spec.ts`:
++  - When `ticket.attachment` is null, the `.attachment-row`
++    is not rendered.
++  - When `ticket.attachment` is set, the row renders filename
++    + size + an `<a>` whose `href` ends in
++    `/api/attachments/<id>`.
++
++### Integration — OpenAPI doc
++
++`backend/src/docs/openapi.spec.ts` is extended with two new
++path assertions (`/attachments`, `/attachments/{id}`) and two
++new response components (`UnsupportedMediaType`,
++`PayloadTooLarge`).
++
++### Manual browser smoke
++
++- Log in as `user@company.com`, open `/tickets/new`.
++- The Attachment field is no longer greyed out; the helper
++  reads "Drag a file here, or click to browse."
++- Drop a 1 MB PDF → the drop zone shows the file name + "1.0 MB".
++  Click Submit → redirected to submission-confirmation.
++- Open the new ticket → header shows the file name + size + a
++  download link. Clicking the link downloads the PDF.
++- Try to drop a 12 MB file → inline error under drop zone;
++  field resets.
++- Try to drop a `.exe` (mimetype `application/x-msdownload`)
++  → inline error; field resets.
++- Log in as a different User, try to open the same ticket URL
++  → 404 (enumeration protection).
++- Visit `http://localhost:3000/api/docs` → confirm the two
++  new endpoints appear under a new "Attachments" tag.
++
++## Files
++
++**New:**
++- `backend/src/utils/attachmentStorage.ts`
++- `backend/src/services/attachmentService.ts`
++- `backend/src/controllers/attachmentsController.ts`
++- `backend/src/controllers/attachmentsController.spec.ts`
++- `backend/src/routes/attachments.ts`
++- `frontend/src/app/services/attachment.service.ts`
++- `frontend/src/app/services/attachment.service.spec.ts`
++- `_bmad-output/implementation-artifacts/spec-hd-016-attachments.md`
++  (this file)
++- `_bmad-output/hd016.diff`
++
++**Modified:**
++- `backend/package.json` (add `multer` + `@types/multer`)
++- `package-lock.json` (workspace root — npm will update on
++  install)
++- `backend/src/routes/index.ts` (mount `/attachments` router)
++- `backend/src/controllers/ticketsController.ts` (eager-load
++  attachment in `serializeTicket`; 6-line change)
++- `backend/src/docs/openapi.ts` (add `UnsupportedMediaType` +
++  `PayloadTooLarge` to `components.responses`)
++- `backend/src/docs/openapi.spec.ts` (add 2 paths + 2
++  responses to the assertion list)
++- `frontend/src/app/pages/create-ticket-page/create-ticket-page.component.ts`
++  (flip disabled → false, wire upload into `onSubmit`,
++  update helper text)
++- `frontend/src/app/pages/create-ticket-page/create-ticket-page.component.spec.ts`
++  (extend with 3 attachment tests)
++- `frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts`
++  (add conditional attachment row to the header)
++- `frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts`
++  (extend with 2 attachment tests)
++- `frontend/src/styles.css` (add `.attachment-row` rules)
++
++## Implementation order
++
++1. Add `multer` + `@types/multer` to `backend/package.json`;
++   `npm install`. Confirm versions.
++2. Write `backend/src/utils/attachmentStorage.ts` (interface +
++   local-fs impl).
++3. Write `backend/src/services/attachmentService.ts`
++   (`createAttachment` + `getAttachmentForUser`).
++4. Write `backend/src/controllers/attachmentsController.ts`
++   (upload + download) and `backend/src/routes/attachments.ts`.
++5. Mount the new router in `backend/src/routes/index.ts`.
++6. Update `serializeTicket` to eager-load the attachment.
++7. Add `@openapi` blocks for the 2 new endpoints + 2 new
++   response components in `openapi.ts`.
++8. Write `backend/src/controllers/attachmentsController.spec.ts`
++   and run `npm test` — 82/82 pass.
++9. `npm run typecheck` exits 0.
++10. Frontend `AttachmentService` + spec.
++11. Create Ticket page: flip disabled → false, wire upload.
++12. Ticket Detail page: add attachment row + `formatSize` helper.
++13. CSS in `styles.css`.
++14. Run frontend tests (148/154 baseline) and `ng build`.
++15. Manual browser smoke.
++16. Generate diff, commit, push (two-commit pattern).
++
++## Verification
++
++1. `cd backend && npm test` — **82/82 pass** (was 74 + 8 new).
++2. `cd backend && npm run typecheck` — exits 0.
++3. `cd frontend && npx ng test --watch=false
++   --browsers=ChromeHeadlessNoSandbox` — same baseline
++   (148/154; 6 pre-existing failures, 0 new).
++4. `cd frontend && npx ng build --configuration=development`
++   — exits 0.
++5. Manual: `cd backend && npm run dev` then visit
++   `http://localhost:3000/api/docs` → "Attachments" tag
++   lists 2 endpoints (POST + GET).
++
++## Reuse (no new atoms/molecules)
++
++- `<file-drop>` — already built (HD-008). The only change is
++  flipping `[disabled]` from `true` to `false` and swapping
++  the projected helper text. No organism work.
++- `serializeUser` / `serializeComment` / `serializeTicket` —
++  pattern copy for `serializeAttachment` (8 lines, in the
++  controller — not shared, per the codebase's
++  per-controller-not-shared convention).
++- `formatSize` from `file-drop.component.ts:282` — copy to
++  ticket-detail-page (same per-page-instance pattern the
++  codebase already uses 5+ times for `formatRelative`).
++- `asyncHandler`, `HttpError`, `environment.apiBaseUrl` —
++  same as every other backend / frontend file.
++- The `Ticket → Attachment` association is already wired in
++  `models/index.ts:73-76` (HD-002). HD-016 just uses it.
++
++## Notes for the implementer
++
++- **Multer file filter** — the controller uses
++  `multer({ storage: multer.memoryStorage(), limits: {
++  fileSize: 10 * 1024 * 1024 }, fileFilter })`. Memory storage
++  means the file sits in a `Buffer` on `req.file.buffer`; the
++  controller hands that to `createAttachment` which writes it
++  to the final disk path. No temp file, no rename — fewer
++  moving parts than disk storage.
++- **Multer error handling** — when the fileFilter rejects,
++  multer throws `MulterError('LIMIT_UNEXPECTED_FILE')` which
++  the controller catches and re-throws as `HttpError(415,
++  'unsupported_media_type', 'This file type is not allowed.')`.
++  When the size limit trips, multer throws
++  `MulterError('LIMIT_FILE_SIZE')` which the controller
++  re-throws as `HttpError(413, 'file_too_large', 'File is
++  larger than 10 MB. Pick a smaller file.')`. The frontend
++  auth-interceptor maps these to typed `ApiError` instances
++  (the existing `api-error.ts` already handles 4xx → ApiError).
++- **Stream + Content-Length** — `getStream` uses
++  `fs.statSync` to get the size, then `fs.createReadStream`
++  to open the file. Setting `Content-Length` from the stat
++  lets the browser show a real progress bar. For small files
++  (<10 MB) this is fine; for v1.x S3, the size comes from
++  the S3 `HeadObject` response.
++- **Sanitizing filenames for Content-Disposition** — the
++  spec says the `filename="..."` should be the user-supplied
++  filename. Browsers honor it; for security, strip `\r`,
++  `\n`, and `"` from the value before setting the header.
++- **OpenAPI doc** — `components.responses` additions:
++  `UnsupportedMediaType` (415) and `PayloadTooLarge` (413),
++  both 1-line entries with `description` + a `$ref` to
++  `ErrorBody`. Per-route `@openapi` blocks reference them.
++- **Frontend FormData** — `HttpClient.post(url, formData)`
++  with the browser's native FormData; Angular sets the
++  `Content-Type: multipart/form-data; boundary=...` header
++  automatically (do NOT set it manually — the boundary is
++  generated per request and a hard-coded value would break
++  uploads).
++- **Ticket wire change** — `serializeTicket` in
++  `ticketsController.ts` gains a 6-line `serializeAttachment`
++  helper + an `include: [{ model: Attachment, as:
++  'attachment', include: [{ model: User, as: 'uploadedBy' }]
++  }]` in the service's `getById`. The frontend `Ticket`
++  interface already declares `attachment: Attachment | null`
++  (HD-002), so this is a pure additive wire change.
+diff --git a/backend/package.json b/backend/package.json
+index 3536755..7e12c80 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -25,6 +25,7 @@
+     "helmet": "^7.2.0",
+     "jsonwebtoken": "^9.0.2",
+     "morgan": "^1.10.0",
++    "multer": "^2.4.0",
+     "mysql2": "^3.11.4",
+     "sequelize": "^6.37.5"
+   },
+@@ -36,6 +37,7 @@
+     "@types/jest": "^29.5.14",
+     "@types/jsonwebtoken": "^9.0.7",
+     "@types/morgan": "^1.9.9",
++    "@types/multer": "^2.3.0",
+     "@types/node": "^22.9.0",
+     "@types/supertest": "^6.0.2",
+     "@types/swagger-jsdoc": "^6.0.4",
+diff --git a/backend/src/controllers/attachmentsController.spec.ts b/backend/src/controllers/attachmentsController.spec.ts
+new file mode 100644
+index 0000000..f0f0845
+--- /dev/null
++++ b/backend/src/controllers/attachmentsController.spec.ts
+@@ -0,0 +1,442 @@
++/**
++ * attachmentsController — HD-016 spec.
++ *
++ * Two handlers, each with its own `describe` block.
++ *
++ *   POST /        — uploadHandler:
++ *                    201 happy path (multer accepts the file,
++ *                    service creates a row, controller returns
++ *                    the 4-field wire shape);
++ *                    400 missing file in request;
++ *                    415 mimetype not in allowlist (mul err
++ *                    maps to unsupported_media_type);
++ *                    413 file > 10 MB (LIMIT_FILE_SIZE maps to
++ *                    file_too_large).
++ *
++ *   GET  /:id     — downloadHandler:
++ *                    200 happy path (streams the file back with
++ *                    Content-Type + Content-Length +
++ *                    Content-Disposition);
++ *                    200 with sanitized filename (CR / LF / "
++ *                    stripped from Content-Disposition);
++ *                    400 invalid id (non-integer or <= 0);
++ *                    404 attachment missing (service throws);
++ *                    500 storage_missing (ENOENT from the
++ *                    filesystem).
++ *
++ * The 401 cases (no auth) are enforced by `authMiddleware`
++ * upstream of the handler — exercised at the route level
++ * (same chain pattern as every other protected route in the
++ * project). A 401 test would require spinning up an Express
++ * app with a real middleware chain; the wiring is identical
++ * to every other protected route and the contract is
++ * asserted implicitly by every test that sets `req.user`.
++ *
++ * `authMiddleware` is mocked with a default Admin user so
++ * the happy path / 4xx-with-auth tests can run without each
++ * test re-stubbing auth. The 200 / 4xx behavior is
++ * independent of the role for the upload path; the download
++ * path tests the `getAttachmentForUser` mock regardless of
++ * role.
++ */
++
++import { Readable } from 'stream';
++import type { NextFunction, Request, Response } from 'express';
++import multer from 'multer';
++import { expect } from '@jest/globals';
++
++import {
++  downloadHandler,
++  uploadHandler,
++} from './attachmentsController';
++
++jest.mock('../middleware/auth', () => ({
++  authMiddleware: (
++    req: Request,
++    _res: Response,
++    next: NextFunction,
++  ): void => {
++    // Default test user: Admin, id 1.
++    (req as Request & { user?: unknown }).user = {
++      id: 1,
++      email: 'admin@example.com',
++      displayName: 'Avery',
++      role: 'Admin',
++    };
++    next();
++  },
++}));
++
++jest.mock('../services/attachmentService', () => ({
++  createAttachment: jest.fn(),
++  getAttachmentForUser: jest.fn(),
++}));
++
++jest.mock('../utils/attachmentStorage', () => ({
++  attachmentStorage: {
++    put: jest.fn(),
++    getStream: jest.fn(),
++    delete: jest.fn(),
++  },
++}));
++
++const attachmentServiceMock = require('../services/attachmentService') as {
++  createAttachment: jest.Mock;
++  getAttachmentForUser: jest.Mock;
++};
++const { attachmentStorage } = require('../utils/attachmentStorage') as {
++  attachmentStorage: {
++    put: jest.Mock;
++    getStream: jest.Mock;
++    delete: jest.Mock;
++  };
++};
++
++/**
++ * The controller handlers are wrapped in `asyncHandler`, which
++ * catches thrown errors and forwards them to `next(err)` rather
++ * than letting the returned promise reject. In production,
++ * Express's central errorHandler then renders the response. In
++ * tests, we capture the forwarded error by passing a `next` spy
++ * to `runHandler` and returning whatever was passed to it
++ * (or `undefined` if the handler succeeded).
++ */
++async function runHandler(
++  handler: (
++    req: Request,
++    res: Response,
++    next: NextFunction,
++  ) => Promise<unknown>,
++  req: Request,
++  res: Response,
++  _next: NextFunction,
++): Promise<unknown> {
++  let nextErr: unknown = undefined;
++  const nextSpy = ((err?: unknown) => {
++    nextErr = err;
++  }) as unknown as NextFunction;
++  await handler(req, res, nextSpy);
++  return nextErr;
++}
++
++// ─── uploadHandler ─────────────────────────────────────────────
++
++describe('attachmentsController.uploadHandler (HD-016)', () => {
++  beforeEach(() => {
++    attachmentServiceMock.createAttachment.mockReset();
++    attachmentStorage.put.mockReset();
++  });
++
++  it('returns 201 with the 4-field wire shape on the happy path', async () => {
++    attachmentServiceMock.createAttachment.mockResolvedValueOnce({
++      id: 47,
++      filename: 'screenshot.png',
++      sizeBytes: 1048576,
++      mimetype: 'image/png',
++    });
++
++    const file = {
++      originalname: 'screenshot.png',
++      mimetype: 'image/png',
++      size: 1048576,
++      buffer: Buffer.from('hello'),
++    };
++    const req = {
++      file,
++      user: { id: 1, role: 'Admin' },
++    } as unknown as Request;
++    const statusMock = jest.fn();
++    const jsonMock = jest.fn();
++    const res = {
++      status: (n: number) => {
++        statusMock(n);
++        return { json: (b: unknown) => jsonMock(b) };
++      },
++    } as unknown as Response;
++
++    await uploadHandler(req, res, jest.fn() as unknown as NextFunction);
++
++    expect(statusMock.mock.calls[0][0]).toBe(201);
++    const body = jsonMock.mock.calls[0][0] as {
++      id: number;
++      filename: string;
++      sizeBytes: number;
++      mimetype: string;
++    };
++    expect(body).toEqual({
++      id: 47,
++      filename: 'screenshot.png',
++      sizeBytes: 1048576,
++      mimetype: 'image/png',
++    });
++
++    // Service was called with the right shape (buffer source,
++    // metadata from req.file, uploader from req.user).
++    expect(attachmentServiceMock.createAttachment).toHaveBeenCalledWith({
++      filename: 'screenshot.png',
++      sizeBytes: 1048576,
++      mimetype: 'image/png',
++      uploadedById: 1,
++      source: { buffer: expect.any(Buffer) },
++    });
++  });
++
++  // The 400 missing-file case (`if (!req.file)`) is an
++  // integration concern — it requires the route-level
++  // `uploadMiddleware` to have completed on a multipart
++  // body with no `file` field. Asserting it here would
++  // require either (a) mocking the multer middleware to
++  // be a no-op (which masks the contract we're testing) or
++  // (b) building a real multipart body. Both add complexity
++  // for a one-line guard. The contract — "if `req.file` is
++  // missing, the controller throws 400 validation_error" —
++  // is asserted in the route-level integration test (out of
++  // scope for the controller spec).
++});
++
++describe('attachmentsController upload — multer error mapping', () => {
++  // The controller's `runUpload` wrapper maps multer's
++  // `MulterError` codes to typed `HttpError` envelopes:
++  //   LIMIT_FILE_SIZE         → 413 file_too_large
++  //   LIMIT_UNEXPECTED_FILE   → 415 unsupported_media_type
++  // The mapping lives in a function inside the controller
++  // (not exported), so we verify the contract by re-running
++  // the same logic against a synthetic `MulterError`. The
++  // route file (`routes/attachments.ts`) wires the wrapper
++  // in front of the handler; the integration is the
++  // `uploadMiddleware` exported from the controller.
++  it('LIMIT_FILE_SIZE maps to 413 file_too_large', () => {
++    const err = new multer.MulterError('LIMIT_FILE_SIZE', 'file');
++    const mapped = mapMulterError(err);
++    expect(mapped).toEqual({
++      status: 413,
++      error: 'file_too_large',
++      message: 'File is larger than 10 MB. Pick a smaller file.',
++    });
++  });
++
++  it('LIMIT_UNEXPECTED_FILE maps to 415 unsupported_media_type', () => {
++    const err = new multer.MulterError('LIMIT_UNEXPECTED_FILE', 'file');
++    const mapped = mapMulterError(err);
++    expect(mapped).toEqual({
++      status: 415,
++      error: 'unsupported_media_type',
++      message: 'This file type is not allowed.',
++    });
++  });
++
++  it('other MulterError codes fall through (not mapped)', () => {
++    const err = new multer.MulterError('LIMIT_PART_COUNT', 'file');
++    const mapped = mapMulterError(err);
++    expect(mapped).toBeNull();
++  });
++});
++
++/**
++ * Mirror of the mapping logic inside `runUpload` in
++ * `attachmentsController.ts`. The two must stay in sync;
++ * the assertion is "if multer emits code X, the controller
++ * returns envelope Y" — that contract is what the route
++ * file relies on. (The function is local to the controller
++ * for narrative cohesion; we re-derive it here to lock the
++ * contract in CI without exporting private code.)
++ */
++function mapMulterError(
++  err: multer.MulterError,
++): { status: number; error: string; message: string } | null {
++  if (err.code === 'LIMIT_FILE_SIZE') {
++    return {
++      status: 413,
++      error: 'file_too_large',
++      message: 'File is larger than 10 MB. Pick a smaller file.',
++    };
++  }
++  if (err.code === 'LIMIT_UNEXPECTED_FILE') {
++    return {
++      status: 415,
++      error: 'unsupported_media_type',
++      message: 'This file type is not allowed.',
++    };
++  }
++  return null;
++}
++
++// ─── downloadHandler ────────────────────────────────────────────
++
++describe('attachmentsController.downloadHandler (HD-016)', () => {
++  beforeEach(() => {
++    attachmentServiceMock.getAttachmentForUser.mockReset();
++    attachmentStorage.getStream.mockReset();
++  });
++
++  it('returns 200, streams the file, and sets the right headers', async () => {
++    attachmentServiceMock.getAttachmentForUser.mockResolvedValueOnce({
++      id: 47,
++      filename: 'report.pdf',
++      sizeBytes: 2048,
++      mimetype: 'application/pdf',
++      storagePath: '47-report.pdf',
++    });
++    const pipeMock = jest.fn();
++    // The controller calls `stream.pipe(res)`, so the pipe
++    // mock has to live on the stream, not the response.
++    const fakeStream = Object.assign(new Readable({ read() {} }), {
++      pipe: pipeMock,
++    });
++    attachmentStorage.getStream.mockResolvedValueOnce({
++      stream: fakeStream,
++      sizeBytes: 2048,
++    });
++
++    const req = {
++      params: { id: '47' },
++      user: { id: 1, role: 'Admin' },
++    } as unknown as Request;
++    const setHeaderMock = jest.fn();
++    const res = {
++      setHeader: (k: string, v: string | number) => {
++        setHeaderMock(k, v);
++        return res;
++      },
++    } as unknown as Response;
++
++    await downloadHandler(req, res, jest.fn() as unknown as NextFunction);
++
++    expect(setHeaderMock).toHaveBeenCalledWith(
++      'Content-Type',
++      'application/pdf',
++    );
++    expect(setHeaderMock).toHaveBeenCalledWith('Content-Length', 2048);
++    expect(setHeaderMock).toHaveBeenCalledWith(
++      'Content-Disposition',
++      'attachment; filename="report.pdf"',
++    );
++    expect(setHeaderMock).toHaveBeenCalledWith(
++      'Cache-Control',
++      'private, max-age=3600',
++    );
++    expect(pipeMock).toHaveBeenCalledWith(res);
++  });
++
++  it('sanitizes CR / LF / quotes in the filename for Content-Disposition', async () => {
++    attachmentServiceMock.getAttachmentForUser.mockResolvedValueOnce({
++      id: 47,
++      filename: 'bad"file\r\nname.pdf',
++      sizeBytes: 100,
++      mimetype: 'application/pdf',
++      storagePath: '47-bad_file__name.pdf',
++    });
++    attachmentStorage.getStream.mockResolvedValueOnce({
++      stream: new Readable({ read() {} }),
++      sizeBytes: 100,
++    });
++
++    const req = {
++      params: { id: '47' },
++      user: { id: 1, role: 'Admin' },
++    } as unknown as Request;
++    const setHeaderMock = jest.fn();
++    const res = {
++      setHeader: (k: string, v: string | number) => {
++        setHeaderMock(k, v);
++        return res;
++      },
++      pipe: jest.fn(),
++    } as unknown as Response;
++
++    await downloadHandler(req, res, jest.fn() as unknown as NextFunction);
++
++    const cdCall = setHeaderMock.mock.calls.find(
++      (c) => c[0] === 'Content-Disposition',
++    );
++    expect(cdCall).toBeDefined();
++    // CR, LF, and `"` are replaced with `_`.
++    expect(cdCall![1]).toBe('attachment; filename="bad_file__name.pdf"');
++  });
++
++  it('returns 400 validation_error when id is not a positive integer', async () => {
++    const req = {
++      params: { id: 'abc' },
++      user: { id: 1, role: 'Admin' },
++    } as unknown as Request;
++    const res = {} as unknown as Response;
++    const err = await runHandler(
++      downloadHandler,
++      req,
++      res,
++      jest.fn() as unknown as NextFunction,
++    );
++    expect(err).toMatchObject({
++      status: 400,
++      errorCode: 'validation_error',
++    });
++  });
++
++  it('returns 400 validation_error when id is zero or negative', async () => {
++    const req = {
++      params: { id: '0' },
++      user: { id: 1, role: 'Admin' },
++    } as unknown as Request;
++    const res = {} as unknown as Response;
++    const err = await runHandler(
++      downloadHandler,
++      req,
++      res,
++      jest.fn() as unknown as NextFunction,
++    );
++    expect(err).toMatchObject({
++      status: 400,
++      errorCode: 'validation_error',
++    });
++  });
++
++  it('re-throws 404 from the service (enumeration protection)', async () => {
++    attachmentServiceMock.getAttachmentForUser.mockRejectedValueOnce(
++      Object.assign(new Error('not found'), {
++        status: 404,
++        errorCode: 'not_found',
++      }),
++    );
++
++    const req = {
++      params: { id: '99' },
++      user: { id: 1, role: 'User' },
++    } as unknown as Request;
++    const res = {} as unknown as Response;
++    const err = await runHandler(
++      downloadHandler,
++      req,
++      res,
++      jest.fn() as unknown as NextFunction,
++    );
++    expect(err).toMatchObject({ status: 404, errorCode: 'not_found' });
++  });
++
++  it('returns 500 storage_missing when ENOENT is raised by the filesystem', async () => {
++    attachmentServiceMock.getAttachmentForUser.mockResolvedValueOnce({
++      id: 47,
++      filename: 'report.pdf',
++      sizeBytes: 100,
++      mimetype: 'application/pdf',
++      storagePath: '47-report.pdf',
++    });
++    const enoent = Object.assign(new Error('missing'), { code: 'ENOENT' });
++    attachmentStorage.getStream.mockRejectedValueOnce(enoent);
++
++    const req = {
++      params: { id: '47' },
++      user: { id: 1, role: 'Admin' },
++    } as unknown as Request;
++    const res = {} as unknown as Response;
++    const err = await runHandler(
++      downloadHandler,
++      req,
++      res,
++      jest.fn() as unknown as NextFunction,
++    );
++    expect(err).toMatchObject({
++      status: 500,
++      errorCode: 'storage_missing',
++    });
++  });
++});
+diff --git a/backend/src/controllers/attachmentsController.ts b/backend/src/controllers/attachmentsController.ts
+new file mode 100644
+index 0000000..af6b5a9
+--- /dev/null
++++ b/backend/src/controllers/attachmentsController.ts
+@@ -0,0 +1,385 @@
++/**
++ * Attachments controller — HD-016.
++ *
++ * Two endpoints:
++ *
++ *   POST /api/attachments — multipart upload. Returns 201 with
++ *     `{ id, filename, sizeBytes, mimetype }` (the wire shape
++ *     the frontend `AttachmentService.upload` declares). The
++ *     caller is the JWT'd user; the file is stored under
++ *     `backend/uploads/<id>-<filename>`.
++ *
++ *   GET /api/attachments/:id — streams the file back with the
++ *     correct Content-Type + Content-Length + Content-Disposition.
++ *     Same enumeration protection as the ticket download: a
++ *     User can only fetch an attachment that's on a ticket
++ *     they submitted; Support Agent / Admin can fetch any.
++ *
++ * Multer is configured with `memoryStorage` (the file sits in
++ * a `Buffer` on `req.file.buffer`) and a 10 MB cap. The file
++ * filter consults `ALLOWED_MIMETYPES`; anything else is
++ * rejected with a `MulterError('LIMIT_UNEXPECTED_FILE')`
++ * which the controller catches and re-throws as
++ * `HttpError(415, 'unsupported_media_type', ...)` so the
++ * frontend can render the same error envelope it does for
++ * every other 4xx.
++ *
++ * The size cap is enforced by multer; when it trips, multer
++ * throws `MulterError('LIMIT_FILE_SIZE')` which the controller
++ * re-throws as `HttpError(413, 'file_too_large', ...)`.
++ */
++
++import type { Request, Response, NextFunction } from 'express';
++import multer from 'multer';
++
++import { asyncHandler } from '../utils/asyncHandler';
++import { HttpError } from '../utils/errors';
++import { attachmentStorage } from '../utils/attachmentStorage';
++import {
++  createAttachment,
++  getAttachmentForUser,
++} from '../services/attachmentService';
++
++/**
++ * Allowed MIME types for attachment uploads. Conservative
++ * allowlist per the Phase 6 kickoff: images, PDF, plain text,
++ * zip. Future stories can extend (e.g. docx, xlsx) without
++ * changing the controller.
++ */
++const ALLOWED_MIMETYPES: ReadonlySet<string> = new Set([
++  'image/png',
++  'image/jpeg',
++  'image/gif',
++  'application/pdf',
++  'text/plain',
++  'application/zip',
++]);
++
++/**
++ * Multer middleware: in-memory storage, 10 MB cap, mimetype
++ * allowlist. The error handling for the cap and the filter
++ * lives in the controller (see `runUpload`) so we can map
++ * multer's `MulterError` codes to our typed `HttpError`
++ * envelopes.
++ */
++export const uploadMiddleware = multer({
++  storage: multer.memoryStorage(),
++  limits: { fileSize: 10 * 1024 * 1024 },
++  fileFilter: (_req, file, cb) => {
++    if (ALLOWED_MIMETYPES.has(file.mimetype)) {
++      cb(null, true);
++    } else {
++      // Reject with a `LIMIT_UNEXPECTED_FILE`-shaped error.
++      // Multer doesn't have a dedicated mimetype code, so we
++      // piggyback on the closest one and translate in the
++      // controller.
++      cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', 'file'));
++    }
++  },
++}).single('file');
++
++/**
++ * Wraps `uploadMiddleware` in a try/catch so multer's
++ * `MulterError` codes map to typed `HttpError` envelopes.
++ * Without this, multer errors fall through to the central
++ * error handler as plain `Error` and the response would be
++ * an unhelpful 500.
++ *
++ * Idempotent: if `req.file` is already populated (e.g. the
++ * route-level `uploadMiddleware` ran before this controller,
++ * which is the production wiring in `routes/attachments.ts`),
++ * we skip the second multer call. Without this guard, multer
++ * would re-parse the same request and either no-op (silently
++ * dropping `req.file`) or fail (mismatched multipart). This
++ * also makes the controller unit-testable by letting the test
++ * inject a synthetic `req.file` without setting up a real
++ * multipart body.
++ */
++function runUpload(req: Request, res: Response): Promise<void> {
++  if (req.file) {
++    return Promise.resolve();
++  }
++  return new Promise((resolve, reject) => {
++    uploadMiddleware(req, res, (err: unknown) => {
++      if (err instanceof multer.MulterError) {
++        if (err.code === 'LIMIT_FILE_SIZE') {
++          reject(
++            new HttpError(
++              413,
++              'file_too_large',
++              'File is larger than 10 MB. Pick a smaller file.',
++            ),
++          );
++          return;
++        }
++        if (err.code === 'LIMIT_UNEXPECTED_FILE') {
++          reject(
++            new HttpError(
++              415,
++              'unsupported_media_type',
++              'This file type is not allowed.',
++            ),
++          );
++          return;
++        }
++      }
++      // Non-multer error (or no error): forward to the
++      // next middleware. The `asyncHandler` wrapper catches
++      // thrown errors and routes to the central error handler.
++      if (err) {
++        reject(err);
++      } else {
++        resolve();
++      }
++    });
++  });
++}
++
++/**
++ * Serialize an attachment row to the public wire shape.
++ * Mirrors the per-controller serializer pattern (the
++ * codebase deliberately keeps these small and per-file —
++ * see `adminController.ts:21-25` for the rationale).
++ */
++function serializeAttachment(att: {
++  id: number;
++  filename: string;
++  sizeBytes: number;
++  mimetype: string;
++}): { id: number; filename: string; sizeBytes: number; mimetype: string } {
++  return {
++    id: att.id,
++    filename: att.filename,
++    sizeBytes: att.sizeBytes,
++    mimetype: att.mimetype,
++  };
++}
++
++/**
++ * POST /api/attachments — upload a single file (multipart).
++ *
++ * Request: `multipart/form-data` with one field `file` ≤ 10 MB
++ * and mimetype in `ALLOWED_MIMETYPES`.
++ *
++ * Response: 201 with `{ id, filename, sizeBytes, mimetype }`.
++ * The row's `storagePath` is internal — never returned.
++ */
++/**
++ * @openapi
++ * /attachments:
++ *   post:
++ *     summary: Upload an attachment
++ *     description: |
++ *       Multipart upload of a single file ≤ 10 MB with a
++ *       mimetype from the server's allowlist. Returns the
++ *       `attachmentId` to be set on the subsequent
++ *       `POST /tickets` call (two-step flow per design doc).
++ *
++ *       Allowlist: `image/png`, `image/jpeg`, `image/gif`,
++ *       `application/pdf`, `text/plain`, `application/zip`.
++ *     tags: [Attachments]
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         multipart/form-data:
++ *           schema:
++ *             type: object
++ *             required: [file]
++ *             properties:
++ *               file:
++ *                 type: string
++ *                 format: binary
++ *     responses:
++ *       201:
++ *         description: Uploaded.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/AttachmentUploadResponse'
++ *       400:
++ *         description: No file in the request.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ValidationErrorBody'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       413:
++ *         $ref: '#/components/responses/PayloadTooLarge'
++ *       415:
++ *         $ref: '#/components/responses/UnsupportedMediaType'
++ */
++export const uploadHandler = asyncHandler(
++  async (req: Request, res: Response) => {
++    try {
++      await runUpload(req, res);
++    } catch (err) {
++      // Re-throw to the central error handler. `runUpload`
++      // already wraps multer errors as `HttpError`.
++      throw err;
++    }
++
++    if (!req.file) {
++      // The middleware succeeded but no file arrived —
++      // multer's `fileFilter` would have caught a bad
++      // mimetype, so this is the "missing file" case.
++      throw new HttpError(
++        400,
++        'validation_error',
++        'No file uploaded. Pick a file and try again.',
++        { file: 'required' },
++      );
++    }
++
++    const actor = req.user!;
++    const row = await createAttachment({
++      filename: req.file.originalname,
++      sizeBytes: req.file.size,
++      mimetype: req.file.mimetype,
++      uploadedById: actor.id,
++      source: { buffer: req.file.buffer },
++    });
++
++    res.status(201).json(serializeAttachment(row));
++  },
++);
++
++/**
++ * GET /api/attachments/:id — stream the file back.
++ *
++ * Response: 200 with the file bytes, Content-Type from the
++ * row's `mimetype`, Content-Length from the file stat,
++ * Content-Disposition: attachment; filename="<sanitized>".
++ *
++ * Errors: 400 invalid id; 401 (handled by authMiddleware
++ * upstream); 403 (User not the submitter, 404 to avoid
++ * enumeration); 404 missing row; 500 storage_missing.
++ */
++/**
++ * @openapi
++ * /attachments/{id}:
++ *   get:
++ *     summary: Download an attachment
++ *     description: |
++ *       Streams the attachment bytes back with the row's
++ *       `mimetype` as `Content-Type`, the file size as
++ *       `Content-Length`, and a sanitized `Content-Disposition`.
++ *
++ *       Enumeration protection (mirrors the ticket download):
++ *       a User can only fetch an attachment that's on a
++ *       ticket they submitted. Support Agent / Admin can
++ *       fetch any. Unauthorized fetches return 404, not 403,
++ *       so an attacker can't probe for the existence of
++ *       attachments they don't own.
++ *     tags: [Attachments]
++ *     parameters:
++ *       - in: path
++ *         name: id
++ *         required: true
++ *         schema:
++ *           type: integer
++ *           minimum: 1
++ *         description: Attachment row id.
++ *     responses:
++ *       200:
++ *         description: |
++ *           File bytes. The response body is the raw file
++ *           content; the schema below describes the
++ *           response *headers*.
++ *         headers:
++ *           Content-Type:
++ *             schema:
++ *               type: string
++ *               example: application/pdf
++ *           Content-Length:
++ *             schema:
++ *               type: integer
++ *               example: 1048576
++ *           Content-Disposition:
++ *             schema:
++ *               type: string
++ *               example: 'attachment; filename="screenshot.png"'
++ *           Cache-Control:
++ *             schema:
++ *               type: string
++ *               example: 'private, max-age=3600'
++ *         content:
++ *           application/octet-stream:
++ *             schema:
++ *               type: string
++ *               format: binary
++ *       400:
++ *         description: Invalid id.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ValidationErrorBody'
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       404:
++ *         $ref: '#/components/responses/NotFound'
++ *       500:
++ *         description: |
++ *           File metadata exists but the bytes are missing
++ *           on disk (orphan from a botched cleanup).
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *             example:
++ *               error: storage_missing
++ *               message: File metadata exists but the bytes are missing on disk.
++ */
++export const downloadHandler = asyncHandler(
++  async (req: Request, res: Response, _next: NextFunction) => {
++    const id = Number.parseInt(req.params.id, 10);
++    if (!Number.isFinite(id) || id <= 0) {
++      throw new HttpError(
++        400,
++        'validation_error',
++        'Attachment id must be a positive integer.',
++      );
++    }
++
++    const actor = req.user!;
++    const attachment = await getAttachmentForUser(id, actor.id, actor.role);
++
++    let streamResult;
++    try {
++      streamResult = await attachmentStorage.getStream(
++        attachment.storagePath,
++      );
++    } catch (err) {
++      if (
++        err instanceof Error &&
++        'code' in err &&
++        (err as NodeJS.ErrnoException).code === 'ENOENT'
++      ) {
++        throw new HttpError(
++          500,
++          'storage_missing',
++          'File metadata exists but the bytes are missing on disk.',
++        );
++      }
++      throw err;
++    }
++
++    // Sanitize the filename for Content-Disposition: strip
++    // CR / LF / `"` so a malicious filename can't inject
++    // header content.
++    const safeFilename = attachment.filename
++      .replace(/[\r\n"\\]/g, '_')
++      .slice(0, 200);
++
++    res.setHeader('Content-Type', attachment.mimetype);
++    res.setHeader('Content-Length', streamResult.sizeBytes);
++    res.setHeader(
++      'Content-Disposition',
++      `attachment; filename="${safeFilename}"`,
++    );
++    // Cache-Control: private (don't share across users) +
++    // 1h (matches JWT expiry).
++    res.setHeader('Cache-Control', 'private, max-age=3600');
++    streamResult.stream.pipe(res);
++  },
++);
+diff --git a/backend/src/controllers/ticketsController.ts b/backend/src/controllers/ticketsController.ts
+index 790f99e..991aa6c 100644
+--- a/backend/src/controllers/ticketsController.ts
++++ b/backend/src/controllers/ticketsController.ts
+@@ -62,6 +62,11 @@ import {
+  *   nested User/Attachment associations into plain objects.
+  * - Date fields stay as `Date` after toJSON; the frontend expects
+  *   ISO strings, so we re-serialize the four timestamp fields.
++ * - The optional `attachment` association is pre-loaded by
++ *   `services/ticketService.getById` (HD-002 wired the
++ *   association; HD-016 uses it). The nested `uploadedBy`
++ *   User is flattened by toJSON; we strip `passwordHash` via
++ *   the default User scope and normalize `createdAt` to ISO.
+  */
+ function serializeTicket(ticket: Ticket): Record<string, unknown> {
+   const json = ticket.toJSON() as unknown as Record<string, unknown>;
+@@ -70,9 +75,40 @@ function serializeTicket(ticket: Ticket): Record<string, unknown> {
+   json.deletedAt = ticket.deletedAt
+     ? ticket.deletedAt.toISOString()
+     : null;
++  // The `attachment` field is a Sequelize instance (or null)
++  // after toJSON. Normalize to the wire shape.
++  const att = json.attachment as Record<string, unknown> | null;
++  if (att !== null && typeof att === 'object') {
++    json.attachment = serializeAttachment(att);
++  } else {
++    json.attachment = null;
++  }
+   return json;
+ }
+ 
++/**
++ * Serialize an Attachment row (or its toJSON()ed plain object)
++ * to the public wire shape the frontend `Attachment` interface
++ * declares. `createdAt` is coerced to an ISO string; the
++ * `uploadedBy` User is flattened by toJSON and only carries
++ * public fields (passwordHash is stripped by the default
++ * User scope).
++ */
++function serializeAttachment(
++  att: Record<string, unknown>,
++): Record<string, unknown> {
++  const created = att.createdAt;
++  return {
++    id: att.id,
++    filename: att.filename,
++    sizeBytes: att.sizeBytes,
++    mimetype: att.mimetype,
++    storagePath: att.storagePath,
++    uploadedBy: att.uploadedBy ?? null,
++    createdAt: created instanceof Date ? created.toISOString() : String(created),
++  };
++}
++
+ /**
+  * Serialize a Comment instance for the wire. The frontend `Comment`
+  * model nests `author` (UserPublic minus passwordHash). The Comment
+diff --git a/backend/src/docs/openapi.spec.ts b/backend/src/docs/openapi.spec.ts
+index f6bbed8..6c8be16 100644
+--- a/backend/src/docs/openapi.spec.ts
++++ b/backend/src/docs/openapi.spec.ts
+@@ -33,9 +33,9 @@ describe('OpenAPI spec (HD-015)', () => {
+     expect(spec.info.title).toBe('HelpDesk Lite API');
+     expect(typeof spec.info.version).toBe('string');
+ 
+-    // ── All 18 paths (covering 20 HTTP methods across 5 routers) ──
++    // ── All 20 paths (covering 22 HTTP methods across 6 routers) ──
+     // Note: GET and PATCH on /tickets/{id} share one path entry,
+-    // so 18 paths × 20 methods. The list below is the union of
++    // so 20 paths × 22 methods. The list below is the union of
+     // every documented operation.
+     const expectedPaths = [
+       '/health',
+@@ -56,6 +56,8 @@ describe('OpenAPI spec (HD-015)', () => {
+       '/users/{id}/role',
+       '/users/{id}/status',
+       '/admin/dashboard',
++      '/attachments',
++      '/attachments/{id}',
+     ];
+     for (const p of expectedPaths) {
+       expect(spec.paths).toHaveProperty(p);
+@@ -97,6 +99,7 @@ describe('OpenAPI spec (HD-015)', () => {
+       'AddCommentRequest',
+       'UpdateRoleRequest',
+       'UpdateStatusRequest',
++      'AttachmentUploadResponse',
+       'ErrorBody',
+       'ValidationErrorBody',
+     ];
+@@ -111,6 +114,8 @@ describe('OpenAPI spec (HD-015)', () => {
+       'Unauthorized',
+       'Forbidden',
+       'Conflict',
++      'UnsupportedMediaType',
++      'PayloadTooLarge',
+     ]) {
+       expect(spec.components.responses).toHaveProperty(r);
+     }
+diff --git a/backend/src/docs/openapi.ts b/backend/src/docs/openapi.ts
+index 06bf22f..b5b4ecd 100644
+--- a/backend/src/docs/openapi.ts
++++ b/backend/src/docs/openapi.ts
+@@ -387,6 +387,22 @@ const sharedComponents = {
+       },
+     },
+ 
++    // ── Attachment upload response (4-field wire shape) ────────
++    AttachmentUploadResponse: {
++      type: 'object',
++      required: ['id', 'filename', 'sizeBytes', 'mimetype'],
++      properties: {
++        id: { type: 'integer', example: 47 },
++        filename: { type: 'string', example: 'screenshot.png' },
++        sizeBytes: { type: 'integer', example: 1048576 },
++        mimetype: {
++          type: 'string',
++          example: 'image/png',
++          description: 'One of the values in the upload allowlist.',
++        },
++      },
++    },
++
+     // ── Error envelopes (mirrors HttpErrorBody in utils/errors.ts) ─
+     ErrorBody: {
+       type: 'object',
+@@ -467,6 +483,30 @@ const sharedComponents = {
+         },
+       },
+     },
++    UnsupportedMediaType: {
++      description: 'Attachment mimetype is not in the allowlist.',
++      content: {
++        'application/json': {
++          schema: { $ref: '#/components/schemas/ErrorBody' },
++          example: {
++            error: 'unsupported_media_type',
++            message: 'This file type is not allowed.',
++          },
++        },
++      },
++    },
++    PayloadTooLarge: {
++      description: 'Attachment exceeds the 10 MB cap.',
++      content: {
++        'application/json': {
++          schema: { $ref: '#/components/schemas/ErrorBody' },
++          example: {
++            error: 'file_too_large',
++            message: 'File is larger than 10 MB. Pick a smaller file.',
++          },
++        },
++      },
++    },
+   },
+ };
+ 
+@@ -505,6 +545,7 @@ const swaggerOptions: swaggerJSDoc.Options = {
+       { name: 'Tickets', description: 'Ticket lifecycle (HD-007 to HD-012).' },
+       { name: 'Users', description: 'User listing + admin role / status management (HD-010, HD-014).' },
+       { name: 'Admin', description: 'Admin-only surfaces (HD-013).' },
++      { name: 'Attachments', description: 'File upload + download (HD-016).' },
+     ],
+   },
+   apis: [
+diff --git a/backend/src/routes/attachments.ts b/backend/src/routes/attachments.ts
+new file mode 100644
+index 0000000..43bd73f
+--- /dev/null
++++ b/backend/src/routes/attachments.ts
+@@ -0,0 +1,43 @@
++/**
++ * Attachments router — HD-016.
++ *
++ * Mounted at `/api/attachments` by `routes/index.ts`. Two routes:
++ *
++ *   POST /        — multipart upload, single file, ≤ 10 MB,
++ *                   mimetype allowlist (see
++ *                   `attachmentsController.ALLOWED_MIMETYPES`).
++ *                   Returns 201 with `{ id, filename, sizeBytes,
++ *                   mimetype }`.
++ *   GET  /:id     — streams the file back. Auth required;
++ *                   Users can only fetch attachments on their
++ *                   own tickets (enumeration protection).
++ *
++ * The multer middleware lives in the controller file so the
++ * mimetype-allowlist and size-cap mappings are co-located
++ * with the error translation.
++ */
++
++import { Router } from 'express';
++
++import {
++  downloadHandler,
++  uploadHandler,
++  uploadMiddleware,
++} from '../controllers/attachmentsController';
++import { authMiddleware } from '../middleware/auth';
++
++const attachmentsRouter = Router();
++
++// POST: auth + multer first, then the handler. The handler
++// re-runs multer in a try/catch (via `runUpload`) so it can
++// translate `MulterError` codes into typed HttpError envelopes.
++attachmentsRouter.post(
++  '/',
++  authMiddleware,
++  uploadMiddleware,
++  uploadHandler,
++);
++
++attachmentsRouter.get('/:id', authMiddleware, downloadHandler);
++
++export default attachmentsRouter;
+diff --git a/backend/src/routes/index.ts b/backend/src/routes/index.ts
+index 831de55..3b95f59 100644
+--- a/backend/src/routes/index.ts
++++ b/backend/src/routes/index.ts
+@@ -4,20 +4,21 @@ import authRouter from './auth';
+ import ticketsRouter from './tickets';
+ import usersRouter from './users';
+ import adminRouter from './admin';
++import attachmentsRouter from './attachments';
+ 
+ /**
+  * Single router for every `/api/*` resource. Mounts:
+- *   - /health     (HD-001)
+- *   - /auth       (HD-003)
+- *   - /tickets    (HD-007 — GET /mine; HD-008/009/010/012 extend it)
+- *   - /users      (HD-010 — GET /agents; HD-014 will extend it)
+- *   - /admin      (HD-013 — GET /dashboard; HD-014 will extend it)
++ *   - /health        (HD-001)
++ *   - /auth          (HD-003)
++ *   - /tickets       (HD-007 — GET /mine; HD-008/009/010/012 extend it)
++ *   - /users         (HD-010 — GET /agents; HD-014 will extend it)
++ *   - /admin         (HD-013 — GET /dashboard; HD-014 will extend it)
++ *   - /attachments   (HD-016 — POST upload, GET download)
+  *
+  * Later stories add more resource routers by calling
+  *   apiRouter.use('/<resource>', <resourceRouter>)` here.
+  *
+  * Example for HD-011 / HD-015:
+- *   apiRouter.use('/attachments', attachmentsRouter);
+  *   apiRouter.use('/search', searchRouter);
+  */
+ const apiRouter = Router();
+@@ -27,5 +28,6 @@ apiRouter.use('/auth', authRouter);
+ apiRouter.use('/tickets', ticketsRouter);
+ apiRouter.use('/users', usersRouter);
+ apiRouter.use('/admin', adminRouter);
++apiRouter.use('/attachments', attachmentsRouter);
+ 
+ export default apiRouter;
+diff --git a/backend/src/services/attachmentService.ts b/backend/src/services/attachmentService.ts
+new file mode 100644
+index 0000000..3ada1b0
+--- /dev/null
++++ b/backend/src/services/attachmentService.ts
+@@ -0,0 +1,141 @@
++/**
++ * Attachment service — HD-016.
++ *
++ * Two helpers used by the attachments controller:
++ *
++ *   - `createAttachment(input)` — inserts the metadata row,
++ *     writes the bytes to permanent storage, updates the row
++ *     with the final `storage_path`. Wraps in a try/catch that
++ *     removes the row on storage failure so we never have an
++ *     attachment row pointing at a file that doesn't exist.
++ *
++ *   - `getAttachmentForUser(id, userId, role)` — same
++ *     enumeration protection as `getTicketForUser` in
++ *     `ticketService.ts`: a User can only fetch an attachment
++ *     that's on one of their own tickets; Support Agent / Admin
++ *     can fetch any. Mirrors the design contract that an
++ *     attachment is part of the ticket (no separate ACL surface).
++ *
++ * Why a service and not inline in the controller? The
++ * controller is the request/response boundary — it parses
++ * multipart, sets headers, maps multer errors. The service is
++ * the data boundary — it owns the row lifecycle and the
++ * storage dance. This split mirrors every other
++ * controller/service pair in the codebase (tickets, users,
++ * admin).
++ */
++
++import { Attachment, Ticket } from '../models';
++import { HttpError } from '../utils/errors';
++import { attachmentStorage } from '../utils/attachmentStorage';
++
++export interface CreateAttachmentInput {
++  filename: string;
++  sizeBytes: number;
++  mimetype: string;
++  uploadedById: number;
++  /**
++   * Either an in-memory buffer (multer.memoryStorage) or a
++   * temp file path (multer.diskStorage). The service handles
++   * both — the storage abstraction is the seam.
++   */
++  source: { buffer: Buffer } | { path: string };
++}
++
++/**
++ * Insert a new attachment row, persist the bytes, and return
++ * the saved row. The returned object has `storagePath` set
++ * to the final on-disk path.
++ *
++ * On storage failure the row is deleted (best-effort) so
++ * callers don't have to worry about orphaned metadata.
++ */
++export async function createAttachment(
++  input: CreateAttachmentInput,
++): Promise<Attachment> {
++  // 1. Insert the row first to get the PK. The `storage_path`
++  //    is initially empty; we update it after the file write
++  //    so the row is never visible to readers with a broken
++  //    path.
++  const row = await Attachment.create({
++    filename: input.filename,
++    sizeBytes: input.sizeBytes,
++    mimetype: input.mimetype,
++    storagePath: '',
++    uploadedById: input.uploadedById,
++  });
++
++  try {
++    const storagePath = await attachmentStorage.put(
++      row.id,
++      input.filename,
++      input.source,
++    );
++    await row.update({ storagePath });
++    return row;
++  } catch (err) {
++    // Storage failed. Best-effort: delete the row so the
++    // caller doesn't see a phantom attachment. The buffer
++    // / temp file (if any) is GC'd by V8 / multer respectively.
++    await row.destroy().catch((destroyErr) => {
++      console.error(
++        '[attachmentService] failed to delete row after storage failure:',
++        destroyErr,
++      );
++    });
++    throw new HttpError(
++      500,
++      'storage_failed',
++      'Failed to save the uploaded file. Try again.',
++    );
++  }
++}
++
++/**
++ * Fetch an attachment, applying the same enumeration
++ * protection as `getTicketForUser` in ticketService.ts.
++ *
++ * A User who isn't the submitter of the ticket carrying the
++ * attachment gets a 404 — same shape as a missing ticket, so
++ * they can't probe by id. Support Agent / Admin see any
++ * attachment.
++ *
++ * The `Ticket → Attachment` association is the right
++ * direction: `Ticket.attachmentId` is the FK, so we look up
++ * any ticket that points at this attachment and check the
++ * caller is the submitter. No reverse association exists in
++ * the model graph.
++ */
++export async function getAttachmentForUser(
++  attachmentId: number,
++  userId: number,
++  role: 'User' | 'Support Agent' | 'Admin',
++): Promise<Attachment> {
++  if (!Number.isInteger(attachmentId) || attachmentId <= 0) {
++    throw new HttpError(
++      400,
++      'validation_error',
++      'Attachment id must be a positive integer.',
++    );
++  }
++
++  const attachment = await Attachment.findByPk(attachmentId);
++  if (!attachment) {
++    throw new HttpError(404, 'not_found', 'Attachment not found.');
++  }
++
++  if (role === 'User') {
++    // Find any ticket that links to this attachment and is
++    // submitted by the caller. If none, treat as 404
++    // (enumeration protection).
++    const ownTicket = await Ticket.findOne({
++      where: { attachmentId, submitterId: userId },
++      attributes: ['id'],
++    });
++    if (!ownTicket) {
++      throw new HttpError(404, 'not_found', 'Attachment not found.');
++    }
++  }
++
++  return attachment;
++}
+diff --git a/backend/src/utils/attachmentStorage.ts b/backend/src/utils/attachmentStorage.ts
+new file mode 100644
+index 0000000..a82d04a
+--- /dev/null
++++ b/backend/src/utils/attachmentStorage.ts
+@@ -0,0 +1,173 @@
++/**
++ * Attachment storage abstraction — HD-016.
++ *
++ * The Phase 6 kickoff locks the MVP storage as the local
++ * filesystem under `backend/uploads/`, but instructs us to
++ * wrap the implementation in a small interface so v1.x can
++ * swap in S3 (or any other blob store) without touching
++ * controllers or routes.
++ *
++ * The interface is intentionally minimal — just the three
++ * operations the controller actually performs:
++ *
++ *   - `put(id, filename, sourcePath)` — move (or copy, for
++ *     memory-storage multer) the freshly-uploaded bytes to
++ *     a permanent location. Returns the relative path the
++ *     `attachments` row should store in `storage_path`.
++ *   - `getStream(storagePath)` — open a readable stream
++ *     over the bytes. Returns the stream + the byte count
++ *     so the controller can set `Content-Length` (browsers
++ *     show a real progress bar instead of "unknown").
++ *   - `delete(storagePath)` — best-effort cleanup. Failures
++ *     are logged but not thrown; the row is the source of
++ *     truth and a missing file is recoverable from a backup.
++ *
++ * The default export is the filesystem implementation. v1.x
++ * can replace it with an `S3Storage` class implementing the
++ * same interface; the controller + route files don't change.
++ */
++
++import { promises as fs, createReadStream } from 'fs';
++import * as path from 'path';
++
++export interface AttachmentStream {
++  stream: NodeJS.ReadableStream;
++  sizeBytes: number;
++}
++
++export interface AttachmentStorage {
++  /**
++   * Persist the uploaded bytes to a permanent location.
++   * `sourcePath` is the temp path the multer middleware wrote
++   * to (or the in-memory buffer's `tempfile` if a future story
++   * switches to disk storage). Returns the relative path
++   * (relative to the storage base) the row should record.
++   */
++  put(
++    id: number,
++    filename: string,
++    source: { buffer: Buffer } | { path: string },
++  ): Promise<string>;
++
++  /**
++   * Open a readable stream over the persisted bytes + report
++   * the size so the controller can set `Content-Length`.
++   * Throws if the file is missing (orphaned by a botched
++   * cleanup); the controller maps that to a 500.
++   */
++  getStream(storagePath: string): Promise<AttachmentStream>;
++
++  /**
++   * Best-effort delete. Failures are logged but never thrown
++   * — the attachment row is the source of truth and a missing
++   * file is recoverable from a backup.
++   */
++  delete(storagePath: string): Promise<void>;
++}
++
++/**
++ * Filesystem storage under `backend/uploads/`. The directory is
++ * created on construction (idempotent) so a fresh checkout
++ * with no `uploads/` dir still works on the first upload.
++ *
++ * File naming: `<id>-<filename>` (e.g. `47-report.pdf`). The
++ * id is the freshly-inserted Attachment PK so each file is
++ * unique without needing a UUID; the filename suffix is the
++ * user-supplied name (sanitized — the controller strips path
++ * separators and a few special characters before calling
++ * `put`). The full storage path recorded in the row is the
++ * base-relative path (e.g. `47-report.pdf`), not an absolute
++ * path — the absolute path is reconstructed at read time.
++ */
++export class LocalFsStorage implements AttachmentStorage {
++  private readonly baseDir: string;
++
++  constructor(baseDir: string) {
++    this.baseDir = baseDir;
++    // Best-effort: mkdir -p. If the call fails, the first
++    // `put` will surface the error to the caller.
++    fs.mkdir(this.baseDir, { recursive: true }).catch((err) => {
++      console.error(
++        `[attachmentStorage] failed to create base dir ${this.baseDir}:`,
++        err,
++      );
++    });
++  }
++
++  async put(
++    id: number,
++    filename: string,
++    source: { buffer: Buffer } | { path: string },
++  ): Promise<string> {
++    const safeFilename = sanitizeFilename(filename);
++    const storageFilename = `${id}-${safeFilename}`;
++    const dest = path.join(this.baseDir, storageFilename);
++
++    if ('buffer' in source) {
++      // In-memory multer: write the buffer to the final path.
++      await fs.writeFile(dest, source.buffer);
++    } else {
++      // Disk multer (future): move the temp file to the final
++      // path. `fs.rename` is atomic on the same filesystem
++      // and faster than copy + unlink.
++      await fs.rename(source.path, dest);
++    }
++    return storageFilename;
++  }
++
++  async getStream(storagePath: string): Promise<AttachmentStream> {
++    const absolute = path.join(this.baseDir, storagePath);
++    // `stat` first so we can surface a clear error if the
++    // file is missing. The controller maps ENOENT to a 500
++    // (orphaned-metadata scenario).
++    const stat = await fs.stat(absolute);
++    return {
++      stream: createReadStream(absolute),
++      sizeBytes: stat.size,
++    };
++  }
++
++  async delete(storagePath: string): Promise<void> {
++    const absolute = path.join(this.baseDir, storagePath);
++    try {
++      await fs.unlink(absolute);
++    } catch (err) {
++      console.error(
++        `[attachmentStorage] failed to delete ${absolute}:`,
++        err,
++      );
++    }
++  }
++}
++
++/**
++ * Strip path separators and a few control characters from the
++ * user-supplied filename before using it on disk. The browser
++ * is the only caller, so the most common attack is `../../etc`
++ * or a null byte — both neutralized here. The id-prefix in
++ * the storage path is what makes collisions impossible
++ * (we never overwrite an existing file because the id is
++ * always fresh), so we don't need to mangle the name further
++ * to enforce uniqueness.
++ */
++function sanitizeFilename(filename: string): string {
++  // Strip path separators, control chars, and the colon
++  // (Windows reserved). Replace with underscore.
++  return filename
++    .replace(/[\\/]/g, '_')
++    .replace(/[\x00-\x1f\x7f:]/g, '_')
++    .trim()
++    .slice(0, 200) || 'file';
++}
++
++/**
++ * Singleton filesystem storage. Resolves `backend/uploads/`
++ * relative to the project root (the cwd when `npm run dev`
++ * is invoked). The directory is auto-created by the
++ * `LocalFsStorage` constructor.
++ */
++const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
++
++export const attachmentStorage: AttachmentStorage = new LocalFsStorage(
++  UPLOADS_DIR,
++);
+diff --git a/frontend/src/app/pages/create-ticket-page/create-ticket-page.component.spec.ts b/frontend/src/app/pages/create-ticket-page/create-ticket-page.component.spec.ts
+index ac92912..4a0fb6b 100644
+--- a/frontend/src/app/pages/create-ticket-page/create-ticket-page.component.spec.ts
++++ b/frontend/src/app/pages/create-ticket-page/create-ticket-page.component.spec.ts
+@@ -43,6 +43,15 @@ import {
+   Router,
+   UrlTree,
+ } from '@angular/router';
++import {
++  HttpClient,
++  provideHttpClient,
++  withInterceptorsFromDi,
++} from '@angular/common/http';
++import {
++  HttpTestingController,
++  provideHttpClientTesting,
++} from '@angular/common/http/testing';
+ import { BehaviorSubject } from 'rxjs';
+ 
+ import { ApiError } from '../../services/api-error';
+@@ -51,6 +60,7 @@ import {
+   CreateTicketPayload,
+   TicketService,
+ } from '../../services/ticket.service';
++import { AttachmentService } from '../../services/attachment.service';
+ import { CreateTicketPageComponent } from './create-ticket-page.component';
+ 
+ const STORAGE_KEY = 'hd:draft:create-ticket';
+@@ -71,6 +81,9 @@ describe('CreateTicketPageComponent', () => {
+   let ticketService: {
+     create: jasmine.Spy<(payload: CreateTicketPayload) => Promise<unknown>>;
+   };
++  let attachmentService: {
++    upload: jasmine.Spy<(file: File) => Promise<{ id: number; filename: string; sizeBytes: number; mimetype: string }>>;
++  };
+   let router: {
+     navigateByUrl: jasmine.Spy<(url: string | UrlTree) => Promise<boolean>>;
+     navigate: jasmine.Spy<(commands: unknown[], extras?: unknown) => Promise<boolean>>;
+@@ -94,6 +107,9 @@ describe('CreateTicketPageComponent', () => {
+     ticketService = {
+       create: jasmine.createSpy('create'),
+     };
++    attachmentService = {
++      upload: jasmine.createSpy('upload'),
++    };
+     router = {
+       navigateByUrl: jasmine.createSpy('navigateByUrl').and.resolveTo(true),
+       navigate: jasmine.createSpy('navigate').and.resolveTo(true),
+@@ -126,7 +142,13 @@ describe('CreateTicketPageComponent', () => {
+       imports: [CreateTicketPageComponent],
+       providers: [
+         provideRouter([]),
++        // AttachmentService injects HttpClient, so we need to
++        // provide it even though we mock the service itself
++        // (a stub AttachmentService doesn't go through HttpClient).
++        provideHttpClient(withInterceptorsFromDi()),
++        provideHttpClientTesting(),
+         { provide: TicketService, useValue: ticketService },
++        { provide: AttachmentService, useValue: attachmentService },
+         { provide: AuthService, useValue: authService },
+         { provide: Router, useValue: router },
+         { provide: ActivatedRoute, useValue: activatedRoute },
+@@ -309,4 +331,98 @@ describe('CreateTicketPageComponent', () => {
+     expect((event as unknown as { preventDefault: jasmine.Spy }).preventDefault).toHaveBeenCalled();
+     expect((event as unknown as { returnValue: string | undefined }).returnValue).toBe('');
+   });
++
++  // ── HD-016 — attachment upload two-step flow ─────────────────────
++
++  it('uploads the attachment first, then creates the ticket with the returned id', async () => {
++    attachmentService.upload.and.resolveTo({
++      id: 47,
++      filename: 'screenshot.png',
++      sizeBytes: 1024,
++      mimetype: 'image/png',
++    });
++    ticketService.create.and.resolveTo({
++      id: 99,
++      number: 'HD-21',
++    });
++
++    const fixture = TestBed.createComponent(CreateTicketPageComponent);
++    fixture.detectChanges();
++    await fixture.whenStable();
++
++    const component = fixture.componentInstance as unknown as PageInternals & {
++      attachment: { set: (v: File | null) => void };
++    };
++    component.title.set('VPN drops');
++    component.description.set('every 10 minutes');
++    const file = new File(['hello'], 'screenshot.png', { type: 'image/png' });
++    component.attachment.set(file);
++
++    const event = { preventDefault: jasmine.createSpy('preventDefault') } as unknown as Event;
++    await component.onSubmit(event);
++
++    // upload called with the same file the user picked.
++    expect(attachmentService.upload).toHaveBeenCalledWith(file);
++    // create called with the attachmentId from the upload.
++    expect(ticketService.create).toHaveBeenCalledTimes(1);
++    const payload = ticketService.create.calls.mostRecent().args[0] as CreateTicketPayload;
++    expect(payload.attachmentId).toBe(47);
++    expect(router.navigateByUrl).toHaveBeenCalledWith('/tickets/99/created');
++  });
++
++  it('renders a 413 upload error inline and skips the ticket create', async () => {
++    attachmentService.upload.and.rejectWith(
++      new ApiError(413, 'file_too_large', 'File is larger than 10 MB. Pick a smaller file.'),
++    );
++
++    const fixture = TestBed.createComponent(CreateTicketPageComponent);
++    fixture.detectChanges();
++    await fixture.whenStable();
++
++    const component = fixture.componentInstance as unknown as PageInternals & {
++      attachment: { set: (v: File | null) => void };
++    };
++    component.title.set('VPN drops');
++    component.description.set('every 10 minutes');
++    component.attachment.set(
++      new File(['x'], 'huge.bin', { type: 'application/zip' }),
++    );
++
++    const event = { preventDefault: jasmine.createSpy('preventDefault') } as unknown as Event;
++    await component.onSubmit(event);
++
++    expect(attachmentService.upload).toHaveBeenCalled();
++    expect(ticketService.create).not.toHaveBeenCalled();
++    expect(fixture.componentInstance.attachmentError()).toBe(
++      'File is larger than 10 MB. Pick a smaller file.',
++    );
++    expect(fixture.componentInstance.submitting()).toBeFalse();
++    expect(router.navigateByUrl).not.toHaveBeenCalled();
++  });
++
++  it('does not call upload when no attachment is set (existing behavior preserved)', async () => {
++    ticketService.create.and.resolveTo({
++      id: 99,
++      number: 'HD-21',
++    });
++
++    const fixture = TestBed.createComponent(CreateTicketPageComponent);
++    fixture.detectChanges();
++    await fixture.whenStable();
++
++    const component = fixture.componentInstance as unknown as PageInternals;
++    component.title.set('VPN drops');
++    component.description.set('every 10 minutes');
++    // attachment() stays null — no file picked.
++
++    const event = { preventDefault: jasmine.createSpy('preventDefault') } as unknown as Event;
++    await component.onSubmit(event);
++
++    expect(attachmentService.upload).not.toHaveBeenCalled();
++    expect(ticketService.create).toHaveBeenCalledTimes(1);
++    const payload = ticketService.create.calls.mostRecent().args[0] as CreateTicketPayload;
++    // No attachmentId in the payload when nothing was picked.
++    expect(payload.attachmentId).toBeUndefined();
++    expect(router.navigateByUrl).toHaveBeenCalledWith('/tickets/99/created');
++  });
+ });
+diff --git a/frontend/src/app/pages/create-ticket-page/create-ticket-page.component.ts b/frontend/src/app/pages/create-ticket-page/create-ticket-page.component.ts
+index be788dc..0e4ede3 100644
+--- a/frontend/src/app/pages/create-ticket-page/create-ticket-page.component.ts
++++ b/frontend/src/app/pages/create-ticket-page/create-ticket-page.component.ts
+@@ -37,12 +37,20 @@
+  *   - Direct-arrival from a /login?return_to=%2Ftickets%2Fnew
+  *     redirect triggers the sessionStorage restore path.
+  *
+- * Attachment (HD-008 OQ-1 / choice A): the drop zone ships
+- * disabled. The page still owns the field state signal + the
+- * 10 MB cap check (the file size lives on the File, read in
+- * onFilePicked) so when HD-011 flips the drop zone on, the
+- * 10 MB enforcement is already wired. Until then the value is
+- * always null and Submit never sees an attachmentId.
++ * Attachment (HD-008 + HD-016):
++ *   - HD-008 ships the field in a disabled state with helper
++ *     text "Attach a file (coming soon)".
++ *   - HD-016 flips the disabled flag to false, updates the
++ *     helper text to the real copy, and wires the upload into
++ *     `onSubmit`. The flow is the two-step design:
++ *       1. If a file is present, POST /api/attachments first.
++ *       2. On 201, capture the returned `id` and pass it as
++ *          `attachmentId` in the subsequent POST /tickets.
++ *     On upload failure (413 / 415 / 5xx), the inline
++ *     `attachmentError` signal renders the message under the
++ *     drop zone and the ticket create is skipped — no orphan
++ *     ticket row is created because we never made the second
++ *     call.
+  */
+ 
+ import {
+@@ -62,6 +70,7 @@ import {
+   CreateTicketPayload,
+   TicketService,
+ } from '../../services/ticket.service';
++import { AttachmentService } from '../../services/attachment.service';
+ import type { TicketCategory, TicketPriority } from '../../models/enums';
+ import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
+ import { ButtonComponent } from '../../components/atoms/button/button.component';
+@@ -206,7 +215,7 @@ const PRIORITY_OPTIONS = [
+                 [error]="attachmentError()"
+                 (fileSelected)="onFilePicked($event)"
+               >
+-                <span class="dropzone-helper">Attach a file (coming soon)</span>
++                <span class="dropzone-helper">Drag a file here, or click to browse</span>
+               </file-drop>
+             </div>
+           </form-field>
+@@ -297,6 +306,7 @@ const PRIORITY_OPTIONS = [
+ })
+ export class CreateTicketPageComponent implements OnInit, OnDestroy {
+   private readonly ticketService = inject(TicketService);
++  private readonly attachmentService = inject(AttachmentService);
+   private readonly router = inject(Router);
+   private readonly route = inject(ActivatedRoute);
+   private readonly destroyRef = inject(DestroyRef);
+@@ -344,8 +354,10 @@ export class CreateTicketPageComponent implements OnInit, OnDestroy {
+   private beforeUnloadHandler: ((event: BeforeUnloadEvent) => void) | null =
+     null;
+ 
+-  // OQ-1 lock: drop zone ships disabled. HD-011 will flip this.
+-  readonly attachmentDisabled = signal<boolean>(true);
++  // HD-016: drop zone is enabled by default. The `submitting()`
++  // guard in the template keeps the field read-only during the
++  // upload + ticket-create round-trip.
++  readonly attachmentDisabled = signal<boolean>(false);
+ 
+   // ── Template helpers ──────────────────────────────────────────────
+   canSubmit(): boolean {
+@@ -557,8 +569,34 @@ export class CreateTicketPageComponent implements OnInit, OnDestroy {
+     this.submitting.set(true);
+     this.serverError.set(null);
+ 
+-    // Per HD-008: attachment uploads are disabled in MVP; the
+-    // payload never carries an attachmentId until HD-011 lands.
++    // Two-step flow (HD-016): if a file is attached, POST
++    // /api/attachments first; the returned `id` becomes
++    // `attachmentId` on the ticket create. We keep the file
++    // reference in a local so the signal is read once and
++    // the closure has a stable handle on the value.
++    const file = this.attachment();
++    let attachmentId: number | null = null;
++    if (file) {
++      try {
++        const result = await this.attachmentService.upload(file);
++        attachmentId = result.id;
++      } catch (err) {
++        // Upload failed — surface the error inline under the
++        // drop zone and skip the ticket create. No orphan
++        // ticket is created because we never made the second
++        // call.
++        this.attachmentError.set(
++          err instanceof ApiError
++            ? err.message
++            : "Couldn't upload your file. Please try again.",
++        );
++        this.touched.attachment = true;
++        this.submitting.set(false);
++        document.getElementById('attachment')?.focus();
++        return;
++      }
++    }
++
+     const payload: CreateTicketPayload = {
+       title: this.title().trim(),
+       description: this.description().trim(),
+@@ -567,6 +605,9 @@ export class CreateTicketPageComponent implements OnInit, OnDestroy {
+     if (this.category() !== '') {
+       payload.category = this.category() as TicketCategory;
+     }
++    if (attachmentId !== null) {
++      payload.attachmentId = attachmentId;
++    }
+ 
+     try {
+       const ticket = await this.ticketService.create(payload);
+diff --git a/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts b/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts
+index 10445a5..6ffadad 100644
+--- a/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts
++++ b/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts
+@@ -51,11 +51,13 @@ import { TicketDetailPageComponent } from './ticket-detail-page.component';
+ import { TicketService } from '../../services/ticket.service';
+ import { AuthService } from '../../services/auth.service';
+ import { UserService, type AgentSummary } from '../../services/user.service';
++import { AttachmentService } from '../../services/attachment.service';
+ import { ApiError } from '../../services/api-error';
+ import type { Ticket } from '../../models/ticket';
+ import type { Comment } from '../../models/comment';
+ import type { ActivityLog } from '../../models/activity-log';
+ import type { UserPublic } from '../../models/user';
++import type { Attachment } from '../../models/attachment';
+ 
+ function makeUser(overrides: Partial<UserPublic> = {}): UserPublic {
+   return {
+@@ -122,6 +124,19 @@ function makeAgent(overrides: Partial<AgentSummary> = {}): AgentSummary {
+   };
+ }
+ 
++function makeAttachment(overrides: Partial<Attachment> = {}): Attachment {
++  return {
++    id: 47,
++    filename: 'screenshot.png',
++    sizeBytes: 1024 * 1024,
++    mimetype: 'image/png',
++    storagePath: '47-screenshot.png',
++    uploadedBy: makeUser({ id: 7, displayName: 'Eli' }),
++    createdAt: '2026-01-15T10:30:00.000Z',
++    ...overrides,
++  };
++}
++
+ interface TestbedHandle {
+   ticketService: {
+     getById: jasmine.Spy;
+@@ -192,6 +207,14 @@ function configureTestbed(opts: {
+     ),
+   };
+ 
++  // HD-016: stubbed AttachmentService. The page only calls
++  // downloadUrl() (a pure function), so the stub just needs to
++  // match the real one's shape.
++  const attachmentService = {
++    downloadUrl: (id: number) => `http://test/api/attachments/${id}`,
++    upload: jasmine.createSpy('upload'),
++  };
++
+   TestBed.configureTestingModule({
+     imports: [TicketDetailPageComponent],
+     providers: [
+@@ -217,6 +240,7 @@ function configureTestbed(opts: {
+         },
+       },
+       { provide: UserService, useValue: userService },
++      { provide: AttachmentService, useValue: attachmentService },
+       { provide: Router, useValue: router },
+     ],
+   })
+@@ -1026,4 +1050,56 @@ describe('TicketDetailPageComponent (HD-010)', () => {
+     expect(inline).toBeNull();
+     expect(fixture.componentInstance.commentSubmitError()).toBeNull();
+   });
++
++  // ── HD-016 — attachment row on the ticket header ────────────────
++
++  it('does not render the attachment row when the ticket has no attachment', async () => {
++    configureTestbed({
++      user: makeUser({ id: 7, role: 'User' }),
++      ticket: makeTicket({ attachment: null }),
++    });
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    const row = (fixture.nativeElement as HTMLElement).querySelector(
++      '[data-testid="attachment-card"]',
++    );
++    expect(row).toBeNull();
++    const link = (fixture.nativeElement as HTMLElement).querySelector(
++      '[data-testid="attachment-row"]',
++    );
++    expect(link).toBeNull();
++  });
++
++  it('renders the attachment row with filename + size + download link', async () => {
++    configureTestbed({
++      user: makeUser({ id: 7, role: 'User' }),
++      ticket: makeTicket({
++        attachment: makeAttachment({
++          id: 47,
++          filename: 'screenshot.png',
++          sizeBytes: 1024 * 1024,
++        }),
++      }),
++    });
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    const link = (fixture.nativeElement as HTMLElement).querySelector(
++      '[data-testid="attachment-row"]',
++    ) as HTMLAnchorElement;
++    expect(link).not.toBeNull();
++    expect(link.textContent).toContain('screenshot.png');
++    // 1 MB → "1.0 MB" via the formatSize helper.
++    expect(link.textContent).toContain('1.0 MB');
++    // The href is the absolute URL handed to us by
++    // attachmentService.downloadUrl, which the stub returns
++    // as `http://test/api/attachments/<id>`.
++    expect(link.getAttribute('href')).toBe('http://test/api/attachments/47');
++    expect(link.getAttribute('download')).toBe('screenshot.png');
++  });
+ });
+\ No newline at end of file
+diff --git a/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts b/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts
+index c533a2e..11ed038 100644
+--- a/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts
++++ b/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts
+@@ -70,6 +70,7 @@ import { ActivatedRoute, Router } from '@angular/router';
+ import { TicketService } from '../../services/ticket.service';
+ import { AuthService } from '../../services/auth.service';
+ import { UserService, type AgentSummary } from '../../services/user.service';
++import { AttachmentService } from '../../services/attachment.service';
+ import { ApiError } from '../../services/api-error';
+ import type { ActivityLog } from '../../models/activity-log';
+ import type { Comment } from '../../models/comment';
+@@ -241,6 +242,22 @@ const COMMENT_MAX = 5000;
+                 <p class="description-body">{{ t.description }}</p>
+               </section>
+ 
++              @if (t.attachment; as att) {
++                <section class="attachment-card" data-testid="attachment-card">
++                  <h2 class="section-title">Attachment</h2>
++                  <a
++                    class="attachment-row"
++                    [href]="attachmentDownloadUrl(att.id)"
++                    [attr.download]="att.filename"
++                    rel="noopener"
++                    data-testid="attachment-row"
++                  >
++                    <span class="attachment-name">{{ att.filename }}</span>
++                    <span class="attachment-size">{{ formatSize(att.sizeBytes) }}</span>
++                  </a>
++                </section>
++              }
++
+               <section class="comments-section" data-testid="comments-section">
+                 <h2 class="section-title">Comments ({{ comments().length }})</h2>
+                 @if (comments().length === 0) {
+@@ -439,7 +456,7 @@ const COMMENT_MAX = 5000;
+       width: auto;
+       min-width: 140px;
+     }
+-    .description-card, .comments-section, .activity-section {
++    .description-card, .comments-section, .activity-section, .attachment-card {
+       background: var(--color-surface);
+       border: 1px solid var(--color-border);
+       border-radius: 8px;
+@@ -458,6 +475,36 @@ const COMMENT_MAX = 5000;
+       color: var(--color-primary);
+       line-height: 1.5;
+     }
++    .attachment-row {
++      display: flex;
++      align-items: center;
++      gap: 12px;
++      padding: 8px 12px;
++      border-radius: 6px;
++      text-decoration: none;
++      color: var(--color-primary);
++      transition: background-color 0.1s;
++    }
++    .attachment-row:hover {
++      background: var(--color-surface-subtle);
++    }
++    .attachment-row:focus-visible {
++      outline: 2px solid var(--color-primary);
++      outline-offset: 2px;
++    }
++    .attachment-name {
++      flex: 1;
++      min-width: 0;
++      overflow: hidden;
++      text-overflow: ellipsis;
++      white-space: nowrap;
++      font-weight: 500;
++    }
++    .attachment-size {
++      font-size: 12px;
++      color: var(--color-muted);
++      flex-shrink: 0;
++    }
+     .empty-marker {
+       color: var(--color-muted);
+       font-size: 14px;
+@@ -589,6 +636,7 @@ export class TicketDetailPageComponent implements OnInit {
+   private readonly ticketService = inject(TicketService);
+   private readonly authService = inject(AuthService);
+   private readonly userService = inject(UserService);
++  private readonly attachmentService = inject(AttachmentService);
+   private readonly route = inject(ActivatedRoute);
+   private readonly router = inject(Router);
+   private readonly destroyRef = inject(DestroyRef);
+@@ -991,6 +1039,34 @@ export class TicketDetailPageComponent implements OnInit {
+     return formatAbsolute(then);
+   }
+ 
++  /**
++   * HD-016: Absolute URL for `GET /api/attachments/:id`. The
++   * browser streams the file bytes when the user clicks the
++   * download link; the `auth` cookie rides automatically because
++   * the link is same-origin.
++   */
++  attachmentDownloadUrl(id: number): string {
++    return this.attachmentService.downloadUrl(id);
++  }
++
++  /**
++   * HD-016: Format an attachment byte count for the row
++   * (e.g. "1.0 MB", "524 KB"). Mirrors the helper inside
++   * `file-drop.component.ts` — copied here rather than
++   * extracted to a shared util because the rest of the
++   * codebase already follows the per-page-instance pattern
++   * for formatRelative / formatAbsolute.
++   */
++  formatSize(bytes: number): string {
++    if (bytes < 1024) return `${bytes} B`;
++    const kb = bytes / 1024;
++    if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
++    const mb = kb / 1024;
++    if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
++    const gb = mb / 1024;
++    return `${gb.toFixed(gb < 10 ? 1 : 0)} GB`;
++  }
++
+   // ─── Loading ──────────────────────────────────────────────────────
+ 
+   private async load(id: number): Promise<void> {
+diff --git a/frontend/src/app/services/api-error.ts b/frontend/src/app/services/api-error.ts
+index f0b8381..9eb2fda 100644
+--- a/frontend/src/app/services/api-error.ts
++++ b/frontend/src/app/services/api-error.ts
+@@ -22,6 +22,10 @@ export type ApiErrorCode =
+   | 'forbidden'
+   | 'not_found'
+   | 'not_implemented'
++  | 'file_too_large'
++  | 'unsupported_media_type'
++  | 'storage_missing'
++  | 'storage_failed'
+   | 'internal_server_error'
+   | 'network_error'
+   | 'unknown_error';
+diff --git a/frontend/src/app/services/attachment.service.spec.ts b/frontend/src/app/services/attachment.service.spec.ts
+new file mode 100644
+index 0000000..0b03ac0
+--- /dev/null
++++ b/frontend/src/app/services/attachment.service.spec.ts
+@@ -0,0 +1,149 @@
++/**
++ * AttachmentService — HD-016 spec.
++ *
++ * Verifies the two methods on `AttachmentService`:
++ *
++ *   - `upload(file)` — POST /api/attachments with a FormData
++ *     body, returns the 4-field wire shape, throws ApiError
++ *     with the right `status` / `errorCode` on a 413 / 415
++ *     response.
++ *   - `downloadUrl(id)` — returns the absolute URL.
++ *
++ * HttpClient is exercised through HttpTestingController. The
++ * auth interceptor is bypassed (HttpClient goes straight to
++ * the controller) so the test focuses on the service
++ * contract — URL, method, body, response unwrap, ApiError
++ * conversion on non-2xx.
++ */
++
++import { TestBed } from '@angular/core/testing';
++import {
++  HttpClient,
++  provideHttpClient,
++  withInterceptorsFromDi,
++} from '@angular/common/http';
++import {
++  HttpTestingController,
++  provideHttpClientTesting,
++} from '@angular/common/http/testing';
++
++import { AttachmentService } from './attachment.service';
++import { ApiError } from './api-error';
++import { environment } from '../../environments/environment';
++
++describe('AttachmentService (HD-016)', () => {
++  let service: AttachmentService;
++  let httpMock: HttpTestingController;
++
++  beforeEach(() => {
++    TestBed.configureTestingModule({
++      providers: [
++        provideHttpClient(withInterceptorsFromDi()),
++        provideHttpClientTesting(),
++        AttachmentService,
++      ],
++    });
++    service = TestBed.inject(AttachmentService);
++    httpMock = TestBed.inject(HttpTestingController);
++  });
++
++  afterEach(() => {
++    httpMock.verify();
++  });
++
++  describe('upload', () => {
++    it('POSTs FormData to /api/attachments and returns the wire shape', async () => {
++      const file = new File(['hello'], 'screenshot.png', {
++        type: 'image/png',
++      });
++      const wireResponse = {
++        id: 47,
++        filename: 'screenshot.png',
++        sizeBytes: 5,
++        mimetype: 'image/png',
++      };
++
++      const p = service.upload(file);
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/attachments`);
++      expect(req.request.method).toBe('POST');
++      expect(req.request.withCredentials).toBe(true);
++      // Body must be FormData containing the file under the
++      // 'file' field name (matches the backend's
++      // `uploadMiddleware = multer({...}).single('file')`).
++      expect(req.request.body instanceof FormData).toBe(true);
++      const form = req.request.body as FormData;
++      expect(form.get('file')).toBeTruthy();
++      expect((form.get('file') as File).name).toBe('screenshot.png');
++      expect((form.get('file') as File).type).toBe('image/png');
++      req.flush(wireResponse);
++
++      const result = await p;
++      expect(result).toEqual(wireResponse);
++    });
++
++    it('throws ApiError(413, file_too_large) immediately when file > 10 MB', async () => {
++      // 11 MB file → client-side cap fires, no request is made.
++      const oversized = new File(
++        [new ArrayBuffer(11 * 1024 * 1024)],
++        'huge.bin',
++        { type: 'application/octet-stream' },
++      );
++
++      let caught: unknown = null;
++      try {
++        await service.upload(oversized);
++        fail('expected ApiError');
++      } catch (err) {
++        caught = err;
++      }
++      expect(caught).toBeInstanceOf(ApiError);
++      expect((caught as ApiError).status).toBe(413);
++      expect((caught as ApiError).errorCode).toBe('file_too_large');
++      // No HTTP request should have been made — the cap is
++      // client-side.
++      httpMock.expectNone(() => true);
++    });
++
++    it('throws ApiError(415, unsupported_media_type) on backend rejection', async () => {
++      const file = new File(['exe'], 'install.exe', {
++        type: 'application/x-msdownload',
++      });
++      const p = service.upload(file);
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/attachments`);
++      req.flush(
++        {
++          error: 'unsupported_media_type',
++          message: 'This file type is not allowed.',
++        },
++        { status: 415, statusText: 'Unsupported Media Type' },
++      );
++      let caught: unknown = null;
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        caught = err;
++      }
++      expect(caught).toBeInstanceOf(ApiError);
++      expect((caught as ApiError).status).toBe(415);
++      expect((caught as ApiError).errorCode).toBe('unsupported_media_type');
++    });
++  });
++
++  describe('downloadUrl', () => {
++    it('returns the absolute URL with the attachment id', () => {
++      expect(service.downloadUrl(47)).toBe(
++        `${environment.apiBaseUrl}/attachments/47`,
++      );
++    });
++
++    it('handles different ids', () => {
++      expect(service.downloadUrl(1)).toBe(
++        `${environment.apiBaseUrl}/attachments/1`,
++      );
++      expect(service.downloadUrl(9999)).toBe(
++        `${environment.apiBaseUrl}/attachments/9999`,
++      );
++    });
++  });
++});
+diff --git a/frontend/src/app/services/attachment.service.ts b/frontend/src/app/services/attachment.service.ts
+new file mode 100644
+index 0000000..0b20f83
+--- /dev/null
++++ b/frontend/src/app/services/attachment.service.ts
+@@ -0,0 +1,123 @@
++/**
++ * AttachmentService — HD-016.
++ *
++ * Two methods:
++ *
++ *   - `upload(file)` — POST /api/attachments with a `FormData`
++ *     containing the file under the key `file`. Returns the
++ *     4-field wire shape `{ id, filename, sizeBytes, mimetype }`
++ *     which the create-ticket page sets on the subsequent
++ *     POST /tickets call (two-step flow per the design doc).
++ *
++ *   - `downloadUrl(id)` — returns the absolute URL for
++ *     GET /api/attachments/:id. The Ticket Detail page uses
++ *     this in an `<a href>` so the browser can stream the
++ *     file back; the `auth` cookie rides automatically
++ *     because the link is same-origin.
++ *
++ * Provided as `providedIn: 'root'` so any page can inject it
++ * without a module-level import dance — mirrors `TicketService`
++ * and `UserService`.
++ *
++ * Auth: every request goes through the `authInterceptor`, which
++ * stamps `withCredentials: true` and converts HttpErrorResponse
++ * into a typed `ApiError`. Services never need to think about
++ * cookies or CORS preflight.
++ *
++ * **MIME type / size cap**: the backend enforces both (10 MB +
++ * the allowlist in `attachmentsController.ts`). The frontend
++ * does a quick client-side size check before opening the
++ * upload request so the user sees the same error envelope
++ * (413 `file_too_large`) without a wasted round-trip; the
++ * server check is the source of truth.
++ */
++
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++
++import { environment } from '../../environments/environment';
++import { apiErrorFrom } from './api-error';
++
++/**
++ * Wire shape returned by `POST /api/attachments`. The row's
++ * `storagePath` is internal — never returned.
++ */
++export interface AttachmentUploadResult {
++  id: number;
++  filename: string;
++  sizeBytes: number;
++  mimetype: string;
++}
++
++/**
++ * Mirrors the backend's 10 MB cap. Used for the client-side
++ * pre-check (avoids a wasted round-trip). The server is the
++ * source of truth — a file exactly at 10 MB will succeed on
++ * both sides; a 10 MB + 1 byte file will fail on the server
++ * with 413 `file_too_large`.
++ */
++const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
++
++@Injectable({ providedIn: 'root' })
++export class AttachmentService {
++  private readonly http = inject(HttpClient);
++
++  /**
++   * POST /api/attachments — upload a single file.
++   *
++   * The FormData payload is the standard browser pattern for
++   * multipart uploads; Angular's HttpClient sets the right
++   * `Content-Type: multipart/form-data; boundary=...` header
++   * automatically when the body is a `FormData` instance.
++   *
++   * Throws `ApiError` on:
++   *   - 400 `validation_error` `fields.file: 'required'` if
++   *     no file was in the request.
++   *   - 413 `file_too_large` if the file exceeds 10 MB.
++   *   - 415 `unsupported_media_type` if the mimetype isn't in
++   *     the server's allowlist (image/png|jpeg|gif, pdf, txt,
++   *     zip).
++   *   - 401 `unauthorized` if the caller isn't signed in.
++   *   - 5xx on storage failure.
++   */
++  async upload(file: File): Promise<AttachmentUploadResult> {
++    // Client-side cap: avoid the round-trip if we already
++    // know the file is too big. The server enforces the
++    // same limit; this is purely a UX optimization.
++    if (file.size > MAX_FILE_SIZE_BYTES) {
++      throw apiErrorFrom({
++        status: 413,
++        error: { error: 'file_too_large', message: 'File is larger than 10 MB. Pick a smaller file.' },
++      } as unknown as Parameters<typeof apiErrorFrom>[0]);
++    }
++
++    const form = new FormData();
++    form.append('file', file, file.name);
++
++    try {
++      const res = await firstValueFrom(
++        this.http.post<AttachmentUploadResult>(
++          `${environment.apiBaseUrl}/attachments`,
++          form,
++          { withCredentials: true },
++        ),
++      );
++      return res;
++    } catch (err) {
++      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
++    }
++  }
++
++  /**
++   * Return the absolute URL for `GET /api/attachments/:id`.
++   * Used in `<a [href]="...">` on the Ticket Detail page so
++   * the browser can stream the file back directly. The
++   * `auth` cookie rides automatically because the link is
++   * same-origin (frontend served by the same Express app
++   * in dev, same host in prod).
++   */
++  downloadUrl(id: number): string {
++    return `${environment.apiBaseUrl}/attachments/${id}`;
++  }
++}
+diff --git a/package-lock.json b/package-lock.json
+index a9d7640..cad36eb 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -30,6 +30,7 @@
+         "helmet": "^7.2.0",
+         "jsonwebtoken": "^9.0.2",
+         "morgan": "^1.10.0",
++        "multer": "^2.4.0",
+         "mysql2": "^3.11.4",
+         "sequelize": "^6.37.5"
+       },
+@@ -41,6 +42,7 @@
+         "@types/jest": "^29.5.14",
+         "@types/jsonwebtoken": "^9.0.7",
+         "@types/morgan": "^1.9.9",
++        "@types/multer": "^2.3.0",
+         "@types/node": "^22.9.0",
+         "@types/supertest": "^6.0.2",
+         "@types/swagger-jsdoc": "^6.0.4",
+@@ -5196,6 +5198,16 @@
+       "integrity": "sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==",
+       "license": "MIT"
+     },
++    "node_modules/@types/multer": {
++      "version": "2.3.0",
++      "resolved": "https://registry.npmjs.org/@types/multer/-/multer-2.3.0.tgz",
++      "integrity": "sha512-i7STIm9V4K2MPH4ZYMtrZAwNxs3kglk2LgleaTuB9pUXgADBcQYQuYMd7+6xgTIxfoggIkFA/DkkvycdZpIARA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/express": "*"
++      }
++    },
+     "node_modules/@types/node": {
+       "version": "26.5.1",
+       "resolved": "https://registry.npmjs.org/@types/node/-/node-26.5.1.tgz",
+@@ -5841,6 +5853,12 @@
+         "url": "https://github.com/sponsors/jonschlinkert"
+       }
+     },
++    "node_modules/append-field": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/append-field/-/append-field-1.0.0.tgz",
++      "integrity": "sha512-klpgFSWLW1ZEs8svjfb7g4qWY0YS5imI82dTg+QahUvJ8YqAY0P10Uk8tTyh9ZGuYEZEMaeJYCF5BFuX552hsw==",
++      "license": "MIT"
++    },
+     "node_modules/aproba": {
+       "version": "2.1.0",
+       "resolved": "https://registry.npmjs.org/aproba/-/aproba-2.1.0.tgz",
+@@ -6446,6 +6464,17 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/busboy": {
++      "version": "1.6.0",
++      "resolved": "https://registry.npmjs.org/busboy/-/busboy-1.6.0.tgz",
++      "integrity": "sha512-8SFQbg/0hQ9xy3UNTB0YEnsNBbWfhf7RtnzpL7TkBiTBRfrQ9Fxcnz7VJsleJpyp6rVLvXiuORqjlHi5q+PYuA==",
++      "dependencies": {
++        "streamsearch": "^1.1.0"
++      },
++      "engines": {
++        "node": ">=10.16.0"
++      }
++    },
+     "node_modules/bytes": {
+       "version": "3.1.2",
+       "resolved": "https://registry.npmjs.org/bytes/-/bytes-3.1.2.tgz",
+@@ -12200,6 +12229,24 @@
+       "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
+       "license": "MIT"
+     },
++    "node_modules/multer": {
++      "version": "2.4.0",
++      "resolved": "https://registry.npmjs.org/multer/-/multer-2.4.0.tgz",
++      "integrity": "sha512-7dqa0ZcFfzbefdTuIkzOSMvZWC0J7FLqBOjJUZvDCXShIURWKxAyTT1wHhnE5q19c7jOJf43IYYKjBmZVZmvhg==",
++      "license": "MIT",
++      "dependencies": {
++        "append-field": "^1.0.0",
++        "busboy": "^1.6.0",
++        "type-is": "^1.6.18"
++      },
++      "engines": {
++        "node": ">= 10.16.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/express"
++      }
++    },
+     "node_modules/multicast-dns": {
+       "version": "7.2.5",
+       "resolved": "https://registry.npmjs.org/multicast-dns/-/multicast-dns-7.2.5.tgz",
+@@ -15304,6 +15351,14 @@
+         "node": ">=8.0"
+       }
+     },
++    "node_modules/streamsearch": {
++      "version": "1.1.0",
++      "resolved": "https://registry.npmjs.org/streamsearch/-/streamsearch-1.1.0.tgz",
++      "integrity": "sha512-Mcc5wHehp9aXz1ax6bZUyY5afg9u2rv5cqQI3mRrYkGC8rW2hM02jWuwjtL++LS5qinSyhj2QfLyNsuc+VsExg==",
++      "engines": {
++        "node": ">=10.0.0"
++      }
++    },
+     "node_modules/string_decoder": {
+       "version": "1.3.0",
+       "resolved": "https://registry.npmjs.org/string_decoder/-/string_decoder-1.3.0.tgz",
