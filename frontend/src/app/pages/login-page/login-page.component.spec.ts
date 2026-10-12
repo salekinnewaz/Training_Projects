@@ -22,6 +22,8 @@
  *   (i) The password show/hide toggle flips input.type between
  *       'password' and 'text'
  *   (j) The "Forgot password?" link points to /forgot-password
+ *   (k) D4: 429 with `rate_limited` → password field shows
+ *       "Too many attempts. Please wait a moment."
  *
  * Mirrors the existing create-ticket-page spec pattern: TestBed +
  * AuthService stub (BehaviorSubject-based) + Router stub +
@@ -359,6 +361,28 @@ describe('LoginPageComponent (D2)', () => {
 
     expect(fixture.componentInstance.passwordFieldError()).toBe(
       'Your account is inactive. Contact your administrator.',
+    );
+  });
+
+  it('D4: renders the rate-limited error on 429 rate_limited', async () => {
+    authService.login.and.rejectWith(
+      new ApiError(429, 'rate_limited', 'Too many attempts. Please wait a moment.'),
+    );
+
+    const fixture = TestBed.createComponent(LoginPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance as unknown as PageInternals;
+    component.form.controls.email.setValue('eli@example.com');
+    component.form.controls.password.setValue('hunter2');
+    fixture.detectChanges();
+
+    await fixture.componentInstance.onSubmit();
+
+    expect(fixture.componentInstance.passwordFieldError()).toBe(
+      'Too many attempts. Please wait a moment.',
     );
   });
 

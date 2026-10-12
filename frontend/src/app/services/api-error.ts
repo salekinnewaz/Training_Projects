@@ -1,5 +1,5 @@
 /**
- * Typed API error — HD-004 + HD-005 + HD-018 + HD-019.
+ * Typed API error — HD-004 + HD-005 + HD-018 + HD-019 + D4.
  *
  * The backend `errorHandler` middleware (HD-003) emits bodies of
  * shape:
@@ -20,6 +20,15 @@
  * "Something went wrong" instead of "Email or password is
  * incorrect" in production until the fix landed here. Pinned by
  * the `api-error.spec.ts` regression test.
+ *
+ * D4 added the `rate_limited` member (alphabetical position) +
+ * a 429 arm in `mapStatusToCode`. The backend's login rate
+ * limiter emits `{ error: 'rate_limited', message: 'Too many
+ * attempts. Please wait a moment.' }`; the login page picks it
+ * up in `applyApiError` and renders the same constant under the
+ * password field. The 429 arm in `mapStatusToCode` is the
+ * fallback path (for when the body is missing or malformed);
+ * the normal code path goes through `explicit`.
  */
 
 import { HttpErrorResponse } from '@angular/common/http';
@@ -38,6 +47,7 @@ export type ApiErrorCode =
   | 'unsupported_media_type'
   | 'storage_missing'
   | 'storage_failed'
+  | 'rate_limited'
   | 'internal_server_error'
   | 'network_error'
   | 'unknown_error';
@@ -144,6 +154,7 @@ function mapStatusToCode(status: number): ApiErrorCode {
   if (status === 401) return 'unauthenticated';
   if (status === 403) return 'forbidden';
   if (status === 404) return 'not_found';
+  if (status === 429) return 'rate_limited';
   if (status === 501) return 'not_implemented';
   if (status >= 500) return 'internal_server_error';
   return 'unknown_error';
