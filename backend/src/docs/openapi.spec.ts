@@ -33,9 +33,9 @@ describe('OpenAPI spec (HD-015)', () => {
     expect(spec.info.title).toBe('HelpDesk Lite API');
     expect(typeof spec.info.version).toBe('string');
 
-    // ── All 18 paths (covering 20 HTTP methods across 5 routers) ──
+    // ── All 20 paths (covering 22 HTTP methods across 6 routers) ──
     // Note: GET and PATCH on /tickets/{id} share one path entry,
-    // so 18 paths × 20 methods. The list below is the union of
+    // so 20 paths × 22 methods. The list below is the union of
     // every documented operation.
     const expectedPaths = [
       '/health',
@@ -56,6 +56,8 @@ describe('OpenAPI spec (HD-015)', () => {
       '/users/{id}/role',
       '/users/{id}/status',
       '/admin/dashboard',
+      '/attachments',
+      '/attachments/{id}',
     ];
     for (const p of expectedPaths) {
       expect(spec.paths).toHaveProperty(p);
@@ -97,6 +99,7 @@ describe('OpenAPI spec (HD-015)', () => {
       'AddCommentRequest',
       'UpdateRoleRequest',
       'UpdateStatusRequest',
+      'AttachmentUploadResponse',
       'ErrorBody',
       'ValidationErrorBody',
     ];
@@ -111,6 +114,8 @@ describe('OpenAPI spec (HD-015)', () => {
       'Unauthorized',
       'Forbidden',
       'Conflict',
+      'UnsupportedMediaType',
+      'PayloadTooLarge',
     ]) {
       expect(spec.components.responses).toHaveProperty(r);
     }

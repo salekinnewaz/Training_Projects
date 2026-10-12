@@ -22,6 +22,10 @@ export type ApiErrorCode =
   | 'forbidden'
   | 'not_found'
   | 'not_implemented'
+  | 'file_too_large'
+  | 'unsupported_media_type'
+  | 'storage_missing'
+  | 'storage_failed'
   | 'internal_server_error'
   | 'network_error'
   | 'unknown_error';

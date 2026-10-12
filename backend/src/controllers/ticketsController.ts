@@ -62,6 +62,11 @@ import {
  *   nested User/Attachment associations into plain objects.
  * - Date fields stay as `Date` after toJSON; the frontend expects
  *   ISO strings, so we re-serialize the four timestamp fields.
+ * - The optional `attachment` association is pre-loaded by
+ *   `services/ticketService.getById` (HD-002 wired the
+ *   association; HD-016 uses it). The nested `uploadedBy`
+ *   User is flattened by toJSON; we strip `passwordHash` via
+ *   the default User scope and normalize `createdAt` to ISO.
  */
 function serializeTicket(ticket: Ticket): Record<string, unknown> {
   const json = ticket.toJSON() as unknown as Record<string, unknown>;
@@ -70,7 +75,38 @@ function serializeTicket(ticket: Ticket): Record<string, unknown> {
   json.deletedAt = ticket.deletedAt
     ? ticket.deletedAt.toISOString()
     : null;
+  // The `attachment` field is a Sequelize instance (or null)
+  // after toJSON. Normalize to the wire shape.
+  const att = json.attachment as Record<string, unknown> | null;
+  if (att !== null && typeof att === 'object') {
+    json.attachment = serializeAttachment(att);
+  } else {
+    json.attachment = null;
+  }
   return json;
+}
+
+/**
+ * Serialize an Attachment row (or its toJSON()ed plain object)
+ * to the public wire shape the frontend `Attachment` interface
+ * declares. `createdAt` is coerced to an ISO string; the
+ * `uploadedBy` User is flattened by toJSON and only carries
+ * public fields (passwordHash is stripped by the default
+ * User scope).
+ */
+function serializeAttachment(
+  att: Record<string, unknown>,
+): Record<string, unknown> {
+  const created = att.createdAt;
+  return {
+    id: att.id,
+    filename: att.filename,
+    sizeBytes: att.sizeBytes,
+    mimetype: att.mimetype,
+    storagePath: att.storagePath,
+    uploadedBy: att.uploadedBy ?? null,
+    createdAt: created instanceof Date ? created.toISOString() : String(created),
+  };
 }
 
 /**

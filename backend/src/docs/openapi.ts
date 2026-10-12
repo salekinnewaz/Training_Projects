@@ -387,6 +387,22 @@ const sharedComponents = {
       },
     },
 
+    // ── Attachment upload response (4-field wire shape) ────────
+    AttachmentUploadResponse: {
+      type: 'object',
+      required: ['id', 'filename', 'sizeBytes', 'mimetype'],
+      properties: {
+        id: { type: 'integer', example: 47 },
+        filename: { type: 'string', example: 'screenshot.png' },
+        sizeBytes: { type: 'integer', example: 1048576 },
+        mimetype: {
+          type: 'string',
+          example: 'image/png',
+          description: 'One of the values in the upload allowlist.',
+        },
+      },
+    },
+
     // ── Error envelopes (mirrors HttpErrorBody in utils/errors.ts) ─
     ErrorBody: {
       type: 'object',
@@ -467,6 +483,30 @@ const sharedComponents = {
         },
       },
     },
+    UnsupportedMediaType: {
+      description: 'Attachment mimetype is not in the allowlist.',
+      content: {
+        'application/json': {
+          schema: { $ref: '#/components/schemas/ErrorBody' },
+          example: {
+            error: 'unsupported_media_type',
+            message: 'This file type is not allowed.',
+          },
+        },
+      },
+    },
+    PayloadTooLarge: {
+      description: 'Attachment exceeds the 10 MB cap.',
+      content: {
+        'application/json': {
+          schema: { $ref: '#/components/schemas/ErrorBody' },
+          example: {
+            error: 'file_too_large',
+            message: 'File is larger than 10 MB. Pick a smaller file.',
+          },
+        },
+      },
+    },
   },
 };
 
@@ -505,6 +545,7 @@ const swaggerOptions: swaggerJSDoc.Options = {
       { name: 'Tickets', description: 'Ticket lifecycle (HD-007 to HD-012).' },
       { name: 'Users', description: 'User listing + admin role / status management (HD-010, HD-014).' },
       { name: 'Admin', description: 'Admin-only surfaces (HD-013).' },
+      { name: 'Attachments', description: 'File upload + download (HD-016).' },
     ],
   },
   apis: [
