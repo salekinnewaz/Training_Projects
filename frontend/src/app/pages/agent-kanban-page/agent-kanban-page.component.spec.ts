@@ -181,12 +181,28 @@ async function bootstrap(queryParams: Record<string, string> = {}): Promise<Harn
       { provide: TicketService, useValue: ticketService },
       { provide: UserService, useValue: userService },
       { provide: AuthService, useValue: authService },
-      { provide: Router, useValue: router },
       { provide: ActivatedRoute, useValue: route },
+      // Real Router via `provideRouter([])` so the `<a routerLink>`
+      // in `<header-chrome>` (transitively rendered via `<app-chrome>`)
+      // can construct. We install jasmine spies on the real instance
+      // after the TestBed is built so individual tests can still
+      // assert on `router.navigate` / `router.navigateByUrl`.
     ],
   }).compileComponents();
 
-  return { ticketService, userService, authService, router };
+  const realRouter = TestBed.inject(Router);
+  spyOn(realRouter, 'navigate').and.callFake(router.navigate as never);
+  spyOn(realRouter, 'navigateByUrl').and.callFake(router.navigateByUrl as never);
+
+  return {
+    ticketService,
+    userService,
+    authService,
+    router: {
+      navigate: realRouter.navigate as jasmine.Spy,
+      navigateByUrl: realRouter.navigateByUrl as jasmine.Spy,
+    },
+  };
 }
 
 function makeFixture() {

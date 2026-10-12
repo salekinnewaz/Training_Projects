@@ -206,6 +206,15 @@ function configureTestbed(opts: {
     navigateByUrl: jasmine.createSpy('navigateByUrl').and.returnValue(Promise.resolve(true)),
   };
 
+  // Spy stubs are installed against the REAL Router below in
+  // `installRouterSpies()` once `TestBed.inject(Router)` is
+  // available. We can't replace the Router provider with a stub
+  // here because `<header-chrome>` (loaded transitively via
+  // `<app-chrome>`) uses `<a routerLink>` directives whose
+  // constructor calls `router.events.subscribe(...)` —
+  // a stub without that Observable crashes on construction.
+  // Mirrors the header-chrome / login spec pattern.
+
   const userService = {
     listAgents: jasmine.createSpy('listAgents').and.callFake(
       opts.listAgentsOverride ?? (() => Promise.resolve(opts.agents ?? [makeAgent()])),
@@ -246,12 +255,19 @@ function configureTestbed(opts: {
       },
       { provide: UserService, useValue: userService },
       { provide: AttachmentService, useValue: attachmentService },
-      { provide: Router, useValue: router },
+      // Real Router via `provideRouter([])` so `<a routerLink>` in
+      // `<header-chrome>` (transitively rendered via `<app-chrome>`)
+      // can construct. We install jasmine spies on the real instance
+      // after the TestBed is built so individual tests can still
+      // assert on `router.navigateByUrl`.
     ],
-  })
-    .overrideProvider(Router, { useValue: router });
+  });
 
-  return { ticketService, userService, router };
+  const realRouter = TestBed.inject(Router);
+  spyOn(realRouter, 'navigate').and.callFake(router.navigate as never);
+  spyOn(realRouter, 'navigateByUrl').and.callFake(router.navigateByUrl as never);
+
+  return { ticketService, userService, router: { navigate: realRouter.navigate as jasmine.Spy, navigateByUrl: realRouter.navigateByUrl as jasmine.Spy } };
 }
 
 async function settle(fixture: import('@angular/core/testing').ComponentFixture<TicketDetailPageComponent>): Promise<void> {

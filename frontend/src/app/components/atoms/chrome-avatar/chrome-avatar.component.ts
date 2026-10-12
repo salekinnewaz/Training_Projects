@@ -45,7 +45,7 @@ import {
 })
 export class ChromeAvatarComponent {
   readonly displayName = input<string>('');
-  readonly size = input<24 | 32>(32);
+  readonly size = input<20 | 24 | 28 | 32>(32);
 
   readonly initials = computed(() => computeInitials(this.displayName()));
 }
