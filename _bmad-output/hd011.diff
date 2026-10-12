@@ -1,0 +1,608 @@
+diff --git a/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts b/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts
+index b43b3ba..10445a5 100644
+--- a/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts
++++ b/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts
+@@ -683,4 +683,347 @@ describe('TicketDetailPageComponent (HD-010)', () => {
+     expect(ticketService.patch).toHaveBeenCalledWith(47, { ownerId: 11 });
+     expect(fixture.componentInstance.ticket()?.owner?.id).toBe(11);
+   });
++
++  // ─── HD-011 ──────────────────────────────────────────────────────
++
++  it('HD-011: applies the role-border class to each comment row per author role', async () => {
++    const sam = makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' });
++    const admin = makeUser({ id: 22, displayName: 'Alex', role: 'Admin', email: 'alex@example.com' });
++    const eli = makeUser({ id: 7, displayName: 'Eli', role: 'User' });
++    configureTestbed({
++      user: sam,
++      ticket: makeTicket({ status: 'Open', submitter: eli }),
++      comments: [
++        makeComment({ id: 1, author: eli, body: 'still broken' }),
++        makeComment({ id: 2, author: sam, body: 'reproducing now' }),
++        makeComment({ id: 3, author: admin, body: 'taking a look' }),
++      ],
++      agents: [makeAgent()],
++    });
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    const rows = Array.from(
++      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLLIElement>(
++        '[data-testid="comment-row"]',
++      ),
++    );
++    expect(rows.length).toBe(3);
++    // User → comment-role-user
++    expect(rows[0].classList.contains('comment-role-user')).toBe(true);
++    expect(rows[0].classList.contains('comment-role-agent')).toBe(false);
++    expect(rows[0].getAttribute('data-role')).toBe('User');
++    // Support Agent → comment-role-agent
++    expect(rows[1].classList.contains('comment-role-agent')).toBe(true);
++    expect(rows[1].classList.contains('comment-role-user')).toBe(false);
++    expect(rows[1].getAttribute('data-role')).toBe('Support Agent');
++    // Admin → comment-role-agent (per UX §1, Admin displays as Agent)
++    expect(rows[2].classList.contains('comment-role-agent')).toBe(true);
++    expect(rows[2].classList.contains('comment-role-user')).toBe(false);
++    expect(rows[2].getAttribute('data-role')).toBe('Admin');
++  });
++
++  it('HD-011: comment-time is relative for events less than 24 h old', async () => {
++    const eli = makeUser({ id: 7, displayName: 'Eli', role: 'User' });
++    const now = Date.now();
++    configureTestbed({
++      user: eli,
++      ticket: makeTicket({ status: 'Open' }),
++      comments: [
++        makeComment({
++          id: 1,
++          author: eli,
++          body: 'fresh',
++          createdAt: new Date(now - 5 * 60 * 1000).toISOString(),
++        }),
++        makeComment({
++          id: 2,
++          author: eli,
++          body: 'three hours',
++          createdAt: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
++        }),
++      ],
++      agents: [],
++    });
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    const html = (fixture.nativeElement as HTMLElement).innerHTML;
++    expect(html).toContain('5 minutes ago');
++    expect(html).toContain('3 hours ago');
++    expect(html).not.toContain('Invalid Date');
++  });
++
++  it('HD-011: comment-time is absolute for events older than 24 h', async () => {
++    const eli = makeUser({ id: 7, displayName: 'Eli', role: 'User' });
++    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
++    configureTestbed({
++      user: eli,
++      ticket: makeTicket({ status: 'Open' }),
++      comments: [
++        makeComment({
++          id: 1,
++          author: eli,
++          body: 'old',
++          createdAt: threeDaysAgo.toISOString(),
++        }),
++      ],
++      agents: [],
++    });
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    const html = (fixture.nativeElement as HTMLElement).innerHTML;
++    // formatAbsolute: "Mmm DD, YYYY · HH:mm" — assert on day + year.
++    expect(html).toContain(String(threeDaysAgo.getFullYear()));
++    expect(html).not.toContain('days ago');
++    expect(html).not.toContain('Invalid Date');
++  });
++
++  it('HD-011: comment-time renders empty for unparseable createdAt', async () => {
++    const eli = makeUser({ id: 7, displayName: 'Eli', role: 'User' });
++    configureTestbed({
++      user: eli,
++      ticket: makeTicket({ status: 'Open' }),
++      comments: [
++        makeComment({
++          id: 1,
++          author: eli,
++          body: 'weird',
++          createdAt: 'not-a-date',
++        }),
++      ],
++      agents: [],
++    });
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    // The <time> element's text content (what the user sees) should
++    // be empty — no "Invalid Date" / "undefined" / "NaN" leaks.
++    const timeEl = (fixture.nativeElement as HTMLElement).querySelector(
++      '.comment-time',
++    );
++    expect(timeEl).not.toBeNull();
++    expect(timeEl?.textContent?.trim()).toBe('');
++  });
++
++  it('HD-011: Enter key in the composer submits the comment', async () => {
++    const { ticketService } = configureTestbed({
++      user: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' }),
++      ticket: makeTicket({ status: 'Open' }),
++      comments: [],
++      agents: [],
++    });
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    fixture.componentInstance.composerValue.set('hello world');
++    fixture.detectChanges();
++
++    const event = new KeyboardEvent('keydown', {
++      key: 'Enter',
++      shiftKey: false,
++      bubbles: true,
++      cancelable: true,
++    });
++    const composer = (fixture.nativeElement as HTMLElement).querySelector(
++      '[data-testid="comment-composer"]',
++    ) as HTMLElement;
++    composer.dispatchEvent(event);
++    await settle(fixture);
++
++    expect(event.defaultPrevented).toBe(true);
++    expect(ticketService.addComment).toHaveBeenCalledWith(47, 'hello world');
++  });
++
++  it('HD-011: Shift+Enter in the composer inserts a newline and does not submit', async () => {
++    const { ticketService } = configureTestbed({
++      user: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' }),
++      ticket: makeTicket({ status: 'Open' }),
++      comments: [],
++      agents: [],
++    });
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    fixture.componentInstance.composerValue.set('line1');
++    fixture.detectChanges();
++
++    const event = new KeyboardEvent('keydown', {
++      key: 'Enter',
++      shiftKey: true,
++      bubbles: true,
++      cancelable: true,
++    });
++    const composer = (fixture.nativeElement as HTMLElement).querySelector(
++      '[data-testid="comment-composer"]',
++    ) as HTMLElement;
++    composer.dispatchEvent(event);
++    await settle(fixture);
++
++    expect(event.defaultPrevented).toBe(false);
++    expect(ticketService.addComment).not.toHaveBeenCalled();
++  });
++
++  it('HD-011: Enter on an empty composer is a no-op (no API call)', async () => {
++    const { ticketService } = configureTestbed({
++      user: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' }),
++      ticket: makeTicket({ status: 'Open' }),
++      comments: [],
++      agents: [],
++    });
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    // composerValue is empty by default.
++    const event = new KeyboardEvent('keydown', {
++      key: 'Enter',
++      shiftKey: false,
++      bubbles: true,
++      cancelable: true,
++    });
++    const composer = (fixture.nativeElement as HTMLElement).querySelector(
++      '[data-testid="comment-composer"]',
++    ) as HTMLElement;
++    composer.dispatchEvent(event);
++    await settle(fixture);
++
++    expect(ticketService.addComment).not.toHaveBeenCalled();
++  });
++
++  it('HD-011: a failed comment submit renders the inline error under the composer', async () => {
++    const { ticketService } = configureTestbed({
++      user: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' }),
++      ticket: makeTicket({ status: 'Open' }),
++      comments: [],
++      agents: [],
++    });
++    // Re-stub addComment to reject so the failure path fires.
++    ticketService.addComment.and.callFake(() =>
++      Promise.reject(
++        new ApiError(500, 'internal_server_error', 'upstream down'),
++      ),
++    );
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    fixture.componentInstance.composerValue.set('this will fail');
++    await fixture.componentInstance.onSendComment();
++    fixture.detectChanges();
++
++    const root = fixture.nativeElement as HTMLElement;
++    const inline = root.querySelector(
++      '[data-testid="composer-inline-error"]',
++    ) as HTMLElement | null;
++    expect(inline).not.toBeNull();
++    expect(inline?.getAttribute('role')).toBe('alert');
++    expect(inline?.textContent?.trim()).toBe(
++      "Couldn't send your comment. Try again.",
++    );
++    // Comment text must remain in the composer.
++    expect(fixture.componentInstance.composerValue()).toBe('this will fail');
++    // The top-of-page error-toast should also render (separate signal,
++    // unchanged behavior), and the inline error sits beneath the
++    // composer — not above the page.
++    const toast = root.querySelector('[data-testid="error-toast"]');
++    expect(toast).not.toBeNull();
++  });
++
++  it('HD-011: a successful comment submit clears the inline error', async () => {
++    const { ticketService } = configureTestbed({
++      user: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' }),
++      ticket: makeTicket({ status: 'Open' }),
++      comments: [],
++      agents: [],
++    });
++    // First call rejects, second call resolves.
++    let calls = 0;
++    ticketService.addComment.and.callFake(() => {
++      calls += 1;
++      if (calls === 1) {
++        return Promise.reject(
++          new ApiError(500, 'internal_server_error', 'upstream down'),
++        );
++      }
++      return Promise.resolve(makeComment({ id: 99, body: 'hello' }));
++    });
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    fixture.componentInstance.composerValue.set('retry me');
++    await fixture.componentInstance.onSendComment();
++    fixture.detectChanges();
++    expect(
++      (fixture.nativeElement as HTMLElement).querySelector(
++        '[data-testid="composer-inline-error"]',
++      ),
++    ).not.toBeNull();
++    expect(fixture.componentInstance.commentSubmitError()).not.toBeNull();
++
++    fixture.componentInstance.composerValue.set('retry me again');
++    await fixture.componentInstance.onSendComment();
++    fixture.detectChanges();
++
++    expect(fixture.componentInstance.commentSubmitError()).toBeNull();
++    expect(
++      (fixture.nativeElement as HTMLElement).querySelector(
++        '[data-testid="composer-inline-error"]',
++      ),
++    ).toBeNull();
++    expect(fixture.componentInstance.comments().length).toBe(1);
++  });
++
++  it('HD-011: a status-change failure does NOT render the inline composer error', async () => {
++    const { ticketService } = configureTestbed({
++      user: makeUser({ id: 11, displayName: 'Sam', role: 'Support Agent', email: 'sam@example.com' }),
++      ticket: makeTicket({ status: 'Open' }),
++      agents: [],
++    });
++    // Re-stub patch to reject so the page's error path fires.
++    ticketService.patch.and.callFake(() =>
++      Promise.reject(
++        new ApiError(500, 'internal_server_error', 'Status update failed.'),
++      ),
++    );
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    await fixture.componentInstance.onStatusChange('In Progress');
++    for (let i = 0; i < 4; i += 1) {
++      await Promise.resolve();
++    }
++    fixture.detectChanges();
++
++    // Top-of-page toast renders (unchanged).
++    const toast = (fixture.nativeElement as HTMLElement).querySelector(
++      '[data-testid="error-toast"]',
++    );
++    expect(toast).not.toBeNull();
++    // Inline composer error does NOT render (comment-only signal).
++    const inline = (fixture.nativeElement as HTMLElement).querySelector(
++      '[data-testid="composer-inline-error"]',
++    );
++    expect(inline).toBeNull();
++    expect(fixture.componentInstance.commentSubmitError()).toBeNull();
++  });
+ });
+\ No newline at end of file
+diff --git a/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts b/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts
+index 6cd5948..c533a2e 100644
+--- a/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts
++++ b/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts
+@@ -248,7 +248,11 @@ const COMMENT_MAX = 5000;
+                 } @else {
+                   <ul class="comments-list">
+                     @for (c of comments(); track c.id) {
+-                      <li class="comment" data-testid="comment-row">
++                      <li
++                        class="comment {{ commentRoleClass(c) }}"
++                        data-testid="comment-row"
++                        [attr.data-role]="c.author.role"
++                      >
+                         <chrome-avatar
+                           [displayName]="c.author.displayName"
+                           [size]="24"
+@@ -262,7 +266,7 @@ const COMMENT_MAX = 5000;
+                               </span>
+                             }
+                             <time class="comment-time" [attr.datetime]="c.createdAt">
+-                              {{ c.createdAt }}
++                              {{ formatCommentTimestamp(c.createdAt) }}
+                             </time>
+                           </p>
+                           <p class="comment-text">{{ c.body }}</p>
+@@ -273,7 +277,11 @@ const COMMENT_MAX = 5000;
+                 }
+ 
+                 @if (canComment()) {
+-                  <div class="composer" data-testid="comment-composer">
++                  <div
++                    class="composer"
++                    data-testid="comment-composer"
++                    (keydown.enter)="onComposerKeydown($event)"
++                  >
+                     <atom-textarea
+                       id="comment-body"
+                       [value]="composerValue()"
+@@ -282,6 +290,13 @@ const COMMENT_MAX = 5000;
+                       placeholder="Add a comment…"
+                       (valueChange)="onComposerInput($event)"
+                     />
++                    @if (commentSubmitError(); as msg) {
++                      <p
++                        class="composer-error"
++                        role="alert"
++                        data-testid="composer-inline-error"
++                      >{{ msg }}</p>
++                    }
+                     <div class="composer-actions">
+                       <span class="composer-counter">
+                         {{ composerValue().length }} / {{ COMMENT_MAX }}
+@@ -456,12 +471,18 @@ const COMMENT_MAX = 5000;
+     .comment {
+       display: flex;
+       gap: 12px;
+-      padding: 12px 0;
++      padding: 12px 0 12px 12px;
+       border-bottom: 1px solid var(--color-border);
++      border-left: 3px solid transparent;
+     }
+     .comment:last-child {
+       border-bottom: none;
+     }
++    /* The comment-role-user and comment-role-agent border-left-color
++       rules are defined globally in styles.css (HD-011) so the
++       per-component style budget stays under 2 kB. The component
++       only adds the class names; the tokens are reused from
++       root. */
+     .comment-body {
+       flex: 1;
+       min-width: 0;
+@@ -505,6 +526,11 @@ const COMMENT_MAX = 5000;
+       flex-direction: column;
+       gap: 8px;
+     }
++    .composer-error {
++      margin: 0;
++      font-size: 13px;
++      color: var(--color-error);
++    }
+     .composer-actions {
+       display: flex;
+       justify-content: space-between;
+@@ -597,6 +623,21 @@ export class TicketDetailPageComponent implements OnInit {
+   /** Last error message for the composer (e.g. closed ticket toast). */
+   readonly composerError = signal<string | null>(null);
+ 
++  /**
++   * HD-011: Inline error bound to the comment composer only. Set
++   * when `onSendComment` rejects; cleared on success. Rendered
++   * beneath the textarea (UX spec §3: "on failure it remains in
++   * the field with an inline error under the field: 'Couldn't
++   * send your comment. Try again.'"). Separate from `composerError`
++   * so status/priority/owner/reopen/close failures continue to use
++   * the top-of-page toast.
++   */
++  readonly commentSubmitError = signal<string | null>(null);
++
++  /** Spec-mandated copy for a failed comment submit (HD-011). */
++  private static readonly COMMENT_SUBMIT_FAILURE_COPY =
++    "Couldn't send your comment. Try again.";
++
+   // ─── Static dropdown option lists ─────────────────────────────────
+ 
+   readonly priorityOptions: SelectOption[] = [
+@@ -884,15 +925,72 @@ export class TicketDetailPageComponent implements OnInit {
+       this.comments.update((rows) => [...rows, created]);
+       this.composerValue.set('');
+       this.composerError.set(null);
++      this.commentSubmitError.set(null);
+     } catch (err) {
+       if (err instanceof ApiError) {
+         this.composerError.set(this.formatApiError(err, "Couldn't add your comment."));
++        this.commentSubmitError.set(
++          TicketDetailPageComponent.COMMENT_SUBMIT_FAILURE_COPY,
++        );
+       }
+     } finally {
+       this.postingComment.set(false);
+     }
+   }
+ 
++  /**
++   * HD-011: Enter key handler on the composer wrapper. Plain Enter
++   * submits (matching the UX spec "Send triggers on click or
++   * Enter"); Shift+Enter is allowed to fall through to the
++   * textarea's default newline behavior. Guarded by
++   * `canSubmitComment()` so an empty / over-limit / in-flight
++   * composer is a no-op.
++   */
++  onComposerKeydown(event: Event): void {
++    // Angular binds `(keydown.enter)` to a generic Event; the only
++    // keyboard-event-specific field we read is `shiftKey`, which
++    // exists on `KeyboardEvent`. The template-side guarantee (the
++    // `.enter` modifier) ensures this event is always a keyboard
++    // event in practice; we narrow for safety.
++    const ke = event as KeyboardEvent;
++    if (ke.shiftKey) {
++      // Let the textarea insert a newline naturally.
++      return;
++    }
++    if (!this.canSubmitComment()) {
++      return;
++    }
++    ke.preventDefault();
++    void this.onSendComment();
++  }
++
++  /**
++   * HD-011: Map a comment's author role to the row's role-border
++   * CSS class. Per UX §1, Admin displays as Support Agent here —
++   * so any non-`User` author is `comment-role-agent`.
++   */
++  commentRoleClass(c: Comment): string {
++    return c.author.role === 'User'
++      ? 'comment-role-user'
++      : 'comment-role-agent';
++  }
++
++  /**
++   * HD-011: Format a comment's `createdAt` for the comment-time
++   * line. Relative for events less than 24 h old ("5 minutes
++   * ago"), absolute `Mmm DD, YYYY · HH:mm` otherwise. Empty string
++   * for unparseable input (no `Invalid Date` / `undefined`).
++   */
++  formatCommentTimestamp(iso: string): string {
++    const then = new Date(iso).getTime();
++    if (Number.isNaN(then)) return '';
++    const diffMs = Date.now() - then;
++    if (diffMs < 24 * 60 * 60 * 1000 && diffMs >= 0) {
++      return formatRelative(then);
++    }
++    return formatAbsolute(then);
++  }
++
+   // ─── Loading ──────────────────────────────────────────────────────
+ 
+   private async load(id: number): Promise<void> {
+@@ -966,4 +1064,50 @@ function validNextStatuses(
+       return [_exhaustive];
+     }
+   }
++}
++
++/**
++ * HD-011: Relative time formatter for the comment-time line. Mirrors
++ * the helper inside `timeline-entry.component.ts` — kept inline
++ * here rather than extracted to a shared util to avoid touching
++ * the timeline-entry molecule. Returns a coarse "X minutes ago"
++ * style label.
++ */
++function formatRelative(thenMs: number): string {
++  const now = Date.now();
++  const diffMs = now - thenMs;
++  if (diffMs < 0) return 'just now';
++
++  const sec_ = Math.floor(diffMs / 1000);
++  if (sec_ < 45) return 'just now';
++  const min = Math.floor(sec_ / 60);
++  if (min < 60) return `${min} minute${min === 1 ? '' : 's'} ago`;
++  const hr = Math.floor(min / 60);
++  if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`;
++  const day = Math.floor(hr / 24);
++  if (day < 30) return `${day} day${day === 1 ? '' : 's'} ago`;
++  const month = Math.floor(day / 30);
++  if (month < 12) return `${month} month${month === 1 ? '' : 's'} ago`;
++  const year = Math.floor(day / 365);
++  return `${year} year${year === 1 ? '' : 's'} ago`;
++}
++
++const MONTHS = [
++  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
++  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++];
++
++/**
++ * HD-011: Absolute timestamp formatter for the comment-time line.
++ * Format: `Mmm DD, YYYY · HH:mm` in the user's local timezone.
++ * Matches the UX spec example: "Sep 14, 09:42".
++ */
++function formatAbsolute(thenMs: number): string {
++  const d = new Date(thenMs);
++  const month = MONTHS[d.getMonth()];
++  const day = d.getDate();
++  const year = d.getFullYear();
++  const hh = String(d.getHours()).padStart(2, '0');
++  const mm = String(d.getMinutes()).padStart(2, '0');
++  return `${month} ${day}, ${year} · ${hh}:${mm}`;
+ }
+\ No newline at end of file
+diff --git a/frontend/src/styles.css b/frontend/src/styles.css
+index fb87b4a..7df91b1 100644
+--- a/frontend/src/styles.css
++++ b/frontend/src/styles.css
+@@ -233,3 +233,18 @@ a:hover {
+   outline: var(--focus-ring-width) solid var(--focus-ring-color);
+   outline-offset: 2px;
+ }
++
++/* ── Comment row role-border (HD-011) ───────────────────────────────
++   Per design-process/D-UX-Design/ticket-detail.md §3: a 3px left
++   border in the role-badge color so conversation partners are
++   visually scannable. Admin renders as Support Agent (UX §1).
++   The `--role-employee-border` and `--role-support-agent-border`
++   tokens are defined in :root above; they're the same hex values
++   the design system extracted (UX spec lists the colors
++   verbatim in the role-badge section). */
++.comment-role-user {
++  border-left-color: var(--role-employee-border);
++}
++.comment-role-agent {
++  border-left-color: var(--role-support-agent-border);
++}

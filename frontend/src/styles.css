@@ -233,3 +233,18 @@ a:hover {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: 2px;
 }
+
+/* ── Comment row role-border (HD-011) ───────────────────────────────
+   Per design-process/D-UX-Design/ticket-detail.md §3: a 3px left
+   border in the role-badge color so conversation partners are
+   visually scannable. Admin renders as Support Agent (UX §1).
+   The `--role-employee-border` and `--role-support-agent-border`
+   tokens are defined in :root above; they're the same hex values
+   the design system extracted (UX spec lists the colors
+   verbatim in the role-badge section). */
+.comment-role-user {
+  border-left-color: var(--role-employee-border);
+}
+.comment-role-agent {
+  border-left-color: var(--role-support-agent-border);
+}
