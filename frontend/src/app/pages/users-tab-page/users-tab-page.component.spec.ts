@@ -125,6 +125,13 @@ describe('UsersTabPageComponent (HD-014)', () => {
     component = fixture.componentInstance;
   });
 
+  afterEach(() => {
+    // The dialog-modal ports its scrim + modal children to
+    // document.body. Wipe body so the next suite (e.g. dialog-modal
+    // or header-chrome) doesn't pick up a foreign modal here.
+    document.body.innerHTML = '';
+  });
+
   it('renders the heading + active-count + 5 rows in success state', async () => {
     const list = makeUserList();
     userService.listAll.and.resolveTo(list);
