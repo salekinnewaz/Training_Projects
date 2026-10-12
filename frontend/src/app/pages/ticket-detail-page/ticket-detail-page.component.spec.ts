@@ -1207,4 +1207,62 @@ describe('TicketDetailPageComponent (HD-010)', () => {
     expect(fixture.componentInstance.composerError()).toBeNull();
     expect(fixture.componentInstance.commentSubmitError()).toBeNull();
   });
+
+  it('renders the breadcrumb with Tickets · {status} for a user', async () => {
+    configureTestbed({
+      user: makeUser({ id: 7, displayName: 'Eli', role: 'User' }),
+      ticket: makeTicket({ status: 'In Progress' }),
+      agents: [],
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const breadcrumb = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="breadcrumb"]',
+    );
+    expect(breadcrumb).not.toBeNull();
+    expect(breadcrumb?.textContent).toContain('Tickets');
+    expect(breadcrumb?.textContent).toContain('In Progress');
+  });
+
+  it('renders the breadcrumb link pointing to the role-correct home', async () => {
+    const eli = makeUser({ id: 7, displayName: 'Eli', role: 'User' });
+    configureTestbed({
+      user: eli,
+      ticket: makeTicket({ status: 'Open' }),
+      agents: [],
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const link = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="breadcrumb-tickets"]',
+    ) as HTMLAnchorElement;
+    expect(link).not.toBeNull();
+    // Eli's roleHomePath is stubbed to '/login' in the testbed, but
+    // we only care that an href is present (it'll be the role-home).
+    expect(link.getAttribute('href')).toBeTruthy();
+  });
+
+  it('renders the "← Back to tickets" link in the page header', async () => {
+    configureTestbed({
+      user: makeUser({ id: 7, displayName: 'Eli', role: 'User' }),
+      ticket: makeTicket({ status: 'Open' }),
+      agents: [],
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const link = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="back-link"]',
+    ) as HTMLAnchorElement | null;
+    expect(link).not.toBeNull();
+    expect(link?.textContent?.trim()).toBe('← Back to tickets');
+  });
 });

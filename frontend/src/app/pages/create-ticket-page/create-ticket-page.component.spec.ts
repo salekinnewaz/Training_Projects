@@ -425,4 +425,19 @@ describe('CreateTicketPageComponent', () => {
     expect(payload.attachmentId).toBeUndefined();
     expect(router.navigateByUrl).toHaveBeenCalledWith('/tickets/99/created');
   });
+
+  it('renders the optional category helper text under the Category field', async () => {
+    const fixture = TestBed.createComponent(CreateTicketPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const helper = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="category-helper"]',
+    ) as HTMLElement | null;
+    expect(helper).not.toBeNull();
+    expect(helper?.textContent?.trim()).toBe(
+      'Optional — helps agents route your ticket',
+    );
+  });
 });
