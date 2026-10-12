@@ -143,12 +143,17 @@ describe('apiErrorFrom', () => {
       });
     });
 
-    it('drops non-string field values silently (defensive)', () => {
+    it('drops non-string field values silently (defensive) — D5 tripwire fires', () => {
       // The asFieldMap helper only keeps string-valued fields.
-      // Arrays / numbers are dropped. This pins the current
-      // behavior; if backend ever emits array field messages
-      // (D5), this assertion will start failing and signal it's
-      // time to revisit.
+      // Arrays / numbers are dropped. As of the D5 slice, a
+      // `console.warn` is emitted whenever a non-string value
+      // is dropped, so a future regression where the backend
+      // starts emitting array field messages is loud in dev
+      // (and CI's stderr capture) instead of silent. The
+      // `Record<string, string>` contract is preserved; if you
+      // see this WARN in production logs, file a follow-up to
+      // widen the type and thread a `<ul>` through the
+      // `FormFieldComponent` (D5 deferred note).
       const err = httpErr(400, {
         error: 'validation_error',
         message: 'Please correct the highlighted fields.',
