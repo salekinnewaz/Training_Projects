@@ -68,7 +68,25 @@ function asFieldMap(
   if (!value || typeof value !== 'object') return undefined;
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(value)) {
-    if (typeof v === 'string') out[k] = v;
+    if (typeof v === 'string') {
+      out[k] = v;
+    } else if (v !== null && v !== undefined) {
+      // Tripwire (D5): the backend doesn't emit non-string
+      // field values today. If this branch ever fires, the
+      // server has changed its error envelope — likely to a
+      // `string[]` for per-field multi-message cases — and the
+      // `ApiError.fields` type (Record<string, string>) is
+      // silently dropping data. Log so the regression is loud
+      // in dev / CI; the type is preserved for now (D5
+      // deferred note: "revisit if backend starts emitting
+      // array field messages"). See
+      // `_bmad-output/implementation-artifacts/spec-d5-asFieldMap-tripwire.md`.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[api-error] dropping non-string field "${String(k)}" (type=${typeof v}); ` +
+        `ApiError.fields is Record<string, string> and will not surface arrays.`,
+      );
+    }
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
