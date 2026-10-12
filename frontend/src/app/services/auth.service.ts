@@ -1,10 +1,11 @@
 /**
- * AuthService — HD-004.
+ * AuthService — HD-004 + HD-018.
  *
  * Owns the "who is logged in" state for the frontend. Backed by:
- *   POST /api/auth/login    (sets the httpOnly cookie on success)
- *   POST /api/auth/logout   (clears the cookie + emits null)
- *   GET  /api/auth/me       (refreshes user$ on demand)
+ *   POST   /api/auth/login           (sets the httpOnly cookie on success)
+ *   POST   /api/auth/logout          (clears the cookie + emits null)
+ *   GET    /api/auth/me              (refreshes user$ on demand)
+ *   PATCH  /api/auth/me/password     (HD-018; change current user's password)
  *
  * The cookie rides in/out automatically because the auth interceptor
  * stamps `withCredentials: true` on every /api/* request.
@@ -149,5 +150,47 @@ export class AuthService {
     if (role === 'Support Agent') return '/queue';
     if (role === 'User') return '/dashboard';
     return '/login';
+  }
+
+  /**
+   * PATCH /api/auth/me/password — change the current user's password
+   * (HD-018).
+   *
+   * `currentPassword` is verified server-side against the stored
+   * hash before the new password is accepted. On success the
+   * server returns 204 (no body) and the existing JWT cookie
+   * stays valid (token rotation is out-of-MVP — see
+   * `_bmad-output/implementation-artifacts/spec-hd-018-password-change.md`
+   * "Token rotation").
+   *
+   * Throws `ApiError` on any non-2xx (the auth interceptor handles
+   * the HttpErrorResponse → ApiError conversion). The Change
+   * Password page maps the common shapes:
+   *   - 400 + fields.newPassword / fields.currentPassword → field errors
+   *   - 403 + invalid_credentials → top-of-form "current password
+   *     is incorrect" message
+   *   - 401 + account_inactive / unauthenticated → page bails out
+   *     (the session is gone, the user is being navigated to
+   *     /login by the auth interceptor side effects)
+   */
+  async changePassword(
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    try {
+      await firstValueFrom(
+        this.http.patch(
+          `${environment.apiBaseUrl}/auth/me/password`,
+          { currentPassword, newPassword },
+          {
+            withCredentials: true,
+            observe: 'response',
+            responseType: 'json',
+          },
+        ),
+      );
+    } catch (err) {
+      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
+    }
   }
 }

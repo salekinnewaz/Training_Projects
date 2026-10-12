@@ -16,6 +16,7 @@ import { Routes } from '@angular/router';
  *   HD-014  /users
  *   (out of MVP) /forgot-password
  *   HD-006  /forbidden
+ *   HD-018  /profile/password
  *
  * HD-006 wires `authGuard` (must be authenticated) and `roleGuard(...)`
  * (role-restricted routes) into every protected entry. `/login` uses
@@ -127,6 +128,16 @@ export const routes: Routes = [
         (m) => m.ForgotPasswordPageComponent
       ),
     title: 'Reset password · HelpDesk Lite',
+  },
+
+  {
+    path: 'profile/password',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./pages/change-password-page/change-password-page.component').then(
+        (m) => m.ChangePasswordPageComponent
+      ),
+    title: 'Change password · HelpDesk Lite',
   },
 
   { path: '**', redirectTo: 'login' },
