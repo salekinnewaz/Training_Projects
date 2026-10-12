@@ -3,13 +3,15 @@ import { healthController } from '../controllers/healthController';
 import authRouter from './auth';
 import ticketsRouter from './tickets';
 import usersRouter from './users';
+import adminRouter from './admin';
 
 /**
  * Single router for every `/api/*` resource. Mounts:
  *   - /health     (HD-001)
  *   - /auth       (HD-003)
- *   - /tickets    (HD-007 — GET /mine; HD-008/009/010 extend it)
+ *   - /tickets    (HD-007 — GET /mine; HD-008/009/010/012 extend it)
  *   - /users      (HD-010 — GET /agents; HD-014 will extend it)
+ *   - /admin      (HD-013 — GET /dashboard; HD-014 will extend it)
  *
  * Later stories add more resource routers by calling
  *   apiRouter.use('/<resource>', <resourceRouter>)` here.
@@ -24,5 +26,6 @@ apiRouter.get('/health', healthController);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/tickets', ticketsRouter);
 apiRouter.use('/users', usersRouter);
+apiRouter.use('/admin', adminRouter);
 
 export default apiRouter;

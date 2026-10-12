@@ -1,11 +1,12 @@
 /**
- * TicketService — HD-007 + HD-008 + HD-009 + HD-010 + HD-012.
+ * TicketService — HD-007 + HD-008 + HD-009 + HD-010 + HD-012 + HD-013.
  *
  * Thin wrapper over the `/api/tickets/*` endpoints. HD-007 ships
  * `listMine()`; HD-008 adds `create()`; HD-009 adds `getById()`;
  * HD-010 (Ticket Detail) adds `patch()`, `addComment()`, `reopen()`,
  * `confirmClose()`, `listComments()`, `listActivity()`; HD-012 (Agent
- * Kanban) adds `listForQueue()`.
+ * Kanban) adds `listForQueue()`; HD-013 (Admin Dashboard) adds
+ * `adminDashboard()` for the `/api/admin/dashboard` endpoint.
  *
  * Provided as `providedIn: 'root'` so any page can inject it
  * without a module-level import dance — mirrors `AuthService`.
@@ -65,6 +66,35 @@ interface ListCommentsResponse {
 interface ListActivityResponse {
   activity: ActivityLog[];
   count: number;
+}
+
+/**
+ * Per-bucket shape returned by GET /api/admin/dashboard (HD-013).
+ *
+ * `rows` is the most-recent N tickets in this status (capped
+ * server-side at 14). `total` is the count of every ticket in
+ * this status (may exceed rows.length when the queue is larger
+ * than the cap). The Admin Dashboard's "Showing N of M" footer
+ * is derived from `rows.length` vs `total`.
+ */
+export interface AdminDashboardBucket {
+  rows: Ticket[];
+  total: number;
+}
+
+/**
+ * Wire shape returned by GET /api/admin/dashboard (HD-013).
+ *
+ * The four status buckets are always present (empty status =
+ * `{ rows: [], total: 0 }`). The page never sees a 5th status;
+ * a status enum change would have to bump the type signature
+ * here AND the backend service in lockstep.
+ */
+export interface AdminDashboardSummary {
+  open: AdminDashboardBucket;
+  inProgress: AdminDashboardBucket;
+  resolved: AdminDashboardBucket;
+  closed: AdminDashboardBucket;
 }
 
 /**
@@ -382,6 +412,43 @@ export class TicketService {
         ),
       );
       return res.activity;
+    } catch (err) {
+      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
+    }
+  }
+
+  // ─── HD-013 — Admin Dashboard summary ───────────────────────────
+
+  /**
+   * GET /api/admin/dashboard — Admin-only four-bucket ticket
+   * summary (HD-013).
+   *
+   * Returns `{ open, inProgress, resolved, closed }`, each bucket
+   * shaped `{ rows, total }`. The Angular `roleGuard(['Admin'])`
+   * is the primary gate; if a programmatic client somehow reaches
+   * the endpoint, the backend returns 403 and the page falls through
+   * to the error render state.
+   *
+   * Why a separate endpoint (not reuse listForQueue): the
+   * `/api/tickets/queue` endpoint is Support-Agent-only; even if
+   * that gate were relaxed, the data shape differs (queue returns
+   * a flat list; dashboard returns partitioned + capped). See
+   * spec-hd-013-admin-dashboard.md "Why a new endpoint" for
+   * the full rationale.
+   *
+   * Throws `ApiError` on any non-2xx response. Mirrors the
+   * `listForQueue()` shape exactly: HttpClient → firstValueFrom →
+   * response unwrap → apiErrorFrom on non-2xx.
+   */
+  async adminDashboard(): Promise<AdminDashboardSummary> {
+    try {
+      const res = await firstValueFrom(
+        this.http.get<AdminDashboardSummary>(
+          `${environment.apiBaseUrl}/admin/dashboard`,
+          { withCredentials: true },
+        ),
+      );
+      return res;
     } catch (err) {
       throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
     }

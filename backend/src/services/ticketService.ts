@@ -1,5 +1,5 @@
 /**
- * ticketService — HD-007 + HD-008 + HD-009 + HD-010 + HD-012.
+ * ticketService — HD-007 + HD-008 + HD-009 + HD-010 + HD-012 + HD-013.
  *
  * Read-side helpers for the Ticket resource. Wraps the consistent
  * `findAll` shape used by every list endpoint so controllers don't
@@ -15,8 +15,10 @@
  * comments / reopen / confirm-close / agents endpoints that
  * the Ticket Detail page drives. HD-012 (Agent Kanban) adds
  * `listForQueue()` to power the /queue board — a Support-Agent
- * view across every ticket in the system. HD-015 will add combined
- * filter / search helpers and cursor pagination.
+ * view across every ticket in the system. HD-013 (Admin
+ * Dashboard) adds `getDashboardSummary()` which returns the
+ * four-bucket shape for the /admin page. HD-015 will add
+ * combined filter / search helpers and cursor pagination.
  *
  * No pagination params are exposed yet — out of MVP per spec. The
  * `opts` bag exists as an extension point for HD-015 if/when
@@ -107,6 +109,82 @@ export async function listForQueue(
       { model: Attachment, as: 'attachment' },
     ],
   });
+}
+
+/**
+ * HD-013 — Admin Dashboard summary. Returns the four-bucket shape
+ * the /admin page renders. Each list is newest-first by `createdAt`
+ * DESC and capped at `DASHBOARD_CARD_LIMIT` (14) so the wire matches
+ * the design doc's "12–14 rows per card" guidance.
+ *
+ * The shape is *not* the same as `listForUser` / `listForQueue`
+ * (those return `{ tickets, count }`). The dashboard endpoint
+ * returns a fixed-shape object with four buckets, each bucket
+ * pre-bounded — the page's "Showing N of M" footer is computed
+ * from the bucket's `total` minus the rendered rows.
+ *
+ * Why this is its own helper instead of reusing `listForQueue`:
+ *   - The /queue endpoint is Support-Agent-only. Admin cannot
+ *     call it. (The /admin endpoint is Admin-only.)
+ *   - `listForQueue` returns one big list newest-first. The
+ *     dashboard wants the data already partitioned + capped so the
+ *     wire matches the design doc.
+ *   - The dashboard doesn't need the `attachment` association —
+ *     the card rows don't show attachment state.
+ */
+export const DASHBOARD_CARD_LIMIT = 14;
+
+export type DashboardBucket = {
+  /** Most recent N tickets in this status (capped at DASHBOARD_CARD_LIMIT). */
+  rows: Ticket[];
+  /** Total tickets in this status — may exceed rows.length; drives the "Showing N of M" footer. */
+  total: number;
+};
+
+export interface DashboardSummary {
+  open: DashboardBucket;
+  inProgress: DashboardBucket;
+  resolved: DashboardBucket;
+  closed: DashboardBucket;
+}
+
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  // Two passes: one for the per-bucket top-N (rows), one for the
+  // per-bucket totals. Sequelize doesn't expose a single
+  // "fetch with total count" without a window function, and the
+  // two simple queries are cheap on the MySQL side (status is
+  // indexed; the where-filter is constant per query).
+  //
+  // We could parallelize via Promise.all, but the small query
+  // count and the lack of cross-bucket contention makes the
+  // serialized version easier to read. The latency hit is
+  // negligible for the admin-only volume.
+  const fetchBucket = async (
+    status: 'Open' | 'In Progress' | 'Resolved' | 'Closed',
+  ): Promise<DashboardBucket> => {
+    const [rows, total] = await Promise.all([
+      Ticket.findAll({
+        where: { status },
+        order: [['createdAt', 'DESC']],
+        limit: DASHBOARD_CARD_LIMIT,
+        include: [
+          { model: User, as: 'submitter' },
+          { model: User, as: 'owner' },
+        ],
+      }),
+      Ticket.count({ where: { status } }),
+    ]);
+    return { rows, total };
+  };
+
+  const [open, inProgress, resolved, closed] = await Promise.all([
+    fetchBucket('Open'),
+    fetchBucket('In Progress'),
+    fetchBucket('Resolved'),
+    fetchBucket('Closed'),
+  ]);
+
+  return { open, inProgress, resolved, closed };
 }
 
 /**
