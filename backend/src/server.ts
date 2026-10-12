@@ -24,7 +24,9 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import swaggerUi from 'swagger-ui-express';
 import apiRouter from './routes';
+import { getOpenApiSpec } from './docs/openapi';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
@@ -49,6 +51,22 @@ if (process.env.NODE_ENV !== 'test') {
 
 // ── Routes ──────────────────────────────────────────────────────────
 app.use('/api', apiRouter);
+
+// ── API documentation (HD-015) ──────────────────────────────────────
+// Raw OpenAPI JSON for tooling (Postman import, codegen, curl).
+// Mounted under /api so it sits on the same origin as the rest of
+// the API — no CORS gymnastics needed.
+app.get('/api/docs.json', (_req: Request, res: Response) => {
+  res.json(getOpenApiSpec());
+});
+// Swagger UI HTML. Browse to http://localhost:<port>/api/docs.
+app.use(
+  '/api/docs',
+  swaggerUi.serve,
+  swaggerUi.setup(getOpenApiSpec(), {
+    customSiteTitle: 'HelpDesk Lite API',
+  }),
+);
 
 // ── 404 fallback (JSON, not HTML) ───────────────────────────────────
 app.use((_req: Request, res: Response) => {
