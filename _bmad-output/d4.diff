@@ -1,0 +1,404 @@
+diff --git a/backend/package.json b/backend/package.json
+index 3ac0c36..802ac02 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -23,6 +23,7 @@
+     "cors": "^2.8.5",
+     "dotenv": "^16.4.5",
+     "express": "^4.21.1",
++    "express-rate-limit": "^7.5.1",
+     "helmet": "^7.2.0",
+     "jsonwebtoken": "^9.0.2",
+     "morgan": "^1.10.0",
+diff --git a/backend/src/middleware/rateLimit.spec.ts b/backend/src/middleware/rateLimit.spec.ts
+new file mode 100644
+index 0000000..9d81989
+--- /dev/null
++++ b/backend/src/middleware/rateLimit.spec.ts
+@@ -0,0 +1,116 @@
++/**
++ * rateLimit — D4 spec.
++ *
++ * Pins the `loginRateLimiter` contract end-to-end via a real
++ * Express app + supertest (no in-memory mock req/res — the
++ * `express-rate-limit` library v7 internally treats `res` as
++ * an EventEmitter and reads `res.on('finish', …)` for the
++ * `skipSuccessfulRequests` decision, which is hard to mock
++ * by hand and brittle to library internals).
++ *
++ * Why a "fake" login route returns 401 (not 200):
++ * `skipSuccessfulRequests: true` is the production
++ * configuration — a user who successfully signs in doesn't
++ * burn budget. The limiter only counts non-successful
++ * responses (statusCode >= 400). A 200 response never
++ * increments the counter, so the test fixture deliberately
++ * returns 401 to simulate "wrong password" attempts and
++ * exercise the production counting path.
++ *
++ * Contract:
++ *
++ *   (a) The first N requests (where N = `max`) pass through to
++ *       the next middleware. The fixture returns 401 (a real
++ *       wrong-password result); the limiter counts them as
++ *       failed attempts.
++ *   (b) The (N+1)th request is short-circuited with a 429
++ *       envelope: `{ error: 'rate_limited', message: 'Too many
++ *       attempts. Please wait a moment.' }`.
++ *   (c) The 429 response carries the IETF draft-7 `RateLimit-*`
++ *       standard headers (`standardHeaders: 'draft-7'` in the
++ *       limiter config).
++ *   (d) Default `max` is 10 (per the D4 plan: 10 attempts per
++ *       15 minutes, with `skipSuccessfulRequests: true`).
++ *
++ * `windowMs` and `max` are passed via the `overrides` arg so
++ * the 3-call → 1-reject test runs in milliseconds, not 15
++ * minutes. The override path is exported for tests; production
++ * uses the default (see `routes/auth.ts`).
++ */
++
++import express, { type Request, type Response } from 'express';
++import request from 'supertest';
++
++import { errorHandler } from './errorHandler';
++import { LOGIN_MAX, loginRateLimiter } from './rateLimit';
++
++function makeApp(max: number): express.Express {
++  const app = express();
++  // Returns 401 to simulate "wrong password" so the
++  // `skipSuccessfulRequests: true` config counts it. A 200
++  // response would NOT count and the test would never reach
++  // the rate limit.
++  app.post(
++    '/login',
++    loginRateLimiter({ windowMs: 60_000, max }),
++    (_req: Request, res: Response) => res.status(401).json({ error: 'invalid_credentials' }),
++  );
++  // The custom `handler` in `loginRateLimiter` calls
++  // `next(new HttpError(429, 'rate_limited', …))`. Without
++  // an error middleware, Express's `finalhandler` swallows
++  // the error and writes a generic 429 with no body. Wire
++  // the same errorHandler the production app uses
++  // (`backend/src/server.ts`) so the body assertions
++  // exercise the real envelope.
++  app.use(errorHandler);
++  return app;
++}
++
++describe('loginRateLimiter (D4)', () => {
++  it('passes the first N requests through (401) and rejects the (N+1)th (429)', async () => {
++    const app = makeApp(2);
++
++    const r1 = await request(app).post('/login');
++    const r2 = await request(app).post('/login');
++    expect(r1.status).toBe(401);
++    expect(r2.status).toBe(401);
++
++    const r3 = await request(app).post('/login');
++    expect(r3.status).toBe(429);
++  });
++
++  it('rejects the (N+1)th request with the rate_limited envelope', async () => {
++    const app = makeApp(2);
++
++    await request(app).post('/login');
++    await request(app).post('/login');
++    const rejected = await request(app).post('/login');
++
++    expect(rejected.status).toBe(429);
++    const body = rejected.body as { error?: string; message?: string };
++    expect(body.error).toBe('rate_limited');
++    expect(body.message).toBe('Too many attempts. Please wait a moment.');
++  });
++
++  it('sets the IETF draft-7 RateLimit-* standard headers on the 429 response', async () => {
++    const app = makeApp(2);
++    await request(app).post('/login');
++    await request(app).post('/login');
++
++    const rejected = await request(app).post('/login');
++    expect(rejected.status).toBe(429);
++    // `standardHeaders: 'draft-7'` in the limiter config emits
++    // the IETF draft-7 rate-limit headers. express-rate-limit
++    // v7 surfaces them as a single `RateLimit` header plus
++    // `RateLimit-Policy` and `Retry-After` (the v7 default
++    // naming). The exact format is the IETF spec, not our
++    // contract — we just assert they're set.
++    expect(rejected.headers['ratelimit']).toBeDefined();
++    expect(rejected.headers['ratelimit-policy']).toBeDefined();
++    expect(rejected.headers['retry-after']).toBeDefined();
++  });
++
++  it('default max is 10 (per the D4 plan: 10 attempts per 15 minutes)', () => {
++    expect(LOGIN_MAX).toBe(10);
++  });
++});
+diff --git a/backend/src/middleware/rateLimit.ts b/backend/src/middleware/rateLimit.ts
+new file mode 100644
+index 0000000..adc0eeb
+--- /dev/null
++++ b/backend/src/middleware/rateLimit.ts
+@@ -0,0 +1,66 @@
++/**
++ * Login rate limiter — D4.
++ *
++ * `express-rate-limit` v7 wrapper for `POST /api/auth/login`.
++ * Per-IP sliding window: 10 attempts per 15 minutes, but successful
++ * logins don't burn budget (`skipSuccessfulRequests: true` so a
++ * user who successfully signs in doesn't lock themselves out).
++ *
++ * On limit exceed the rate limiter calls `handler` which throws
++ * an `HttpError(429, 'rate_limited', 'Too many attempts. Please
++ * wait a moment.')`. The central `errorHandler` middleware
++ * (HD-003) serializes that into the standard envelope
++ * `{ error: 'rate_limited', message: '…' }` so the frontend can
++ * switch on `errorCode` exactly like every other 4xx.
++ *
++ * In-memory store (the express-rate-limit default) is fine for
++ * single-container MVP. Multi-instance prod will need a shared
++ * store (Redis) — see the "Follow-up" section in
++ * `spec-d4-rate-limited.md`. The store is intentionally not
++ * abstracted here; a single file change to `new
++ * RedisStore({…})` covers the multi-instance case.
++ *
++ * Why a separate middleware file (and not a one-liner in
++ * `routes/auth.ts`): the `handler` needs to throw an `HttpError`
++ * to keep the wire shape consistent, and the test
++ * (`rateLimit.spec.ts`) needs to construct a bare Express
++ * request/response pair to assert the 429 + envelope. A factory
++ * function with the request/response pair in scope is cleaner
++ * than wiring a one-off at the route.
++ *
++ * `windowMs` and `max` are exported so the test can override
++ * them for a fast 3-call → 1-reject run (vs waiting 15 minutes).
++ */
++
++import rateLimit from 'express-rate-limit';
++
++import { HttpError } from '../utils/errors';
++
++export const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
++export const LOGIN_MAX = 10;
++
++export function loginRateLimiter(
++  overrides: { windowMs?: number; max?: number } = {},
++): ReturnType<typeof rateLimit> {
++  return rateLimit({
++    windowMs: overrides.windowMs ?? LOGIN_WINDOW_MS,
++    max: overrides.max ?? LOGIN_MAX,
++    standardHeaders: 'draft-7',
++    legacyHeaders: false,
++    skipSuccessfulRequests: true,
++    handler: (_req, _res, next) => {
++      // Throwing an HttpError keeps the wire shape identical to
++      // every other 4xx in the app — the central errorHandler
++      // middleware serializes it into
++      //   { error: 'rate_limited', message: 'Too many attempts…' }
++      // and the frontend can switch on `errorCode` directly.
++      next(
++        new HttpError(
++          429,
++          'rate_limited',
++          'Too many attempts. Please wait a moment.',
++        ),
++      );
++    },
++  });
++}
+diff --git a/backend/src/routes/auth.ts b/backend/src/routes/auth.ts
+index 8738494..34625a8 100644
+--- a/backend/src/routes/auth.ts
++++ b/backend/src/routes/auth.ts
+@@ -1,9 +1,13 @@
+ /**
+- * Auth router — HD-003 + HD-018.
++ * Auth router — HD-003 + HD-018 + D4.
+  *
+  * Wires the five auth endpoints. Only `/me` and
+  * `/me/password` (HD-018) sit behind authMiddleware —
+- * login/logout/register are public.
++ * login/logout/register are public. D4 mounts
++ * `loginRateLimiter()` on `POST /login` so a burst of wrong-
++ * password attempts from the same IP gets a 429
++ * `rate_limited` envelope before the bcrypt cost can be
++ * weaponized for a side-channel timing attack.
+  */
+ 
+ import { Router } from 'express';
+@@ -15,10 +19,11 @@ import {
+   register,
+ } from '../controllers/authController';
+ import { authMiddleware } from '../middleware/auth';
++import { loginRateLimiter } from '../middleware/rateLimit';
+ 
+ const authRouter = Router();
+ 
+-authRouter.post('/login', login);
++authRouter.post('/login', loginRateLimiter(), login);
+ authRouter.post('/logout', logout);
+ authRouter.post('/register', register);
+ authRouter.get('/me', authMiddleware, me);
+diff --git a/frontend/src/app/pages/login-page/login-page.component.spec.ts b/frontend/src/app/pages/login-page/login-page.component.spec.ts
+index 8199d5b..6bda52c 100644
+--- a/frontend/src/app/pages/login-page/login-page.component.spec.ts
++++ b/frontend/src/app/pages/login-page/login-page.component.spec.ts
+@@ -22,6 +22,8 @@
+  *   (i) The password show/hide toggle flips input.type between
+  *       'password' and 'text'
+  *   (j) The "Forgot password?" link points to /forgot-password
++ *   (k) D4: 429 with `rate_limited` → password field shows
++ *       "Too many attempts. Please wait a moment."
+  *
+  * Mirrors the existing create-ticket-page spec pattern: TestBed +
+  * AuthService stub (BehaviorSubject-based) + Router stub +
+@@ -362,6 +364,28 @@ describe('LoginPageComponent (D2)', () => {
+     );
+   });
+ 
++  it('D4: renders the rate-limited error on 429 rate_limited', async () => {
++    authService.login.and.rejectWith(
++      new ApiError(429, 'rate_limited', 'Too many attempts. Please wait a moment.'),
++    );
++
++    const fixture = TestBed.createComponent(LoginPageComponent);
++    fixture.detectChanges();
++    await fixture.whenStable();
++    fixture.detectChanges();
++
++    const component = fixture.componentInstance as unknown as PageInternals;
++    component.form.controls.email.setValue('eli@example.com');
++    component.form.controls.password.setValue('hunter2');
++    fixture.detectChanges();
++
++    await fixture.componentInstance.onSubmit();
++
++    expect(fixture.componentInstance.passwordFieldError()).toBe(
++      'Too many attempts. Please wait a moment.',
++    );
++  });
++
+   it('renders the server field error on 400 validation_error.fields.email', async () => {
+     authService.login.and.rejectWith(
+       new ApiError(400, 'validation_error', 'Please correct the highlighted fields.', {
+diff --git a/frontend/src/app/pages/login-page/login-page.component.ts b/frontend/src/app/pages/login-page/login-page.component.ts
+index e778f70..c252eaf 100644
+--- a/frontend/src/app/pages/login-page/login-page.component.ts
++++ b/frontend/src/app/pages/login-page/login-page.component.ts
+@@ -1,5 +1,5 @@
+ /**
+- * LoginPageComponent — HD-005.
++ * LoginPageComponent — HD-005 + D4.
+  *
+  * Public, unauthenticated sign-in page. Renders a centered card
+  * with a reactive email/password form. On successful login the
+@@ -12,6 +12,15 @@
+  * (HD-006) will own the "already authenticated → bounce to
+  * dashboard" behaviour.
+  *
++ * D4 added the `rate_limited` switch case in `applyApiError`:
++ * when the backend's `loginRateLimiter` returns 429
++ * `rate_limited` (after 10 wrong-password attempts in 15
++ * minutes), the password field renders "Too many attempts.
++ * Please wait a moment." — same field + same focus-restoration
++ * shape as the `invalid_credentials` and `account_inactive`
++ * cases. See
++ * `_bmad-output/implementation-artifacts/spec-d4-rate-limited.md`.
++ *
+  * Selector + class name are preserved from the HD-001 placeholder
+  * so the lazy route in app.routes.ts keeps working.
+  */
+@@ -66,6 +75,7 @@ const GENERIC_ERROR = 'Something went wrong. Please try again.';
+ 
+ const WRONG_CREDS = 'Email or password is incorrect. Try again.';
+ const INACTIVE_ACCOUNT = 'Your account is inactive. Contact your administrator.';
++const RATE_LIMITED = 'Too many attempts. Please wait a moment.';
+ const EMAIL_FORMAT_CLIENT = 'Enter a valid email address.';
+ const PASSWORD_REQUIRED = 'Enter your password.';
+ 
+@@ -382,6 +392,10 @@ export class LoginPageComponent implements AfterViewInit {
+           mapped = INACTIVE_ACCOUNT;
+           target = 'password';
+           break;
++        case 'rate_limited':
++          mapped = RATE_LIMITED;
++          target = 'password';
++          break;
+         case 'validation_error': {
+           // backend's field-level messages land in `err.fields`
+           const fields = err.fields ?? {};
+diff --git a/frontend/src/app/services/api-error.ts b/frontend/src/app/services/api-error.ts
+index 1541c1c..8a37304 100644
+--- a/frontend/src/app/services/api-error.ts
++++ b/frontend/src/app/services/api-error.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Typed API error — HD-004 + HD-005 + HD-018 + HD-019.
++ * Typed API error — HD-004 + HD-005 + HD-018 + HD-019 + D4.
+  *
+  * The backend `errorHandler` middleware (HD-003) emits bodies of
+  * shape:
+@@ -20,6 +20,15 @@
+  * "Something went wrong" instead of "Email or password is
+  * incorrect" in production until the fix landed here. Pinned by
+  * the `api-error.spec.ts` regression test.
++ *
++ * D4 added the `rate_limited` member (alphabetical position) +
++ * a 429 arm in `mapStatusToCode`. The backend's login rate
++ * limiter emits `{ error: 'rate_limited', message: 'Too many
++ * attempts. Please wait a moment.' }`; the login page picks it
++ * up in `applyApiError` and renders the same constant under the
++ * password field. The 429 arm in `mapStatusToCode` is the
++ * fallback path (for when the body is missing or malformed);
++ * the normal code path goes through `explicit`.
+  */
+ 
+ import { HttpErrorResponse } from '@angular/common/http';
+@@ -38,6 +47,7 @@ export type ApiErrorCode =
+   | 'unsupported_media_type'
+   | 'storage_missing'
+   | 'storage_failed'
++  | 'rate_limited'
+   | 'internal_server_error'
+   | 'network_error'
+   | 'unknown_error';
+@@ -144,6 +154,7 @@ function mapStatusToCode(status: number): ApiErrorCode {
+   if (status === 401) return 'unauthenticated';
+   if (status === 403) return 'forbidden';
+   if (status === 404) return 'not_found';
++  if (status === 429) return 'rate_limited';
+   if (status === 501) return 'not_implemented';
+   if (status >= 500) return 'internal_server_error';
+   return 'unknown_error';
+diff --git a/package-lock.json b/package-lock.json
+index cad36eb..7f0ade2 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -27,6 +27,7 @@
+         "cors": "^2.8.5",
+         "dotenv": "^16.4.5",
+         "express": "^4.21.1",
++        "express-rate-limit": "^7.5.1",
+         "helmet": "^7.2.0",
+         "jsonwebtoken": "^9.0.2",
+         "morgan": "^1.10.0",
+@@ -8442,6 +8443,21 @@
+         "url": "https://opencollective.com/express"
+       }
+     },
++    "node_modules/express-rate-limit": {
++      "version": "7.5.1",
++      "resolved": "https://registry.npmjs.org/express-rate-limit/-/express-rate-limit-7.5.1.tgz",
++      "integrity": "sha512-7iN8iPMDzOMHPUYllBEsQdWVB6fPDMPqwjBaFrgr4Jgr/+okjvzAy+UHlYYL/Vs0OsOrMkwS6PJDkFlJwoxUnw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 16"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/express-rate-limit"
++      },
++      "peerDependencies": {
++        "express": ">= 4.11"
++      }
++    },
+     "node_modules/express/node_modules/debug": {
+       "version": "2.6.9",
+       "resolved": "https://registry.npmjs.org/debug/-/debug-2.6.9.tgz",
