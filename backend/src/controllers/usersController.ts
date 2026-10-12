@@ -61,6 +61,27 @@ interface AgentSummaryWire {
  * drops the agent list to an Unassigned-only fallback — the meta
  * load never blocks on this endpoint.
  */
+/**
+ * @openapi
+ * /users/agents:
+ *   get:
+ *     summary: List active agents
+ *     description: |
+ *       Returns Support Agents + Admins (active only), sorted by
+ *       displayName ASC. Used by the Ticket Detail page's
+ *       assignee dropdown. No `User` role is included — Users
+ *       can never own a ticket.
+ *     tags: [Users]
+ *     responses:
+ *       200:
+ *         description: Agent list.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AgentListResponse'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
 export const listActiveAgentsHandler = asyncHandler(
   async (_req: Request, res: Response) => {
     const users = await listActiveAgents();
@@ -125,6 +146,27 @@ function serializeUser(u: UserAttributes): UserPublicWire {
  * window-focus refetch (mirrors admin-dashboard) is the only
  * revalidation trigger.
  */
+/**
+ * @openapi
+ * /users:
+ *   get:
+ *     summary: List all users
+ *     description: |
+ *       Full user list (Admin only), sorted by displayName ASC.
+ *       No pagination in MVP (capped at ≤20 users per design doc).
+ *     tags: [Users]
+ *     responses:
+ *       200:
+ *         description: User list.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UserListResponse'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
 export const listAllHandler = asyncHandler(
   async (req: Request, res: Response) => {
     const role = req.user!.role;
@@ -158,6 +200,49 @@ export const listAllHandler = asyncHandler(
  *
  * On success, returns 200 with the updated user wire (single
  * object, not wrapped) so the page can patch its local signal.
+ */
+/**
+ * @openapi
+ * /users/{id}/role:
+ *   put:
+ *     summary: Change a user's role
+ *     description: |
+ *       Admin only. Self-protection: returns 400 if `id` matches
+ *       the caller's own user id (mirrors the UI's self-row
+ *       protection — defense-in-depth).
+ *     tags: [Users]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         description: Target user id.
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateRoleRequest'
+ *     responses:
+ *       200:
+ *         description: Updated user.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Validation error, invalid id, or self-role-change attempt.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationErrorBody'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  */
 export const setRoleHandler = asyncHandler(
   async (req: Request, res: Response) => {
@@ -214,6 +299,50 @@ export const setRoleHandler = asyncHandler(
  *   - 404 if the target user doesn't exist.
  *
  * On success, returns 200 with the updated user wire.
+ */
+/**
+ * @openapi
+ * /users/{id}/status:
+ *   put:
+ *     summary: Toggle a user's active status
+ *     description: |
+ *       Admin only. Self-protection: returns 400 if `id` matches
+ *       the caller's own user id (an Admin cannot deactivate
+ *       themselves). Setting `isActive: false` invalidates the
+ *       target's session on their next `/me` call.
+ *     tags: [Users]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         description: Target user id.
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateStatusRequest'
+ *     responses:
+ *       200:
+ *         description: Updated user.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Validation error or self-deactivation attempt.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationErrorBody'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  */
 export const setActiveHandler = asyncHandler(
   async (req: Request, res: Response) => {

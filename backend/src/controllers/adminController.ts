@@ -96,6 +96,29 @@ function serializeDashboard(
  * `authMiddleware → handler` chain.
  *
  * Response: 200 with the four-bucket summary object.
+ *
+ * @openapi
+ * /admin/dashboard:
+ *   get:
+ *     summary: Admin dashboard summary
+ *     description: |
+ *       Returns a four-bucket summary of every ticket in the
+ *       system, grouped by status. Each bucket carries the first
+ *       14 tickets (the Admin Dashboard UI cap) plus the total
+ *       count so the footer can render "Showing N of M" when
+ *       total > 14. Admin only.
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: Dashboard summary.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/DashboardResponse'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  */
 export const getDashboardHandler = asyncHandler(
   async (req: Request, res: Response) => {

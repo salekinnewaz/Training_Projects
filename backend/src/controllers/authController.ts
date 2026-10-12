@@ -87,6 +87,52 @@ interface AuthUserPayload {
   updatedAt: string;
 }
 
+/**
+ * @openapi
+ * /auth/login:
+ *   post:
+ *     summary: Log in
+ *     description: |
+ *       Validates credentials, sets the `auth` HttpOnly cookie, and
+ *       returns the public user shape. The cookie is the sole
+ *       auth token for every subsequent request.
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoginRequest'
+ *     responses:
+ *       200:
+ *         description: |
+ *           Login successful. `Set-Cookie: auth=...` attached.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/LoginResponse'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         description: Invalid credentials.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorBody'
+ *             example:
+ *               error: invalid_credentials
+ *               message: Email or password is incorrect. Try again.
+ *       403:
+ *         description: Account is inactive.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorBody'
+ *             example:
+ *               error: account_inactive
+ *               message: Your account is inactive. Contact your administrator.
+ */
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = validateLoginBody(
     (req.body ?? {}) as LoginBody,
@@ -143,11 +189,46 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+/**
+ * @openapi
+ * /auth/logout:
+ *   post:
+ *     summary: Log out
+ *     description: |
+ *       Clears the `auth` cookie. Always returns 204, even if no
+ *       cookie was set (idempotent).
+ *     tags: [Auth]
+ *     security: []
+ *     responses:
+ *       204:
+ *         description: Logged out. No body.
+ */
 export const logout = asyncHandler(async (_req: Request, res: Response) => {
   clearAuthCookie(res);
   res.status(204).send();
 });
 
+/**
+ * @openapi
+ * /auth/register:
+ *   post:
+ *     summary: Register (not implemented)
+ *     description: |
+ *       Admin-managed users per HD-014 — this endpoint is intentionally
+ *       unimplemented in MVP. Returns 501.
+ *     tags: [Auth]
+ *     security: []
+ *     responses:
+ *       501:
+ *         description: Not implemented in this build.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorBody'
+ *             example:
+ *               error: not_implemented
+ *               message: Account registration is not available in this build. Contact your administrator.
+ */
 export const register = asyncHandler(async (_req: Request, _res: Response) => {
   // Admin-managed users per HD-014; this endpoint is intentionally
   // unimplemented in MVP.
@@ -158,6 +239,36 @@ export const register = asyncHandler(async (_req: Request, _res: Response) => {
   );
 });
 
+/**
+ * @openapi
+ * /auth/me:
+ *   get:
+ *     summary: Current user
+ *     description: |
+ *       Returns the full public user shape for the JWT'd user.
+ *       Reloads from the database on every call so role / isActive
+ *       changes made by an Admin (HD-014) take effect on the
+ *       user's next request without forcing a re-login.
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Current user payload.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MeResponse'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Account was deactivated since token issuance.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorBody'
+ *             example:
+ *               error: account_inactive
+ *               message: Your account is inactive. Contact your administrator.
+ */
 export const me = asyncHandler(async (req: Request, res: Response) => {
   // authMiddleware attached req.user from the JWT. Reload from DB
   // to detect role / isActive changes since token issuance — this

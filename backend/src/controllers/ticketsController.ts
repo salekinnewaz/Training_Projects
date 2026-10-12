@@ -143,6 +143,26 @@ function parseTicketId(rawId: string): number {
   return parsed;
 }
 
+/**
+ * @openapi
+ * /tickets/mine:
+ *   get:
+ *     summary: List the caller's tickets
+ *     description: |
+ *       Returns every ticket submitted by the JWT'd user, newest
+ *       first. Used by the Employee Dashboard
+ *       (`frontend/src/app/pages/employee-dashboard-page`).
+ *     tags: [Tickets]
+ *     responses:
+ *       200:
+ *         description: Caller's tickets.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/TicketListResponse'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
 export const listMine = asyncHandler(async (req: Request, res: Response) => {
   // authMiddleware ran before us and populated req.user.
   const userId = req.user!.id;
@@ -168,6 +188,27 @@ export const listMine = asyncHandler(async (req: Request, res: Response) => {
  * No filter / search params are honored in HD-012 — the page applies
  * those client-side over the returned set. HD-015 will lift them
  * server-side and add cursor pagination.
+ *
+ * @openapi
+ * /tickets/queue:
+ *   get:
+ *     summary: List every ticket (Support Agent / Admin)
+ *     description: |
+ *       Returns every ticket in the system, newest first. Used by
+ *       the Agent Kanban board (HD-012). Support Agent or Admin
+ *       only; Users get 403.
+ *     tags: [Tickets]
+ *     responses:
+ *       200:
+ *         description: All tickets.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/TicketListResponse'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  */
 export const listForQueueHandler = asyncHandler(
   async (req: Request, res: Response) => {
@@ -202,6 +243,44 @@ export const listForQueueHandler = asyncHandler(
  *      HD-<n>, inserts the row, and returns the eager-loaded
  *      instance.
  *   5. respond 201 with `{ ticket: serializeTicket(...) }`.
+ */
+/**
+ * @openapi
+ * /tickets:
+ *   post:
+ *     summary: Create a ticket
+ *     description: |
+ *       Creates a new ticket on behalf of the JWT'd user. The
+ *       submitter is taken from the JWT, never the body. Only
+ *       `User` role may create — Support Agents and Admins are
+ *       403'd.
+ *     tags: [Tickets]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateTicketRequest'
+ *     responses:
+ *       201:
+ *         description: Ticket created.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/TicketResponse'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Caller is not a `User`.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorBody'
+ *             example:
+ *               error: forbidden
+ *               message: Only the User role may create tickets.
  */
 export const create = asyncHandler(async (req: Request, res: Response) => {
   // Role gate. Per spec, no roleGuard(['User']) on the route — the
@@ -241,6 +320,40 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
  *      other users' ticket IDs by status code. Support Agent /
  *      Admin see any ticket.
  *   5. respond 200 with `{ ticket: serializeTicket(...) }`.
+ *
+ * @openapi
+ * /tickets/{id}:
+ *   get:
+ *     summary: Get a ticket by id
+ *     description: |
+ *       Users see their own tickets only. Support Agents and
+ *       Admins see any ticket. A User probing another user's
+ *       ticket id receives the same 404 as a missing ticket
+ *       (enumeration protection).
+ *     tags: [Tickets]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Ticket.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/TicketResponse'
+ *       400:
+ *         description: Invalid id.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorBody'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  */
 export const getById = asyncHandler(async (req: Request, res: Response) => {
   const parsedId = Number(req.params.id);
@@ -287,6 +400,44 @@ export const getById = asyncHandler(async (req: Request, res: Response) => {
  *
  * On success: 200 `{ ticket }`. On any validation failure: 400
  * `validation_error` with `fields` (HD-008 envelope).
+ *
+ * @openapi
+ * /tickets/{id}:
+ *   patch:
+ *     summary: Update a ticket
+ *     description: |
+ *       Partial update of `status`, `priority`, `category`, or
+ *       `ownerId`. Per-field role + transition rules enforced —
+ *       see controller JSDoc for the matrix. Closed tickets
+ *       cannot transition out of Closed (returns 400).
+ *     tags: [Tickets]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateTicketRequest'
+ *     responses:
+ *       200:
+ *         description: Updated ticket.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/TicketResponse'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  */
 export const patch = asyncHandler(async (req: Request, res: Response) => {
   const ticketId = parseTicketId(req.params.id);
@@ -352,6 +503,46 @@ export const patch = asyncHandler(async (req: Request, res: Response) => {
  * On success: 201 `{ comment }`. The comment's `author`
  * association is eager-loaded by the service so the controller
  * can serialize straight back without a second round-trip.
+ *
+ * @openapi
+ * /tickets/{id}/comments:
+ *   post:
+ *     summary: Add a comment
+ *     description: |
+ *       Adds a comment to a ticket. Closed tickets return 403.
+ *       The comment's `author` is the JWT'd user.
+ *     tags: [Tickets]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AddCommentRequest'
+ *     responses:
+ *       201:
+ *         description: Comment created.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CommentCreateResponse'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Ticket is closed.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorBody'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  */
 export const addCommentHandler = asyncHandler(
   async (req: Request, res: Response) => {
@@ -375,6 +566,30 @@ export const addCommentHandler = asyncHandler(
  *
  * Same enumeration protection as `getById`. Returns 200
  * `{ comments: [...], count }`.
+ *
+ * @openapi
+ * /tickets/{id}/comments:
+ *   get:
+ *     summary: List ticket comments
+ *     description: Returns every comment on the ticket, oldest first.
+ *     tags: [Tickets]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Comment list.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CommentListResponse'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  */
 export const listCommentsHandler = asyncHandler(
   async (req: Request, res: Response) => {
@@ -395,6 +610,30 @@ export const listCommentsHandler = asyncHandler(
  * Same enumeration protection as `getById`. Returns 200
  * `{ activity: [...], count }`. The timeline-entry renderer uses
  * `eventType` + `payload` to derive the per-event description.
+ *
+ * @openapi
+ * /tickets/{id}/activity:
+ *   get:
+ *     summary: List ticket activity
+ *     description: Returns every activity event for the ticket, newest first.
+ *     tags: [Tickets]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Activity list.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ActivityListResponse'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  */
 export const listActivityHandler = asyncHandler(
   async (req: Request, res: Response) => {
@@ -417,6 +656,44 @@ export const listActivityHandler = asyncHandler(
  * when `ticket.status === Resolved`; any other status → 400.
  *
  * On success: 200 `{ ticket }`.
+ *
+ * @openapi
+ * /tickets/{id}/reopen:
+ *   post:
+ *     summary: Reopen a ticket
+ *     description: |
+ *       Submitter-only. Transitions `Resolved` → `Open`. Any
+ *       other current status returns 400.
+ *     tags: [Tickets]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Ticket reopened.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/TicketResponse'
+ *       400:
+ *         description: Ticket is not in Resolved state.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorBody'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Caller is not the submitter.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorBody'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  */
 export const reopen = asyncHandler(async (req: Request, res: Response) => {
   const ticketId = parseTicketId(req.params.id);
@@ -455,6 +732,44 @@ export const reopen = asyncHandler(async (req: Request, res: Response) => {
  * read-only (no edits, no comments, no reopen).
  *
  * On success: 200 `{ ticket }`.
+ *
+ * @openapi
+ * /tickets/{id}/confirm-close:
+ *   post:
+ *     summary: Confirm close
+ *     description: |
+ *       Submitter-only. Transitions `Resolved` → `Closed`. Closed
+ *       is terminal — once here, the ticket is read-only.
+ *     tags: [Tickets]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Ticket closed.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/TicketResponse'
+ *       400:
+ *         description: Ticket is not in Resolved state.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorBody'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Caller is not the submitter.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorBody'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  */
 export const confirmClose = asyncHandler(
   async (req: Request, res: Response) => {
