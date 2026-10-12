@@ -37,12 +37,20 @@
  *   - Direct-arrival from a /login?return_to=%2Ftickets%2Fnew
  *     redirect triggers the sessionStorage restore path.
  *
- * Attachment (HD-008 OQ-1 / choice A): the drop zone ships
- * disabled. The page still owns the field state signal + the
- * 10 MB cap check (the file size lives on the File, read in
- * onFilePicked) so when HD-011 flips the drop zone on, the
- * 10 MB enforcement is already wired. Until then the value is
- * always null and Submit never sees an attachmentId.
+ * Attachment (HD-008 + HD-016):
+ *   - HD-008 ships the field in a disabled state with helper
+ *     text "Attach a file (coming soon)".
+ *   - HD-016 flips the disabled flag to false, updates the
+ *     helper text to the real copy, and wires the upload into
+ *     `onSubmit`. The flow is the two-step design:
+ *       1. If a file is present, POST /api/attachments first.
+ *       2. On 201, capture the returned `id` and pass it as
+ *          `attachmentId` in the subsequent POST /tickets.
+ *     On upload failure (413 / 415 / 5xx), the inline
+ *     `attachmentError` signal renders the message under the
+ *     drop zone and the ticket create is skipped — no orphan
+ *     ticket row is created because we never made the second
+ *     call.
  */
 
 import {
@@ -62,6 +70,7 @@ import {
   CreateTicketPayload,
   TicketService,
 } from '../../services/ticket.service';
+import { AttachmentService } from '../../services/attachment.service';
 import type { TicketCategory, TicketPriority } from '../../models/enums';
 import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
 import { ButtonComponent } from '../../components/atoms/button/button.component';
@@ -206,7 +215,7 @@ const PRIORITY_OPTIONS = [
                 [error]="attachmentError()"
                 (fileSelected)="onFilePicked($event)"
               >
-                <span class="dropzone-helper">Attach a file (coming soon)</span>
+                <span class="dropzone-helper">Drag a file here, or click to browse</span>
               </file-drop>
             </div>
           </form-field>
@@ -297,6 +306,7 @@ const PRIORITY_OPTIONS = [
 })
 export class CreateTicketPageComponent implements OnInit, OnDestroy {
   private readonly ticketService = inject(TicketService);
+  private readonly attachmentService = inject(AttachmentService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
@@ -344,8 +354,10 @@ export class CreateTicketPageComponent implements OnInit, OnDestroy {
   private beforeUnloadHandler: ((event: BeforeUnloadEvent) => void) | null =
     null;
 
-  // OQ-1 lock: drop zone ships disabled. HD-011 will flip this.
-  readonly attachmentDisabled = signal<boolean>(true);
+  // HD-016: drop zone is enabled by default. The `submitting()`
+  // guard in the template keeps the field read-only during the
+  // upload + ticket-create round-trip.
+  readonly attachmentDisabled = signal<boolean>(false);
 
   // ── Template helpers ──────────────────────────────────────────────
   canSubmit(): boolean {
@@ -557,8 +569,34 @@ export class CreateTicketPageComponent implements OnInit, OnDestroy {
     this.submitting.set(true);
     this.serverError.set(null);
 
-    // Per HD-008: attachment uploads are disabled in MVP; the
-    // payload never carries an attachmentId until HD-011 lands.
+    // Two-step flow (HD-016): if a file is attached, POST
+    // /api/attachments first; the returned `id` becomes
+    // `attachmentId` on the ticket create. We keep the file
+    // reference in a local so the signal is read once and
+    // the closure has a stable handle on the value.
+    const file = this.attachment();
+    let attachmentId: number | null = null;
+    if (file) {
+      try {
+        const result = await this.attachmentService.upload(file);
+        attachmentId = result.id;
+      } catch (err) {
+        // Upload failed — surface the error inline under the
+        // drop zone and skip the ticket create. No orphan
+        // ticket is created because we never made the second
+        // call.
+        this.attachmentError.set(
+          err instanceof ApiError
+            ? err.message
+            : "Couldn't upload your file. Please try again.",
+        );
+        this.touched.attachment = true;
+        this.submitting.set(false);
+        document.getElementById('attachment')?.focus();
+        return;
+      }
+    }
+
     const payload: CreateTicketPayload = {
       title: this.title().trim(),
       description: this.description().trim(),
@@ -566,6 +604,9 @@ export class CreateTicketPageComponent implements OnInit, OnDestroy {
     };
     if (this.category() !== '') {
       payload.category = this.category() as TicketCategory;
+    }
+    if (attachmentId !== null) {
+      payload.attachmentId = attachmentId;
     }
 
     try {

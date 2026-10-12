@@ -70,6 +70,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { TicketService } from '../../services/ticket.service';
 import { AuthService } from '../../services/auth.service';
 import { UserService, type AgentSummary } from '../../services/user.service';
+import { AttachmentService } from '../../services/attachment.service';
 import { ApiError } from '../../services/api-error';
 import type { ActivityLog } from '../../models/activity-log';
 import type { Comment } from '../../models/comment';
@@ -240,6 +241,22 @@ const COMMENT_MAX = 5000;
                 <h2 class="section-title">Description</h2>
                 <p class="description-body">{{ t.description }}</p>
               </section>
+
+              @if (t.attachment; as att) {
+                <section class="attachment-card" data-testid="attachment-card">
+                  <h2 class="section-title">Attachment</h2>
+                  <a
+                    class="attachment-row"
+                    [href]="attachmentDownloadUrl(att.id)"
+                    [attr.download]="att.filename"
+                    rel="noopener"
+                    data-testid="attachment-row"
+                  >
+                    <span class="attachment-name">{{ att.filename }}</span>
+                    <span class="attachment-size">{{ formatSize(att.sizeBytes) }}</span>
+                  </a>
+                </section>
+              }
 
               <section class="comments-section" data-testid="comments-section">
                 <h2 class="section-title">Comments ({{ comments().length }})</h2>
@@ -439,7 +456,7 @@ const COMMENT_MAX = 5000;
       width: auto;
       min-width: 140px;
     }
-    .description-card, .comments-section, .activity-section {
+    .description-card, .comments-section, .activity-section, .attachment-card {
       background: var(--color-surface);
       border: 1px solid var(--color-border);
       border-radius: 8px;
@@ -457,6 +474,36 @@ const COMMENT_MAX = 5000;
       white-space: pre-wrap;
       color: var(--color-primary);
       line-height: 1.5;
+    }
+    .attachment-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: var(--color-primary);
+      transition: background-color 0.1s;
+    }
+    .attachment-row:hover {
+      background: var(--color-surface-subtle);
+    }
+    .attachment-row:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+    .attachment-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+    .attachment-size {
+      font-size: 12px;
+      color: var(--color-muted);
+      flex-shrink: 0;
     }
     .empty-marker {
       color: var(--color-muted);
@@ -589,6 +636,7 @@ export class TicketDetailPageComponent implements OnInit {
   private readonly ticketService = inject(TicketService);
   private readonly authService = inject(AuthService);
   private readonly userService = inject(UserService);
+  private readonly attachmentService = inject(AttachmentService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
@@ -989,6 +1037,34 @@ export class TicketDetailPageComponent implements OnInit {
       return formatRelative(then);
     }
     return formatAbsolute(then);
+  }
+
+  /**
+   * HD-016: Absolute URL for `GET /api/attachments/:id`. The
+   * browser streams the file bytes when the user clicks the
+   * download link; the `auth` cookie rides automatically because
+   * the link is same-origin.
+   */
+  attachmentDownloadUrl(id: number): string {
+    return this.attachmentService.downloadUrl(id);
+  }
+
+  /**
+   * HD-016: Format an attachment byte count for the row
+   * (e.g. "1.0 MB", "524 KB"). Mirrors the helper inside
+   * `file-drop.component.ts` — copied here rather than
+   * extracted to a shared util because the rest of the
+   * codebase already follows the per-page-instance pattern
+   * for formatRelative / formatAbsolute.
+   */
+  formatSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
+    const mb = kb / 1024;
+    if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
+    const gb = mb / 1024;
+    return `${gb.toFixed(gb < 10 ? 1 : 0)} GB`;
   }
 
   // ─── Loading ──────────────────────────────────────────────────────

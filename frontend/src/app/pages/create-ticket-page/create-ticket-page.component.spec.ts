@@ -43,6 +43,15 @@ import {
   Router,
   UrlTree,
 } from '@angular/router';
+import {
+  HttpClient,
+  provideHttpClient,
+  withInterceptorsFromDi,
+} from '@angular/common/http';
+import {
+  HttpTestingController,
+  provideHttpClientTesting,
+} from '@angular/common/http/testing';
 import { BehaviorSubject } from 'rxjs';
 
 import { ApiError } from '../../services/api-error';
@@ -51,6 +60,7 @@ import {
   CreateTicketPayload,
   TicketService,
 } from '../../services/ticket.service';
+import { AttachmentService } from '../../services/attachment.service';
 import { CreateTicketPageComponent } from './create-ticket-page.component';
 
 const STORAGE_KEY = 'hd:draft:create-ticket';
@@ -70,6 +80,9 @@ interface PageTouched {
 describe('CreateTicketPageComponent', () => {
   let ticketService: {
     create: jasmine.Spy<(payload: CreateTicketPayload) => Promise<unknown>>;
+  };
+  let attachmentService: {
+    upload: jasmine.Spy<(file: File) => Promise<{ id: number; filename: string; sizeBytes: number; mimetype: string }>>;
   };
   let router: {
     navigateByUrl: jasmine.Spy<(url: string | UrlTree) => Promise<boolean>>;
@@ -93,6 +106,9 @@ describe('CreateTicketPageComponent', () => {
   beforeEach(async () => {
     ticketService = {
       create: jasmine.createSpy('create'),
+    };
+    attachmentService = {
+      upload: jasmine.createSpy('upload'),
     };
     router = {
       navigateByUrl: jasmine.createSpy('navigateByUrl').and.resolveTo(true),
@@ -126,7 +142,13 @@ describe('CreateTicketPageComponent', () => {
       imports: [CreateTicketPageComponent],
       providers: [
         provideRouter([]),
+        // AttachmentService injects HttpClient, so we need to
+        // provide it even though we mock the service itself
+        // (a stub AttachmentService doesn't go through HttpClient).
+        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClientTesting(),
         { provide: TicketService, useValue: ticketService },
+        { provide: AttachmentService, useValue: attachmentService },
         { provide: AuthService, useValue: authService },
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: activatedRoute },
@@ -308,5 +330,99 @@ describe('CreateTicketPageComponent', () => {
 
     expect((event as unknown as { preventDefault: jasmine.Spy }).preventDefault).toHaveBeenCalled();
     expect((event as unknown as { returnValue: string | undefined }).returnValue).toBe('');
+  });
+
+  // ── HD-016 — attachment upload two-step flow ─────────────────────
+
+  it('uploads the attachment first, then creates the ticket with the returned id', async () => {
+    attachmentService.upload.and.resolveTo({
+      id: 47,
+      filename: 'screenshot.png',
+      sizeBytes: 1024,
+      mimetype: 'image/png',
+    });
+    ticketService.create.and.resolveTo({
+      id: 99,
+      number: 'HD-21',
+    });
+
+    const fixture = TestBed.createComponent(CreateTicketPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance as unknown as PageInternals & {
+      attachment: { set: (v: File | null) => void };
+    };
+    component.title.set('VPN drops');
+    component.description.set('every 10 minutes');
+    const file = new File(['hello'], 'screenshot.png', { type: 'image/png' });
+    component.attachment.set(file);
+
+    const event = { preventDefault: jasmine.createSpy('preventDefault') } as unknown as Event;
+    await component.onSubmit(event);
+
+    // upload called with the same file the user picked.
+    expect(attachmentService.upload).toHaveBeenCalledWith(file);
+    // create called with the attachmentId from the upload.
+    expect(ticketService.create).toHaveBeenCalledTimes(1);
+    const payload = ticketService.create.calls.mostRecent().args[0] as CreateTicketPayload;
+    expect(payload.attachmentId).toBe(47);
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/tickets/99/created');
+  });
+
+  it('renders a 413 upload error inline and skips the ticket create', async () => {
+    attachmentService.upload.and.rejectWith(
+      new ApiError(413, 'file_too_large', 'File is larger than 10 MB. Pick a smaller file.'),
+    );
+
+    const fixture = TestBed.createComponent(CreateTicketPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance as unknown as PageInternals & {
+      attachment: { set: (v: File | null) => void };
+    };
+    component.title.set('VPN drops');
+    component.description.set('every 10 minutes');
+    component.attachment.set(
+      new File(['x'], 'huge.bin', { type: 'application/zip' }),
+    );
+
+    const event = { preventDefault: jasmine.createSpy('preventDefault') } as unknown as Event;
+    await component.onSubmit(event);
+
+    expect(attachmentService.upload).toHaveBeenCalled();
+    expect(ticketService.create).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.attachmentError()).toBe(
+      'File is larger than 10 MB. Pick a smaller file.',
+    );
+    expect(fixture.componentInstance.submitting()).toBeFalse();
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
+  });
+
+  it('does not call upload when no attachment is set (existing behavior preserved)', async () => {
+    ticketService.create.and.resolveTo({
+      id: 99,
+      number: 'HD-21',
+    });
+
+    const fixture = TestBed.createComponent(CreateTicketPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance as unknown as PageInternals;
+    component.title.set('VPN drops');
+    component.description.set('every 10 minutes');
+    // attachment() stays null — no file picked.
+
+    const event = { preventDefault: jasmine.createSpy('preventDefault') } as unknown as Event;
+    await component.onSubmit(event);
+
+    expect(attachmentService.upload).not.toHaveBeenCalled();
+    expect(ticketService.create).toHaveBeenCalledTimes(1);
+    const payload = ticketService.create.calls.mostRecent().args[0] as CreateTicketPayload;
+    // No attachmentId in the payload when nothing was picked.
+    expect(payload.attachmentId).toBeUndefined();
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/tickets/99/created');
   });
 });

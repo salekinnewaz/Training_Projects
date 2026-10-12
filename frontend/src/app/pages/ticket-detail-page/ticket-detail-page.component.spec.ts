@@ -51,11 +51,13 @@ import { TicketDetailPageComponent } from './ticket-detail-page.component';
 import { TicketService } from '../../services/ticket.service';
 import { AuthService } from '../../services/auth.service';
 import { UserService, type AgentSummary } from '../../services/user.service';
+import { AttachmentService } from '../../services/attachment.service';
 import { ApiError } from '../../services/api-error';
 import type { Ticket } from '../../models/ticket';
 import type { Comment } from '../../models/comment';
 import type { ActivityLog } from '../../models/activity-log';
 import type { UserPublic } from '../../models/user';
+import type { Attachment } from '../../models/attachment';
 
 function makeUser(overrides: Partial<UserPublic> = {}): UserPublic {
   return {
@@ -118,6 +120,19 @@ function makeAgent(overrides: Partial<AgentSummary> = {}): AgentSummary {
     id: 11,
     displayName: 'Sam',
     role: 'Support Agent',
+    ...overrides,
+  };
+}
+
+function makeAttachment(overrides: Partial<Attachment> = {}): Attachment {
+  return {
+    id: 47,
+    filename: 'screenshot.png',
+    sizeBytes: 1024 * 1024,
+    mimetype: 'image/png',
+    storagePath: '47-screenshot.png',
+    uploadedBy: makeUser({ id: 7, displayName: 'Eli' }),
+    createdAt: '2026-01-15T10:30:00.000Z',
     ...overrides,
   };
 }
@@ -192,6 +207,14 @@ function configureTestbed(opts: {
     ),
   };
 
+  // HD-016: stubbed AttachmentService. The page only calls
+  // downloadUrl() (a pure function), so the stub just needs to
+  // match the real one's shape.
+  const attachmentService = {
+    downloadUrl: (id: number) => `http://test/api/attachments/${id}`,
+    upload: jasmine.createSpy('upload'),
+  };
+
   TestBed.configureTestingModule({
     imports: [TicketDetailPageComponent],
     providers: [
@@ -217,6 +240,7 @@ function configureTestbed(opts: {
         },
       },
       { provide: UserService, useValue: userService },
+      { provide: AttachmentService, useValue: attachmentService },
       { provide: Router, useValue: router },
     ],
   })
@@ -1025,5 +1049,57 @@ describe('TicketDetailPageComponent (HD-010)', () => {
     );
     expect(inline).toBeNull();
     expect(fixture.componentInstance.commentSubmitError()).toBeNull();
+  });
+
+  // ── HD-016 — attachment row on the ticket header ────────────────
+
+  it('does not render the attachment row when the ticket has no attachment', async () => {
+    configureTestbed({
+      user: makeUser({ id: 7, role: 'User' }),
+      ticket: makeTicket({ attachment: null }),
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const row = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="attachment-card"]',
+    );
+    expect(row).toBeNull();
+    const link = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="attachment-row"]',
+    );
+    expect(link).toBeNull();
+  });
+
+  it('renders the attachment row with filename + size + download link', async () => {
+    configureTestbed({
+      user: makeUser({ id: 7, role: 'User' }),
+      ticket: makeTicket({
+        attachment: makeAttachment({
+          id: 47,
+          filename: 'screenshot.png',
+          sizeBytes: 1024 * 1024,
+        }),
+      }),
+    });
+
+    const fixture = TestBed.createComponent(TicketDetailPageComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const link = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="attachment-row"]',
+    ) as HTMLAnchorElement;
+    expect(link).not.toBeNull();
+    expect(link.textContent).toContain('screenshot.png');
+    // 1 MB → "1.0 MB" via the formatSize helper.
+    expect(link.textContent).toContain('1.0 MB');
+    // The href is the absolute URL handed to us by
+    // attachmentService.downloadUrl, which the stub returns
+    // as `http://test/api/attachments/<id>`.
+    expect(link.getAttribute('href')).toBe('http://test/api/attachments/47');
+    expect(link.getAttribute('download')).toBe('screenshot.png');
   });
 });
