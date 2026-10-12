@@ -205,9 +205,13 @@ describe('HeaderChromeComponent', () => {
 
     // The dialog's children (scrim + modal + buttons) are portaled to
     // document.body. Query directly against body for the primary
-    // (confirm) action button.
+    // (confirm) action button. D7 swapped dialog-modal's hand-rolled
+    // `.btn-primary` style for `<atom-button variant="primary">`,
+    // which renders as an inner `<button class="primary md">` (the
+    // atom's host is `display: contents`). Select on the action-row
+    // scope + the atom's `primary` class.
     const confirmBtn = document.body.querySelector(
-      '.btn-primary',
+      '.modal-actions button.primary',
     ) as HTMLButtonElement;
     expect(confirmBtn).not.toBeNull();
     confirmBtn.click();
@@ -241,7 +245,7 @@ describe('HeaderChromeComponent', () => {
     fixture.detectChanges();
 
     const confirmBtn = document.body.querySelector(
-      '.btn-primary',
+      '.modal-actions button.primary',
     ) as HTMLButtonElement;
     expect(confirmBtn).not.toBeNull();
     confirmBtn.click();

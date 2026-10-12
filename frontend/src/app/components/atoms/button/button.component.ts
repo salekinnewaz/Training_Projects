@@ -31,9 +31,11 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   EventEmitter,
   Output,
   input,
+  viewChild,
 } from '@angular/core';
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger';
@@ -45,6 +47,7 @@ type ButtonSize = 'md' | 'lg';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <button
+      #innerBtn
       [type]="type()"
       [disabled]="disabled() || loading()"
       [attr.aria-busy]="loading() ? 'true' : null"
@@ -147,8 +150,32 @@ export class ButtonComponent {
    */
   @Output() readonly pressed = new EventEmitter<MouseEvent>();
 
+  /**
+   * Inner `<button>` ref. D7 added this so consumers (initially
+   * `<dialog-modal>`) can drive `focus()` from outside the atom
+   * — the spec-level UX rule "initial focus lands on the confirm
+   * button" needs the native `HTMLButtonElement.focus()` call,
+   * and the atom owns the inner element. Idempotent: no-op
+   * before the view is rendered or after the button is removed.
+   */
+  private readonly innerBtnRef = viewChild<ElementRef<HTMLButtonElement>>('innerBtn');
+
   onClick(event: MouseEvent): void {
     this.pressed.emit(event);
+  }
+
+  /**
+   * Move keyboard focus to the inner button. No-op if the atom
+   * isn't yet rendered or the button is disabled (a focused
+   * disabled element would re-broadcast the disabled cursor to
+   * assistive tech). Mirrors the auto-focus pattern
+   * `dialog-modal` used pre-D7 via `#confirmBtn.nativeElement.focus()`.
+   */
+  focus(): void {
+    const el = this.innerBtnRef()?.nativeElement;
+    if (el && !el.disabled) {
+      el.focus();
+    }
   }
 
   /**

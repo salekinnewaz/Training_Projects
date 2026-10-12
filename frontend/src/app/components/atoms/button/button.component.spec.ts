@@ -1,13 +1,17 @@
 /**
- * button — atom smoke spec (HD-005/HD-007).
+ * button — atom smoke spec (HD-005/HD-007 + D7).
  *
- * Three narrow assertions on the ButtonComponent:
+ * Narrow assertions on the ButtonComponent:
  *   (a) clicking the rendered <button> causes pressed.emit to fire
  *       with a MouseEvent payload (host clicks bubble up via the
  *       atom-button's native button element)
  *   (b) the `size` input signal defaults to 'md'
  *   (c) setting [size]="'lg'" results in the rendered <button>
  *       carrying the `lg` class
+ *   (d) D7: focus() moves keyboard focus to the inner button
+ *   (e) D7: focus() is a no-op when the button is disabled (a
+ *       focused disabled element would re-broadcast the disabled
+ *       cursor to assistive tech)
  */
 
 import { TestBed } from '@angular/core/testing';
@@ -51,5 +55,31 @@ describe('ButtonComponent', () => {
 
     const btn = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
     expect(btn.classList.contains('lg')).toBeTrue();
+  });
+
+  it('D7: focus() moves keyboard focus to the inner button', () => {
+    const fixture = TestBed.createComponent(ButtonComponent);
+    fixture.detectChanges();
+
+    const btn = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    expect(document.activeElement).not.toBe(btn);
+
+    fixture.componentInstance.focus();
+    expect(document.activeElement).toBe(btn);
+  });
+
+  it('D7: focus() is a no-op when the button is disabled', () => {
+    const fixture = TestBed.createComponent(ButtonComponent);
+    fixture.componentRef.setInput('disabled', true);
+    fixture.detectChanges();
+
+    const btn = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    expect(btn.disabled).toBeTrue();
+
+    // focus() should not move focus to a disabled element
+    // (a focused disabled element re-broadcasts the disabled
+    // cursor to assistive tech).
+    fixture.componentInstance.focus();
+    expect(document.activeElement).not.toBe(btn);
   });
 });
