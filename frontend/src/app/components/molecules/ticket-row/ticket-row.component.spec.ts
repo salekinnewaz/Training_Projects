@@ -74,7 +74,7 @@ describe('TicketRowComponent', () => {
     expect(root.querySelector('.number')?.textContent?.trim()).toBe('HD-47');
     expect(root.querySelector('.title')?.textContent?.trim()).toBe('WiFi drops');
 
-    const statusBadge = root.querySelector('.status .badge') as HTMLElement;
+    const statusBadge = root.querySelector('.status .status-dot') as HTMLElement;
     expect(statusBadge.textContent?.trim()).toBe('Open');
 
     const priorityBadge = root.querySelector('.priority .badge') as HTMLElement;
