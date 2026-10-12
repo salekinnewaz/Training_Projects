@@ -1,0 +1,924 @@
+diff --git a/_bmad-output/hd017.diff b/_bmad-output/hd017.diff
+new file mode 100644
+index 0000000..a0d6801
+--- /dev/null
++++ b/_bmad-output/hd017.diff
+@@ -0,0 +1,34 @@
++usage: git diff [<options>] [<commit>] [--] [<path>...]
++   or: git diff [<options>] --cached [--merge-base] [<commit>] [--] [<path>...]
++   or: git diff [<options>] [--merge-base] <commit> [<commit>...] <commit> [--] [<path>...]
++   or: git diff [<options>] <commit>...<commit> [--] [<path>...]
++   or: git diff [<options>] <blob> <blob>
++   or: git diff [<options>] --no-index [--] <path> <path>
++
++common diff options:
++  -z            output diff-raw with lines terminated with NUL.
++  -p            output patch format.
++  -u            synonym for -p.
++  --patch-with-raw
++                output both a patch and the diff-raw format.
++  --stat        show diffstat instead of patch.
++  --numstat     show numeric diffstat instead of patch.
++  --patch-with-stat
++                output a patch and prepend its diffstat.
++  --name-only   show only names of changed files.
++  --name-status show names and status of changed files.
++  --full-index  show full object name on index lines.
++  --abbrev=<n>  abbreviate object names in diff-tree header and diff-raw.
++  -R            swap input file pairs.
++  -B            detect complete rewrites.
++  -M            detect renames.
++  -C            detect copies.
++  --find-copies-harder
++                try unchanged files as candidate for copy detection.
++  -l<n>         limit rename attempts up to <n> paths.
++  -O<file>      reorder diffs according to the <file>.
++  -S<string>    find filepair whose only one side contains the string.
++  --pickaxe-all
++                show all files diff when -S is used and hit is found.
++  -a  --text    treat all files as text.
++
+diff --git a/_bmad-output/implementation-artifacts/spec-hd-017-comments-write-path.md b/_bmad-output/implementation-artifacts/spec-hd-017-comments-write-path.md
+new file mode 100644
+index 0000000..4a814b2
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/spec-hd-017-comments-write-path.md
+@@ -0,0 +1,293 @@
++---
++title: 'HD-017 — Comments write path (close the activity-refresh gap)'
++---
++
++# HD-017 — Comments write path (close the activity-refresh gap)
++
++## Intent
++
++HD-010 shipped `POST /api/tickets/:id/comments` end-to-end: the
++backend writes the comment + the `CommentAdded` ActivityLog row
++in the same transaction, and the frontend appends the returned
++comment to the local signal so the user sees it immediately in
++the thread.
++
++The one gap that HD-010 deferred: the **activity timeline** at
++the bottom of the page is loaded once on init and never
++refetched. After a user submits a comment, the timeline keeps
++showing the stale `Created` / `StatusChanged` rows without the
++new `CommentAdded` entry. The thread updates; the timeline
++does not. The only way to see the new timeline entry is to
++reload the page.
++
++HD-017 closes that gap with a targeted, low-risk change: after
++a successful `addComment`, refetch the activity timeline and
++replace the local signal with the fresh payload. The refetch
++failure is non-blocking — the comment is already created, the
++thread already shows it; a stale timeline is a tolerable
++degraded state and the user can reload to recover.
++
++The other write paths (`patch`, `reopen`, `confirmClose`) are
++**not** refetched. They were intentionally excluded in HD-010
++per the "no realtime updates" spec rule, and HD-017 is scoped
++to the one writer that produces a new conversation entry the
++user would expect to see appear immediately (the timeline is
++the primary affordance for "I just said something — is it
++recorded?").
++
++The backend was already complete; the work for HD-017 is
++entirely frontend.
++
++## Boundaries
++
++### In scope
++
++- 1 frontend component edit
++  (`ticket-detail-page.component.ts`): ~10 lines in
++  `onSendComment` to chain a `listActivity` call after
++  `addComment` resolves, plus a header comment update.
++- 1 frontend component spec extension
++  (`ticket-detail-page.component.spec.ts`): 2 new tests for
++  the refetch happy-path and the non-blocking-failure path.
++- 1 backend spec extension
++  (`ticketValidation.spec.ts`): 11 new tests for
++  `validateAddCommentBody` (closes the unit-test gap that
++  HD-010 left).
++- 1 new frontend service spec
++  (`ticket.service.spec.ts`): 9 new tests pinning the
++  `addComment` / `listComments` / `listActivity` / `getById`
++  wire contract.
++
++### Out of scope
++
++- No realtime / push / SSE / WebSocket updates (still
++  out-of-MVP per the HD-010 spec).
++- No optimistic-update strategy for the activity timeline
++  (we trust the backend's refetch; the round-trip is <100 ms
++  in dev).
++- No refetch on `patch` / `reopen` / `confirmClose`. Those
++  stay as-is — the local `ticket` signal already updates from
++  the response, and the activity row the backend writes
++  in-tx is acceptable to lag until the next page load.
++- No backend changes (the `POST /tickets/:id/comments` endpoint
++  and the in-tx ActivityLog write are already correct).
++- No backend integration test for the controller endpoint
++  (HD-010's coverage is unchanged; the gap is in the
++  *frontend* activity-refresh contract, not the API).
++- No `multer`/storage / attachment-anything — HD-016 owns
++  that domain.
++
++## I/O matrix
++
++| User action | System response |
++|---|---|
++| Submit a comment on a ticket | Comment appears in the thread (unchanged). Activity timeline is refetched; the new `CommentAdded` row appears in the timeline within ~100 ms. |
++| Submit a comment + the activity refetch 5xx's | Comment is in the thread. Timeline keeps the pre-submit rows. No inline error, no top-of-page toast — the failure is swallowed. |
++| Submit a comment that fails (400/403/404/401) | No refetch fires (refetch is gated on addComment success). The existing inline composer error renders. |
++| Patch status / priority / category / owner | No activity refetch (unchanged from HD-010). |
++| Reopen / Confirm-and-close | No activity refetch (unchanged from HD-010). |
++| Initial page load | Ticket + comments + activity are loaded in parallel (unchanged from HD-010). |
++
++## Test plan
++
++### Unit (Jasmine) — frontend
++
++`frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts`
++gains 2 new tests:
++
++- **HD-017: refetches the activity timeline after a successful
++  addComment** — set initial `activity` to a one-row array,
++  re-stub `listActivity` to return a different two-row array
++  on the second call, fire `onSendComment` with a non-empty
++  composer, and assert (a) `addComment` was called, (b)
++  `listActivity` was called twice (init + refetch), (c) the
++  `activity()` signal now equals the refreshed payload.
++- **HD-017: the post-addComment activity refetch failure is
++  non-blocking** — re-stub `listActivity` so the second call
++  rejects with a 503. After `onSendComment` resolves, assert
++  (a) the new comment is in the local `comments()` signal,
++  (b) `activity()` is still the init payload (not replaced),
++  (c) `composerError()` and `commentSubmitError()` are both
++  null (no user-facing error).
++
++`frontend/src/app/services/ticket.service.spec.ts` (new file)
++covers the four most-trafficked methods on `TicketService` so
++the spec doubles as working wire documentation:
++
++- `addComment`: POST `/api/tickets/:id/comments` with
++  `{ body }`, unwraps `{ comment }` on 201. Throws
++  `ApiError(400, validation_error)` with `fields.body` on a
++  validation error (the same shape the page renders into
++  `composerError`). Throws `ApiError(403, forbidden)` on
++  Closed, `ApiError(404, not_found)` on missing tickets,
++  `ApiError(401, unauthenticated)` on session expiry.
++- `listComments`: GET `/api/tickets/:id/comments`, unwraps
++  `{ comments, count }`.
++- `listActivity`: GET `/api/tickets/:id/activity`, unwraps
++  `{ activity, count }`. Empty payload returns `[]`.
++- `getById`: GET `/api/tickets/:id`, unwraps `{ ticket }`.
++
++The spec uses `provideHttpClient(withInterceptorsFromDi()) +
++provideHttpClientTesting` (not the functional `authInterceptor`)
++to test the service in isolation, matching the pattern in
++`user.service.spec.ts` (HD-014). The interceptor's
++HttpErrorResponse → ApiError conversion is exercised in
++`login-page.component.spec.ts` and the ticket-detail page
++spec, so the double-wrap is still end-to-end covered.
++
++### Unit (Jest) — backend
++
++`backend/src/utils/validation/ticketValidation.spec.ts` gains a
++second `describe` block (`validateAddCommentBody`) with 11
++tests, closing the unit-test gap that HD-010 left:
++
++- Happy path returns `{ body: <trimmed> }` (trimmed
++  leading / trailing whitespace).
++- Rejects a non-object body (array / null) with
++  `fields._body = "Request body must be a JSON object."`.
++- Rejects a missing / non-string / empty / whitespace-only
++  `body` with `fields.body = "Comment body is required."`.
++- Rejects a body over 5000 chars with
++  `fields.body = "Comment is limited to 5000 characters."`.
++- Accepts a body at exactly 5000 chars (boundary).
++- Rejects an unknown extra key with
++  `fields._body = "Unknown field \"<name>\". Allowed: body."`.
++
++### Manual browser smoke
++
++- Log in as a Support Agent, open any ticket, submit a comment.
++  The comment appears in the thread AND the new
++  `CommentAdded` row appears in the activity timeline below,
++  within ~100 ms.
++- Stop the backend mid-session, submit a comment. The thread
++  update succeeds (HTTP 201); the timeline refetch 5xx's. The
++  page still shows the comment, the timeline keeps its old
++  rows, no error toast or inline error appears. Reload the
++  page to recover the timeline.
++- Submit a 5001-char comment. The composer shows the inline
++  error "Comment is limited to 5000 characters." and the
++  activity is NOT refetched (the request never fires because
++  validation fails client-side — or 400s server-side and the
++  page's error path runs without a follow-up refetch).
++
++## Files
++
++**New:**
++- `frontend/src/app/services/ticket.service.spec.ts`
++- `_bmad-output/implementation-artifacts/spec-hd-017-comments-write-path.md`
++  (this file)
++- `_bmad-output/hd017.diff`
++
++**Modified:**
++- `frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts`
++  (chain `listActivity` after `addComment` in `onSendComment`,
++  update the file header comment)
++- `frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts`
++  (add 2 HD-017 tests; update file header)
++- `backend/src/utils/validation/ticketValidation.spec.ts`
++  (add 11 tests in a new `validateAddCommentBody` describe)
++
++## Implementation order
++
++1. Extend `ticketValidation.spec.ts` with the
++   `validateAddCommentBody` describe block. Run
++   `cd backend && npm test` — confirm 30/30 pass.
++2. Write `ticket.service.spec.ts`. Run
++   `cd frontend && npx ng test --watch=false
++   --browsers=ChromeHeadlessNoSandbox
++   --include='src/app/services/ticket.service.spec.ts'` —
++   confirm 9/9 pass.
++3. Edit `ticket-detail-page.component.ts`: chain
++   `listActivity` after `addComment` in `onSendComment`,
++   update the header comment.
++4. Extend `ticket-detail-page.component.spec.ts` with 2 new
++   tests. Run the same spec in isolation — 33/33 pass.
++5. Run the full frontend suite — 316/322 (was 304/311 in the
++   D10 baseline; +11 net tests, 0 new failures, 0 new
++   baseline failures).
++6. `cd frontend && npx ng build --configuration=development`
++   — exits 0.
++7. Generate `hd017.diff` against the D10 baseline
++   (`git diff e712a59..HEAD`).
++8. Two-commit pattern:
++   - `feat(HD-017): refetch activity after addComment + spec coverage`
++   - `docs: HD-017 implementation diff snapshot`
++9. Push to `origin/main`.
++
++## Verification
++
++1. `cd backend && npm test` — **30/30 pass** (was 19, +11
++   new `validateAddCommentBody` tests).
++2. `cd backend && npm run typecheck` — exits 0.
++3. `cd frontend && npx ng test --watch=false
++   --browsers=ChromeHeadlessNoSandbox` — **316/322 pass**
++   (was 304/311 in the D10 baseline; +9 new ticket.service
++   tests + 2 new ticket-detail tests = +11; same 6
++   pre-existing baseline failures; same 1 Jasmine afterAll
++   global error). Final result: 316/322.
++4. `cd frontend && npx ng build --configuration=development`
++   — exits 0.
++5. Manual browser smoke per the I/O matrix.
++
++## Reuse (no new patterns)
++
++- **In-component Promise chain** for the refetch — the same
++  pattern `load()` uses for the initial parallel
++  `Promise.all`. No new service, no new event, no new
++  observable.
++- **`apiErrorFrom`-style swallow** for the refetch failure
++  is identical to how the page swallows `listAgents`
++  failures (graceful degradation in `load()`). Same shape
++  (try / catch / no-op), different reason.
++- **Service spec pattern** mirrors `user.service.spec.ts`
++  (HD-014): `provideHttpClient(withInterceptorsFromDi())` +
++  `provideHttpClientTesting` + `HttpTestingController` for
++  URL / method / body / response-unwrap coverage. The
++  `authInterceptor` has its own coverage in the page specs.
++- **Header comment delta** in
++  `ticket-detail-page.component.ts` follows the file's
++  existing convention (top-of-file doc-comment, plain
++  English, "HD-XXX" stamps).
++
++## Notes for the implementer
++
++- **Why not refetch on every mutation?** The activity
++  timeline is the primary affordance for "I just contributed
++  to the conversation" — that's the comment use case. The
++  status / priority / category / owner / reopen / close
++  mutations are *actions on the ticket itself*, not
++  conversation. The user can see the result of those
++  mutations in the meta grid (status / priority / category
++  / owner) or the read-only banner (Closed) immediately;
++  the timeline entry is informational and tolerable to lag.
++- **Why fire-and-forget the refetch (no `await` in the
++  caller's `try` block)?** The comment was already
++  successfully created; the thread signal was already
++  updated; the composer was already cleared. The refetch
++  is a UX nicety, not a correctness requirement. We don't
++  want a slow refetch to delay the user typing their next
++  comment. Inside `onSendComment` the refetch is awaited
++  (so the function returns after the timeline settles) but
++  the *try block surrounding it* is its own — so a failure
++  there can't take down the success path.
++- **`postingComment` lifecycle** — set to `true` at the
++  top of `onSendComment`, cleared in the outer `finally`.
++  The inner refetch reuses the same loading flag so the
++  Send button stays disabled for the full
++  `addComment + listActivity` round-trip. Total worst-case
++  is ~200 ms (sequential 50 ms each on localhost).
++- **Backend test gap** — HD-010 shipped the controller + the
++  ActivityLog write without an end-to-end test for the
++  comment write path. The unit-test gap on
++  `validateAddCommentBody` is closed here. The bigger gap
++  (an integration test for "POST /comments creates a
++  Comment + an ActivityLog in the same tx") is still
++  deferred — the repo has no in-memory DB, so the test
++  pattern would have to be set up first. Filed as D9 in
++  deferred-work.md (still open).
++- **Ticket wire shape** — unchanged. The existing
++  `ActivityLog` type already includes the
++  `CommentAdded` discriminator, and the timeline-entry
++  molecule already renders it (HD-011). The refetched
++  payload flows through the existing render path
++  untouched.
+diff --git a/backend/src/utils/validation/ticketValidation.spec.ts b/backend/src/utils/validation/ticketValidation.spec.ts
+index 4c636b9..c93e7d4 100644
+--- a/backend/src/utils/validation/ticketValidation.spec.ts
++++ b/backend/src/utils/validation/ticketValidation.spec.ts
+@@ -15,6 +15,7 @@
+ import { HttpError } from '../errors';
+ import {
+   validateCreateTicketBody,
++  validateAddCommentBody,
+   type CreateTicketInput,
+ } from './ticketValidation';
+ 
+@@ -301,3 +302,112 @@ describe('validateCreateTicketBody', () => {
+     );
+   });
+ });
++
++/**
++ * HD-017 — validateAddCommentBody unit spec.
++ *
++ * The comment write path was already shipped (HD-010), but the
++ * validator had no pinning spec. This closes the gap so the
++ * 1..5000 char cap and the unknown-key / non-string /
++ * whitespace-only rejection paths can't regress silently.
++ */
++describe('validateAddCommentBody', () => {
++  it('returns a normalized input on the happy path', () => {
++    const result = validateAddCommentBody({ body: 'Restarting the laptop now' });
++    expect(result).toEqual({ body: 'Restarting the laptop now' });
++  });
++
++  it('trims leading / trailing whitespace from the returned body', () => {
++    const result = validateAddCommentBody({ body: '  hello world  ' });
++    expect(result).toEqual({ body: 'hello world' });
++  });
++
++  it('rejects a non-object body (array) with fields._body = "Request body must be a JSON object."', () => {
++    expectHttpError(
++      () => validateAddCommentBody([]),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?._body === 'Request body must be a JSON object.',
++    );
++  });
++
++  it('rejects a null body with fields._body = "Request body must be a JSON object."', () => {
++    expectHttpError(
++      () => validateAddCommentBody(null),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?._body === 'Request body must be a JSON object.',
++    );
++  });
++
++  it('rejects a missing body key with fields.body = "Comment body is required."', () => {
++    expectHttpError(
++      () => validateAddCommentBody({}),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.body === 'Comment body is required.',
++    );
++  });
++
++  it('rejects a non-string body with fields.body = "Comment body is required."', () => {
++    expectHttpError(
++      () => validateAddCommentBody({ body: 42 }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.body === 'Comment body is required.',
++    );
++  });
++
++  it('rejects an empty body with fields.body = "Comment body is required."', () => {
++    expectHttpError(
++      () => validateAddCommentBody({ body: '' }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.body === 'Comment body is required.',
++    );
++  });
++
++  it('rejects a whitespace-only body with fields.body = "Comment body is required."', () => {
++    expectHttpError(
++      () => validateAddCommentBody({ body: '     ' }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.body === 'Comment body is required.',
++    );
++  });
++
++  it('rejects a body over 5000 chars with the long-comment message', () => {
++    const long = 'a'.repeat(5001);
++    expectHttpError(
++      () => validateAddCommentBody({ body: long }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.body === 'Comment is limited to 5000 characters.',
++    );
++  });
++
++  it('accepts a body at the 5000-char boundary (trimmed length is not what is checked)', () => {
++    // The cap is on the raw (untrimmed) input length — 5000 chars
++    // of 'a' is exactly at the boundary and should pass.
++    const at = 'a'.repeat(5000);
++    const result = validateAddCommentBody({ body: at });
++    expect(result.body.length).toBe(5000);
++  });
++
++  it('rejects an unknown extra key with fields._body = "Unknown field ..."', () => {
++    expectHttpError(
++      () => validateAddCommentBody({ body: 'hello', ticketId: 42 }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?._body === 'Unknown field "ticketId". Allowed: body.',
++    );
++  });
++});
+diff --git a/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts b/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts
+index 6ffadad..5f632fc 100644
+--- a/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts
++++ b/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.spec.ts
+@@ -1,7 +1,7 @@
+ /**
+  * TicketDetailPageComponent — HD-010 spec.
+  *
+- * 19 tests (the spec calls for 8-9; we cover the major branches
++ * 21 tests (the spec calls for 8-9; we cover the major branches
+  * plus the step-04 review patches for onPriorityChange /
+  * onAssigneeChange / onSelfAssign / onCategoryChange direct-call
+  * coverage and the composerError toast render):
+@@ -24,6 +24,11 @@
+  *  17. onCategoryChange patches + signal updates (patch B)
+  *  18. onAssigneeChange patches + signal updates (patch C4)
+  *  19. onSelfAssign click invokes patch with current user id (patch C4)
++ *  20. (HD-011) comment-time formats
++ *  21. (HD-011) composer key bindings + error states
++ *  22. (HD-016) attachment row render
++ *  23. (HD-017) refetches activity after a successful addComment
++ *  24. (HD-017) post-addComment activity refetch failure is non-blocking
+  *
+  * `TicketService`, `AuthService`, `UserService`, and the Angular
+  * `Router` are mocked at the class level so the page can be exercised
+@@ -1102,4 +1107,104 @@ describe('TicketDetailPageComponent (HD-010)', () => {
+     expect(link.getAttribute('href')).toBe('http://test/api/attachments/47');
+     expect(link.getAttribute('download')).toBe('screenshot.png');
+   });
++
++  // ─── HD-017 — selective activity refetch after addComment ────────
++
++  it('HD-017: refetches the activity timeline after a successful addComment', async () => {
++    // Initial activity (loaded in ngOnInit).
++    const initialActivity = [
++      makeActivity({ id: 1, eventType: 'Created' }),
++    ];
++    // Activity returned by the post-addComment refetch — includes
++    // the new "CommentAdded" entry the backend wrote in-tx.
++    const refreshedActivity = [
++      makeActivity({ id: 2, eventType: 'CommentAdded' }),
++      makeActivity({ id: 1, eventType: 'Created' }),
++    ];
++
++    const { ticketService } = configureTestbed({
++      user: makeUser({
++        id: 11,
++        displayName: 'Sam',
++        role: 'Support Agent',
++        email: 'sam@example.com',
++      }),
++      ticket: makeTicket({ status: 'Open' }),
++      comments: [],
++      activity: initialActivity,
++      agents: [],
++    });
++    // The first listActivity call is the init load; the second
++    // is the post-addComment refetch. Return different payloads.
++    let listActivityCalls = 0;
++    ticketService.listActivity.and.callFake(() => {
++      listActivityCalls += 1;
++      return Promise.resolve(
++        listActivityCalls === 1 ? initialActivity : refreshedActivity,
++      );
++    });
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++    expect(listActivityCalls).toBe(1);
++    expect(fixture.componentInstance.activity()).toEqual(initialActivity);
++
++    fixture.componentInstance.composerValue.set('hello');
++    await fixture.componentInstance.onSendComment();
++
++    // addComment + the post-success refetch.
++    expect(ticketService.addComment).toHaveBeenCalledWith(47, 'hello');
++    expect(listActivityCalls).toBe(2);
++    expect(ticketService.listActivity).toHaveBeenCalledWith(47);
++    // The activity signal must be replaced with the refreshed payload.
++    expect(fixture.componentInstance.activity()).toEqual(refreshedActivity);
++  });
++
++  it('HD-017: the post-addComment activity refetch failure is non-blocking', async () => {
++    const initialActivity = [
++      makeActivity({ id: 1, eventType: 'Created' }),
++    ];
++
++    const { ticketService } = configureTestbed({
++      user: makeUser({
++        id: 11,
++        displayName: 'Sam',
++        role: 'Support Agent',
++        email: 'sam@example.com',
++      }),
++      ticket: makeTicket({ status: 'Open' }),
++      comments: [],
++      activity: initialActivity,
++      agents: [],
++    });
++    // First listActivity call (init) resolves; second (refetch)
++    // rejects — the page must not surface this to the user.
++    let listActivityCalls = 0;
++    ticketService.listActivity.and.callFake(() => {
++      listActivityCalls += 1;
++      if (listActivityCalls === 1) {
++        return Promise.resolve(initialActivity);
++      }
++      return Promise.reject(
++        new ApiError(503, 'internal_server_error', 'activity feed down'),
++      );
++    });
++
++    const fixture = TestBed.createComponent(TicketDetailPageComponent);
++    fixture.detectChanges();
++    await settle(fixture);
++
++    fixture.componentInstance.composerValue.set('hello');
++    await fixture.componentInstance.onSendComment();
++
++    // Comment is in the local signal.
++    expect(fixture.componentInstance.comments().length).toBe(1);
++    // Activity signal is untouched (still the init payload).
++    expect(fixture.componentInstance.activity()).toEqual(initialActivity);
++    // No inline composer error and no top-of-page error toast — the
++    // refetch failure is swallowed.
++    expect(fixture.componentInstance.composerError()).toBeNull();
++    expect(fixture.componentInstance.commentSubmitError()).toBeNull();
++  });
+ });
+\ No newline at end of file
+diff --git a/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts b/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts
+index 11ed038..e86ab52 100644
+--- a/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts
++++ b/frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts
+@@ -41,8 +41,14 @@
+  *
+  * On any mutation that the backend accepts (200/201), the local
+  * `ticket` signal is replaced with the response. The activity
+- * timeline is NOT refetched; the spec says "no realtime updates"
+- * and the page trusts the local signal until the user reloads.
++ * timeline is NOT refetched on most mutations (status / priority
++ * / category / assignee / reopen / close) — the spec says
++ * "no realtime updates" and the page trusts the local signal
++ * until the user reloads. **HD-017 exception**: after a
++ * successful `addComment`, the page refetches the activity
++ * timeline so the new "CommentAdded" entry shows up immediately.
++ * A refetch failure is non-blocking (the comment is already
++ * created; the timeline will lag until the user reloads).
+  *
+  * Lifecycle:
+  *   - ngOnInit parses `:id`, navigates to `/dashboard` on NaN.
+@@ -974,6 +980,22 @@ export class TicketDetailPageComponent implements OnInit {
+       this.composerValue.set('');
+       this.composerError.set(null);
+       this.commentSubmitError.set(null);
++      // HD-017: refetch the activity timeline so the new
++      // "CommentAdded" entry shows up immediately. The comment
++      // was already created (201), so a refetch failure is
++      // non-blocking — the timeline will lag until the user
++      // reloads. Other mutations (status / priority / reopen /
++      // close) still do NOT refetch per the page's "no realtime"
++      // contract; this is a deliberate exception for comments
++      // because the timeline is the primary affordance for
++      // seeing new conversation.
++      try {
++        const refreshed = await this.ticketService.listActivity(t.id);
++        this.activity.set(refreshed);
++      } catch {
++        // Swallow — degraded state, not a user-facing error.
++        // The user can reload to see fresh activity.
++      }
+     } catch (err) {
+       if (err instanceof ApiError) {
+         this.composerError.set(this.formatApiError(err, "Couldn't add your comment."));
+diff --git a/frontend/src/app/services/ticket.service.spec.ts b/frontend/src/app/services/ticket.service.spec.ts
+new file mode 100644
+index 0000000..13f456a
+--- /dev/null
++++ b/frontend/src/app/services/ticket.service.spec.ts
+@@ -0,0 +1,279 @@
++/**
++ * TicketService — service spec.
++ *
++ * Pins the read + write contract for the comment-related
++ * methods (HD-010 / HD-017) and the activity-log refetch
++ * (HD-017). Also covers the most-trafficked other methods
++ * (`getById`, `listComments`) so the spec acts as a working
++ * documentation of the wire shape.
++ *
++ * Methods covered:
++ *   - addComment:  POST /api/tickets/:id/comments
++ *   - listComments: GET /api/tickets/:id/comments
++ *   - listActivity: GET /api/tickets/:id/activity
++ *   - getById:     GET /api/tickets/:id
++ *
++ * HttpClient is exercised through HttpTestingController. The
++ * `authInterceptor` is NOT registered here — this spec tests
++ * the service's wire contract (URL, method, body, response
++ * unwrap, ApiError conversion), not the interceptor itself.
++ * The interceptor has its own coverage in `auth.interceptor`'s
++ * callers (login page, ticket detail). The `withCredentials`
++ * stamp is asserted via the captured request.
++ *
++ * This mirrors `user.service.spec.ts` (HD-014), which uses
++ * the same `provideHttpClient(withInterceptorsFromDi())` +
++ * `provideHttpClientTesting` setup.
++ */
++
++import { TestBed } from '@angular/core/testing';
++import {
++  provideHttpClient,
++  withInterceptorsFromDi,
++} from '@angular/common/http';
++import {
++  HttpTestingController,
++  provideHttpClientTesting,
++} from '@angular/common/http/testing';
++
++import { TicketService } from './ticket.service';
++import { ApiError } from './api-error';
++import { environment } from '../../environments/environment';
++import type { Comment } from '../models/comment';
++import type { ActivityLog } from '../models/activity-log';
++import type { Ticket } from '../models/ticket';
++import type { UserPublic } from '../models/user';
++
++const baseUser = (overrides: Partial<UserPublic> = {}): UserPublic => ({
++  id: 1,
++  email: 'sam@example.com',
++  displayName: 'Sam',
++  role: 'User',
++  isActive: true,
++  lastActiveAt: null,
++  createdAt: '2026-01-01T00:00:00.000Z',
++  updatedAt: '2026-01-01T00:00:00.000Z',
++  ...overrides,
++});
++
++const baseComment = (overrides: Partial<Comment> = {}): Comment => ({
++  id: 99,
++  ticketId: 47,
++  author: baseUser(),
++  body: 'Restarting the laptop now.',
++  createdAt: '2026-09-15T10:00:00.000Z',
++  ...overrides,
++});
++
++const baseTicket = (overrides: Partial<Ticket> = {}): Ticket => {
++  // Ticket shape is large; we only need a minimal stub for the
++  // tests that exercise getById's wire contract.
++  const base: Ticket = {
++    id: 47,
++    number: 'HD-47',
++    title: 'VPN drops hourly',
++    description: 'since the office wifi swap',
++    category: 'IT',
++    priority: 'High',
++    status: 'Open',
++    submitter: baseUser(),
++    owner: null,
++    attachment: null,
++    createdAt: '2026-09-15T09:00:00.000Z',
++    updatedAt: '2026-09-15T09:00:00.000Z',
++    deletedAt: null,
++  };
++  return { ...base, ...overrides };
++};
++
++const baseActivity = (overrides: Partial<ActivityLog> = {}): ActivityLog => ({
++  id: 7,
++  ticketId: 47,
++  eventType: 'CommentAdded',
++  actor: baseUser(),
++  payload: { eventType: 'CommentAdded', commentId: 99 },
++  createdAt: '2026-09-15T10:00:00.000Z',
++  ...overrides,
++});
++
++describe('TicketService', () => {
++  let service: TicketService;
++  let httpMock: HttpTestingController;
++
++  beforeEach(() => {
++    TestBed.configureTestingModule({
++      providers: [
++        provideHttpClient(withInterceptorsFromDi()),
++        provideHttpClientTesting(),
++        TicketService,
++      ],
++    });
++    service = TestBed.inject(TicketService);
++    httpMock = TestBed.inject(HttpTestingController);
++  });
++
++  afterEach(() => {
++    httpMock.verify();
++  });
++
++  describe('addComment (HD-017 pin)', () => {
++    it('POSTs /api/tickets/:id/comments with { body } and unwraps { comment } on 201', async () => {
++      const created = baseComment({ id: 123, body: 'hello' });
++      const p = service.addComment(47, 'hello');
++
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/tickets/47/comments`,
++      );
++      expect(req.request.method).toBe('POST');
++      expect(req.request.withCredentials).toBe(true);
++      expect(req.request.body).toEqual({ body: 'hello' });
++
++      req.flush({ comment: created });
++      const result = await p;
++      expect(result).toEqual(created);
++    });
++
++    it('throws ApiError(400, validation_error) with fields.body for an empty body', async () => {
++      const p = service.addComment(47, '');
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/tickets/47/comments`,
++      );
++      req.flush(
++        {
++          error: 'validation_error',
++          message: 'Please correct the highlighted fields.',
++          fields: { body: 'Comment body is required.' },
++        },
++        { status: 400, statusText: 'Bad Request' },
++      );
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        expect(err).toBeInstanceOf(ApiError);
++        expect((err as ApiError).status).toBe(400);
++        expect((err as ApiError).errorCode).toBe('validation_error');
++        expect((err as ApiError).fields).toEqual({
++          body: 'Comment body is required.',
++        });
++      }
++    });
++
++    it('throws ApiError(403) when the ticket is Closed (read-only)', async () => {
++      const p = service.addComment(47, 'any body');
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/tickets/47/comments`,
++      );
++      req.flush(
++        { error: 'forbidden', message: 'This ticket is closed.' },
++        { status: 403, statusText: 'Forbidden' },
++      );
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        expect(err).toBeInstanceOf(ApiError);
++        expect((err as ApiError).status).toBe(403);
++        expect((err as ApiError).errorCode).toBe('forbidden');
++      }
++    });
++
++    it('throws ApiError(404) for a missing ticket', async () => {
++      const p = service.addComment(9999, 'any body');
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/tickets/9999/comments`,
++      );
++      req.flush(
++        { error: 'not_found', message: 'Ticket not found.' },
++        { status: 404, statusText: 'Not Found' },
++      );
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        expect(err).toBeInstanceOf(ApiError);
++        expect((err as ApiError).status).toBe(404);
++      }
++    });
++
++    it('throws ApiError(401) on an unauthenticated request', async () => {
++      const p = service.addComment(47, 'hello');
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/tickets/47/comments`,
++      );
++      req.flush(
++        { error: 'unauthenticated', message: 'No session.' },
++        { status: 401, statusText: 'Unauthorized' },
++      );
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        expect(err).toBeInstanceOf(ApiError);
++        expect((err as ApiError).status).toBe(401);
++      }
++    });
++  });
++
++  describe('listComments', () => {
++    it('GETs /api/tickets/:id/comments and unwraps { comments, count }', async () => {
++      const comments = [baseComment({ id: 1 }), baseComment({ id: 2, body: 'second' })];
++      const p = service.listComments(47);
++
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/tickets/47/comments`,
++      );
++      expect(req.request.method).toBe('GET');
++      expect(req.request.withCredentials).toBe(true);
++      req.flush({ comments, count: comments.length });
++
++      const result = await p;
++      expect(result).toEqual(comments);
++    });
++  });
++
++  describe('listActivity (HD-017 refetch target)', () => {
++    it('GETs /api/tickets/:id/activity and unwraps { activity, count }', async () => {
++      const activity = [
++        baseActivity({ id: 1, eventType: 'Created' }),
++        baseActivity({ id: 2, eventType: 'CommentAdded' }),
++      ];
++      const p = service.listActivity(47);
++
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/tickets/47/activity`,
++      );
++      expect(req.request.method).toBe('GET');
++      expect(req.request.withCredentials).toBe(true);
++      req.flush({ activity, count: activity.length });
++
++      const result = await p;
++      expect(result).toEqual(activity);
++    });
++
++    it('returns an empty array when the ticket has no activity', async () => {
++      const p = service.listActivity(47);
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/tickets/47/activity`,
++      );
++      req.flush({ activity: [], count: 0 });
++
++      const result = await p;
++      expect(result).toEqual([]);
++    });
++  });
++
++  describe('getById', () => {
++    it('GETs /api/tickets/:id and unwraps { ticket }', async () => {
++      const ticket = baseTicket({ status: 'In Progress' });
++      const p = service.getById(47);
++
++      const req = httpMock.expectOne(`${environment.apiBaseUrl}/tickets/47`);
++      expect(req.request.method).toBe('GET');
++      req.flush({ ticket });
++
++      const result = await p;
++      expect(result).toEqual(ticket);
++    });
++  });
++});
