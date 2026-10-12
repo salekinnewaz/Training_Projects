@@ -1,5 +1,5 @@
 /**
- * Typed API error — HD-004.
+ * Typed API error — HD-004 + HD-005 + HD-018 + HD-019.
  *
  * The backend `errorHandler` middleware (HD-003) emits bodies of
  * shape:
@@ -8,6 +8,18 @@
  * This module wraps `HttpErrorResponse` so service callers (AuthService
  * now, login page in HD-005) can switch on a typed `errorCode`
  * rather than scraping the message.
+ *
+ * `apiErrorFrom` is **idempotent** — if the input is already an
+ * `ApiError` (because the auth interceptor converted upstream), it
+ * hands the same instance back. This is what makes the
+ * "interceptor converts + service calls `apiErrorFrom` defensively"
+ * pattern safe; without the short-circuit, a 401
+ * `invalid_credentials` from the login endpoint would be
+ * downgraded to a generic 401 `unauthenticated` by the second
+ * call, which is what made the HD-005 login page render
+ * "Something went wrong" instead of "Email or password is
+ * incorrect" in production until the fix landed here. Pinned by
+ * the `api-error.spec.ts` regression test.
  */
 
 import { HttpErrorResponse } from '@angular/common/http';
@@ -74,7 +86,23 @@ export class ApiError extends Error {
 }
 
 /** Coerce an HttpErrorResponse into a typed ApiError. */
-export function apiErrorFrom(err: HttpErrorResponse): ApiError {
+export function apiErrorFrom(err: HttpErrorResponse | ApiError): ApiError {
+  // Idempotent: if the caller already converted via the auth
+  // interceptor (or any other layer that does this conversion
+  // first), hand the existing ApiError straight back. Without
+  // this short-circuit, the service-layer `catch (err) { throw
+  // apiErrorFrom(err) }` defensive wrapper would re-read the
+  // ApiError's `.error` and `.status` fields, miss the
+  // `.errorCode` we already set, and downgrade an
+  // `invalid_credentials` 401 to a `unauthenticated` /
+  // `unknown_error` 401 — which is what made the HD-005
+  // login page show the generic "Something went wrong" copy
+  // on a wrong-password attempt when the auth interceptor was
+  // registered (i.e. in production).
+  if (err instanceof ApiError) {
+    return err;
+  }
+
   const body = readBody(err);
   const message =
     asString(body.message) ?? err.message ?? 'Request failed.';
