@@ -317,3 +317,131 @@ a:hover {
 .column-body[data-drag-invalid="true"] {
   background: var(--color-kanban-invalid-drop);
 }
+
+/* ── Admin Dashboard cards (HD-013) ─────────────────────────────────
+   4 status summary cards in a single horizontal row (Open / In
+   Progress / Resolved / Closed). The page component owns the
+   card chrome (top zone, count, body, footer) and the per-page
+   skeleton; this block owns the row + card layout so the page
+   fits in the 2kB component-style soft budget. Mirrors the
+   HD-011 / HD-012 pattern of pushing the heaviest rules to
+   global. */
+.card-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.card-row > .card,
+.card-row > .card-skel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.card-row > .card.muted {
+  /* Closed card is muted everywhere; spec line: "Closed count is
+     muted, rows are muted, no row hover, no click." */
+  opacity: 0.78;
+}
+.card-row > .card > .card-top {
+  padding: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+.card-row > .card > .card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+
+/* Admin Dashboard card-body row (HD-013). Each row = mono number
+ * (left) · title (center-left, 1-line clamp) · relative timestamp
+ * (right). Open / In Progress / Resolved rows are <a> (hover tints
+ * subtle, focus ring); Closed rows are <li> (muted, no hover, no
+ * click). The page component owns the count + footer + skeleton;
+ * this block owns the per-row geometry so the page component's
+ * inline style budget stays under 2kB. */
+.admin-card-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 80px;
+  align-items: center;
+  gap: 12px;
+  height: 36px;
+  padding: 0 12px;
+  color: var(--color-label);
+  text-decoration: none;
+  border-radius: 4px;
+  transition: background-color 120ms ease;
+}
+a.admin-card-row:hover {
+  background: var(--color-surface-subtle);
+  text-decoration: none;
+}
+a.admin-card-row:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: -2px;
+}
+.admin-card-row.is-muted {
+  color: var(--color-muted);
+  cursor: default;
+}
+.admin-card-row.is-muted .number,
+.admin-card-row.is-muted .title,
+.admin-card-row.is-muted .timestamp {
+  color: var(--color-muted);
+}
+.admin-card-row .number {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-muted);
+  letter-spacing: 0.5px;
+}
+.admin-card-row .title {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.admin-card-row .timestamp {
+  font-size: 12px;
+  color: var(--color-muted);
+  justify-self: end;
+}
+
+/* Admin Dashboard card-skel (HD-013). 4 placeholder cards render
+ * during the loading state. Each skeleton has 4 grey bars
+ * (pulsing). Geometry owned here so the page component budget
+ * holds. */
+.card-row > .card-skel {
+  padding: 12px;
+  min-height: 720px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.card-row > .card-skel .bar {
+  background: var(--color-surface-muted);
+  border-radius: 4px;
+  animation: admin-skel-pulse 1200ms ease-in-out infinite;
+}
+.card-row > .card-skel .bar-top {
+  height: 22px;
+  width: 40%;
+}
+.card-row > .card-skel .bar-row {
+  height: 14px;
+  width: 100%;
+}
+.card-row > .card-skel .bar-row.short {
+  width: 60%;
+}
+@keyframes admin-skel-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
