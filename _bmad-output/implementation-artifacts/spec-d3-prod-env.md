@@ -1,0 +1,229 @@
+# D3 — `environment.prod.ts` + `fileReplacements` swap
+
+## Context
+
+`deferred-work.md` D3 notes that
+`frontend/src/environments/environment.prod.ts` is missing, so the
+production build today ships the dev-only environment
+(`apiBaseUrl: 'http://localhost:3000/api'`) into the prod bundle.
+The deferred note's "Owner" column reads "Out of MVP per HD-004
+plan" and the "Notes" column reads "Add when production deploy
+story lands."
+
+The D3 row was filed as a placeholder for the production deploy
+story, on the assumption that a deploy target would dictate the
+prod `apiBaseUrl`. As of this slice no deploy target is decided,
+but the **file itself is the contract** that downstream deploy
+work hangs off. Shipping a relative-URL prod env closes the
+"frontend ships the dev URL to prod" foot-gun, gives the deploy
+story a single file to edit when the URL is decided, and lets us
+run `ng build --configuration=production` as a meaningful
+verification (today it builds a bundle that calls
+`http://localhost:3000/api`, which is not a prod artifact).
+
+## Why a relative URL (and not an absolute one)
+
+Two alternatives were considered:
+
+- **Option A (this slice — chosen):** `apiBaseUrl: '/api'`.
+  Assumes the production frontend is served behind the same
+  origin as the backend, with `/api/*` proxied to the backend
+  service. Matches the standard reverse-proxy pattern.
+- **Option B (rejected):** `apiBaseUrl: 'https://api.example.com/api'`.
+  Picks a placeholder URL. The deploy story would have to
+  rewrite this; if it picks a different URL, we'd have edited
+  this file twice.
+
+Option A is the **right answer today** (the prod bundle calls a
+sane default; the deploy story can change exactly one file when
+the URL is decided) and the **right answer tomorrow** if the
+deploy lands on a same-origin reverse-proxy (no change needed).
+The only case where Option A is wrong is "CDN-fronted static
+site that calls a cross-origin API" — in which case the deploy
+story edits `apiBaseUrl` to the absolute URL, and the only file
+that needs to change is `environment.prod.ts`. No other source
+file references the URL (the `auth.service.ts` interceptor
+reads it via `inject(API_BASE_URL)` → `environment.apiBaseUrl`).
+
+## Scope
+
+### New files
+
+1. **`frontend/src/environments/environment.prod.ts`** —
+   mirrors the dev `environment.ts` shape: same keys
+   (`production`, `apiBaseUrl`), same types, same `as const`
+   + `Environment` type re-export. The only difference is the
+   values: `production: true` + `apiBaseUrl: '/api'`.
+
+### Modified files
+
+1. **`frontend/angular.json`** — under
+   `projects.frontend.architect.build.configurations.production`,
+   adds a `fileReplacements` entry:
+   ```json
+   "fileReplacements": [
+     {
+       "replace": "src/environments/environment.ts",
+       "with": "src/environments/environment.prod.ts"
+     }
+   ]
+   ```
+   This is the standard Angular CLI prod-env swap pattern. The
+   development build is unaffected (it still uses
+   `environment.ts`).
+2. **`frontend/src/environments/environment.ts`** — updates the
+   docblock to point at the prod file (and drop the "out of MVP
+   scope" line). The "Single source of truth" + "Dev backend"
+   paragraphs stay.
+3. **`_bmad-output/implementation-artifacts/deferred-work.md`** —
+   D3 row close.
+
+### New files (docs)
+
+1. **`_bmad-output/implementation-artifacts/spec-d3-prod-env.md`**
+   — this spec doc.
+2. **`_bmad-output/d3.diff`** — the diff snapshot.
+
+## Files
+
+**New:**
+- `frontend/src/environments/environment.prod.ts`
+- `_bmad-output/implementation-artifacts/spec-d3-prod-env.md`
+- `_bmad-output/d3.diff`
+
+**Modified:**
+- `frontend/angular.json` (`fileReplacements` in the
+  `production` build config)
+- `frontend/src/environments/environment.ts` (docblock update
+  pointing at the prod file)
+- `_bmad-output/implementation-artifacts/deferred-work.md`
+  (D3 row close)
+
+## Reuse (no new patterns)
+
+- **`fileReplacements` in `angular.json`** — standard Angular
+  CLI pattern. The dev and prod env files have the same shape
+  and the same `as const` + `Environment` re-export, so the
+  swap is a literal type-preserving replacement.
+- **`as const` + `Environment` type re-export** — already used
+  in the dev file. The prod file mirrors it.
+- **No new env keys.** D3 only changes the values of the
+  existing keys. Adding new keys (e.g. `featureFlags`,
+  `sentryDsn`) is out of scope and would be its own slice.
+
+## Test plan
+
+### Existing tests (unchanged behavior)
+
+- `cd frontend && npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox`
+  — **7 FAILED, 346 SUCCESS**. The dev test suite still uses
+  the dev `environment.ts` (Karma's `build` target is
+  `frontend:build:development` by default; only the prod config
+  in `angular.json` carries the `fileReplacements` entry).
+  Zero test changes.
+- `cd backend && npm test` — **118/118** unchanged. D3 is
+  frontend-only.
+
+### Production build verification
+
+- `cd frontend && npx ng build --configuration=production`
+  — exits 0. The prod bundle does **not** contain
+  `localhost:3000` (verified by `grep -r 'localhost:3000'
+  dist/frontend/browser/` → no matches). The minified property
+  `apiBaseUrl` is present in the bundle, and the value resolved
+  at build time is `/api` (the prod env's value), not
+  `http://localhost:3000/api` (the dev env's value).
+
+### No new tests (intentional)
+
+The "prod env doesn't ship the dev URL" guarantee is a build-
+time concern, not a runtime concern. A test that asserts
+`apiBaseUrl === '/api'` would have to be an Angular-Karma spec
+that imports `environment` and runs in the dev config — the
+same Karma spec that **uses the dev env**. The right place to
+verify the prod env is the production build itself: a failing
+`fileReplacements` config means the build ships the dev URL,
+which is visible in the bundle via `grep` and breaks the
+production smoke test the day the deploy story runs. **No spec
+added in this slice.**
+
+## Follow-up (NOT in this slice — filed as a new D-row)
+
+The day a deploy target is decided (e.g. "we're fronting the
+backend with nginx on the same origin" vs. "we're using a CDN
+and a cross-origin API"), the work to set the absolute prod
+URL becomes a clearly-scoped, one-line slice: edit
+`environment.prod.ts` line 22 (`apiBaseUrl: '/api'` → the
+absolute URL). No other source file references the URL.
+
+A second future slice: if the prod env ever needs a new key
+(e.g. `sentryDsn`, `featureFlags`, `mixpanelToken`), add the
+key to **both** `environment.ts` and `environment.prod.ts`
+in the same commit so the type contract stays aligned. The
+current prod env has exactly the same two keys as the dev env
+— adding new keys is a separate slice.
+
+## Boundaries (never, in this slice)
+
+- **No new env keys.** D3 only sets values for the existing
+  two keys. Adding `featureFlags` / `sentryDsn` / `mixpanelToken`
+  is out of scope.
+- **No absolute URL.** The prod env's `apiBaseUrl` stays
+  relative (`/api`) until a deploy target is decided. Picking
+  a placeholder URL is a worse failure mode than the relative
+  one: the deploy story would have to edit this file when the
+  real URL is picked, vs. the relative URL working out of the
+  box for the most common deploy topology (reverse proxy on the
+  same origin).
+- **No change to the dev env's URL.** The dev env keeps
+  `apiBaseUrl: 'http://localhost:3000/api'`. The dev backend
+  is still on port 3000 (per `backend/.env`).
+- **No CI/CD integration.** The deferred note's
+  "Notes" column mentions "production deploy story" — that
+  story is its own thing. D3 just produces the contract that
+  the deploy story edits when it lands.
+- **No `environment.production` flag check elsewhere.** The
+  `production: true` flag is set in the prod env for symmetry
+  with the dev env, but no current source file reads
+  `environment.production` (verified by `grep -r 'environment.production'`
+  in the frontend src). Adding a check is a separate slice.
+- **No new test for the prod build.** The "prod env is wired
+  correctly" guarantee is the prod build itself (and the
+  `grep 'localhost:3000' dist/frontend/browser/` smoke test in
+  this slice's verification section). Adding a Karma spec
+  would only test the dev env, which is already covered by the
+  existing dev-environment test suite.
+
+## Verification
+
+1. `cd frontend && npx ng build --configuration=production`
+   — exits 0.
+2. `grep -r 'localhost:3000' /Users/bs00902/Documents/Training_Projects/Training_Projects/frontend/dist/frontend/browser/`
+   — no matches (the dev URL is not in the prod bundle).
+3. `grep -r '"/api"' /Users/bs00902/Documents/Training_Projects/Training_Projects/frontend/dist/frontend/browser/`
+   — matches present (the prod URL is in the prod bundle).
+4. `cd frontend && npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox`
+   — **7 FAILED, 346 SUCCESS**. Same 7 pre-existing baseline
+   failures. D3 doesn't affect the dev build, so the test
+   count is unchanged from the D7 close.
+5. `cd backend && npm test` — **118/118** unchanged.
+6. `git diff --stat` should show exactly:
+   - the new `environment.prod.ts` file (~25 lines);
+   - the `fileReplacements` block in `angular.json` (~7
+     added lines);
+   - the docblock update in `environment.ts` (~3 changed
+     lines);
+   - the new `spec-d3-prod-env.md`;
+   - the D3 row close in `deferred-work.md`.
+
+## Commit
+
+Two commits, mirroring the D9 / D10 / D12 pattern:
+
+1. `feat(D3): environment.prod.ts + fileReplacements in angular.json`
+   — the implementation (new prod env file, angular.json swap,
+   dev env docblock update).
+2. `docs: D3 implementation diff snapshot` — the
+   `_bmad-output/d3.diff`.
+
+Both pushed to `origin/main`.

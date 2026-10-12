@@ -6,7 +6,10 @@
  * preconfigured in `backend/src/server.ts` to accept credentials
  * from this origin.
  *
- * Production swap (environment.prod.ts) is out of MVP scope.
+ * Production swap: `environment.prod.ts` (relative `/api`,
+ * D3). Wired via `fileReplacements` in `angular.json` so
+ * `ng build --configuration=production` uses the prod env and
+ * the dev build keeps using this file.
  */
 
 export const environment = {
