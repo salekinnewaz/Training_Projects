@@ -19,7 +19,8 @@
  *      the user role per EXPERIENCE.md line 153.
  *   4. Profile trigger (right) — avatar + name + caret. Toggles a
  *      dropdown-panel containing the user header (avatar, name,
- *      role badge), a divider, a "Change password" entry
+ *      role badge), a divider, a "View profile" entry (D114 →
+ *      /profile), another divider, a "Change password" entry
  *      (HD-018 → /profile/password), another divider, and the
  *      "Log out" action.
  *
@@ -155,6 +156,13 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
                 <badge-role [role]="u.role" />
               </div>
             </div>
+            <divider-hr />
+            <a
+              class="profile-action"
+              routerLink="/profile"
+              (click)="closeDropdown()"
+              data-testid="view-profile-link"
+            >View profile</a>
             <divider-hr />
             <button
               type="button"
@@ -416,6 +424,15 @@ export class HeaderChromeComponent {
 
   toggleDropdown(): void {
     this.dropdownOpen.update((v) => !v);
+  }
+
+  /**
+   * Close the profile dropdown. Called from the in-dropdown
+   * `routerLink` click handlers (e.g. "View profile") so the
+   * panel doesn't stay open after the route changes.
+   */
+  closeDropdown(): void {
+    this.dropdownOpen.set(false);
   }
 
   openLogoutDialog(): void {
