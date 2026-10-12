@@ -1,9 +1,12 @@
 /**
- * ticket-row — molecule (HD-007).
+ * ticket-row — molecule (HD-007 + WDS-2026).
  *
  * One row in the Employee Dashboard list. Renders the row per
- * design spec:
- *   ticket number (mono) · title · status pill · priority pill · timestamp (right-aligned)
+ * WDS wireframe (mockups/02-user-dashboard.html line 137-138,
+ * 246-253) — six columns:
+ *   ticket number (mono) · title · status pill · priority pill ·
+ *   assignee (avatar + name | "Unassigned" muted) ·
+ *   updated-at (right-aligned, "2 hours ago" style)
  *
  * Implementation note: the spec considered two interaction models:
  *
@@ -28,11 +31,12 @@ import { RouterLink } from '@angular/router';
 import type { Ticket } from '../../../models/ticket';
 import { BadgeStatusComponent } from '../../atoms/badge-status/badge-status.component';
 import { BadgePriorityComponent } from '../../atoms/badge-priority/badge-priority.component';
+import { ChromeAvatarComponent } from '../../atoms/chrome-avatar/chrome-avatar.component';
 
 @Component({
   selector: 'ticket-row',
   standalone: true,
-  imports: [RouterLink, BadgeStatusComponent, BadgePriorityComponent],
+  imports: [RouterLink, BadgeStatusComponent, BadgePriorityComponent, ChromeAvatarComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <li class="row-wrap">
@@ -49,6 +53,14 @@ import { BadgePriorityComponent } from '../../atoms/badge-priority/badge-priorit
         <span class="priority">
           <badge-priority [priority]="ticket().priority" />
         </span>
+        <span class="assignee">
+          @if (ticket().owner; as owner) {
+            <chrome-avatar [displayName]="owner.displayName" [size]="20" />
+            <span class="assignee-name">{{ owner.displayName }}</span>
+          } @else {
+            <span class="unassigned">Unassigned</span>
+          }
+        </span>
         <time class="timestamp" [attr.datetime]="ticket().updatedAt">
           {{ relativeTime() }}
         </time>
@@ -64,7 +76,8 @@ import { BadgePriorityComponent } from '../../atoms/badge-priority/badge-priorit
     }
     .row {
       display: grid;
-      grid-template-columns: 80px 1fr auto auto 110px;
+      /* ID · Title · Status · Priority · Assignee · Updated */
+      grid-template-columns: 80px 1fr 120px 120px 140px 110px;
       align-items: center;
       gap: 16px;
       height: 64px;
@@ -105,6 +118,23 @@ import { BadgePriorityComponent } from '../../atoms/badge-priority/badge-priorit
       display: inline-flex;
       align-items: center;
     }
+    .assignee {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--color-label);
+      min-width: 0;
+    }
+    .assignee-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .unassigned {
+      color: var(--color-muted);
+      font-style: italic;
+    }
     .timestamp {
       font-size: 13px;
       color: var(--color-muted);
@@ -120,6 +150,7 @@ export class TicketRowComponent {
 
   readonly ariaLabel = computed(() => {
     const t = this.ticket();
-    return `Ticket ${t.number}, ${t.title}, ${t.status}, ${t.priority} priority`;
+    const assignee = t.owner ? t.owner.displayName : 'Unassigned';
+    return `Ticket ${t.number}, ${t.title}, ${t.status}, ${t.priority} priority, assigned to ${assignee}`;
   });
 }

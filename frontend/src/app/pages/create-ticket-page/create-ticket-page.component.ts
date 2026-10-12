@@ -1,10 +1,16 @@
 /**
- * CreateTicketPageComponent — HD-008.
+ * CreateTicketPageComponent — HD-008 + WDS-2026.
  *
  * The "New ticket" page Eli lands on from the Employee Dashboard's
  * "Create Ticket" button. Five fields (Title / Description /
- * Category / Priority / Attachment) + Submit, wrapped in
- * `<app-chrome>` to inherit the header chrome + skip-link.
+ * Category / Priority / Attachment) + Submit.
+ *
+ * WDS-2026: Per EXPERIENCE.md line 220 ("Default to modal, deep-
+ * linkable via `/tickets/new`"), this page renders as a centered
+ * card on a tinted overlay (max-width 480px, elevation.overlay) —
+ * modal-like in feel, but actually a real routed page so the URL
+ * `/tickets/new` is deep-linkable. No `<app-chrome>` wrapper; the
+ * modal-style card has its own header + close × button.
  *
  * Render states:
  *   idle      → form enabled, all fields empty / default
@@ -72,7 +78,6 @@ import {
 } from '../../services/ticket.service';
 import { AttachmentService } from '../../services/attachment.service';
 import type { TicketCategory, TicketPriority } from '../../models/enums';
-import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
 import { ButtonComponent } from '../../components/atoms/button/button.component';
 import { FormFieldComponent } from '../../components/molecules/form-field/form-field.component';
 import { InputTextComponent } from '../../components/atoms/input-text/input-text.component';
@@ -109,7 +114,6 @@ const PRIORITY_OPTIONS = [
   selector: 'app-create-ticket-page',
   standalone: true,
   imports: [
-    AppChromeComponent,
     ButtonComponent,
     FormFieldComponent,
     InputTextComponent,
@@ -119,165 +123,220 @@ const PRIORITY_OPTIONS = [
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <app-chrome>
-      <section class="create-ticket">
-        <a
-          class="back-link"
-          href="/dashboard"
-          (click)="onBack($event)"
-        >← Back to My Tickets</a>
-
-        <h1>New ticket</h1>
+    <div class="create-ticket-page" id="main-content">
+      <div class="create-ticket-card" role="dialog" aria-labelledby="create-ticket-title">
+        <header class="card-header">
+          <h1 id="create-ticket-title" class="card-title">Create Ticket</h1>
+          <button
+            type="button"
+            class="close-btn"
+            aria-label="Close"
+            (click)="onCancel($event)"
+          >×</button>
+        </header>
 
         <form (submit)="onSubmit($event)" novalidate>
-          <form-field
-            id="title"
-            label="Title"
-            [required]="true"
-            [error]="titleError()"
-          >
-            <atom-input
+          <div class="form-fields">
+            <form-field
               id="title"
-              type="text"
-              [value]="title()"
-              [invalid]="titleError() !== null"
+              label="Title"
               [required]="true"
-              [disabled]="submitting()"
-              placeholder="Short summary of the issue"
-              (valueChange)="onTitleChange($event)"
-            />
-          </form-field>
+              [error]="titleError()"
+            >
+              <atom-input
+                id="title"
+                type="text"
+                [value]="title()"
+                [invalid]="titleError() !== null"
+                [required]="true"
+                [disabled]="submitting()"
+                placeholder="Briefly describe the issue"
+                (valueChange)="onTitleChange($event)"
+              />
+            </form-field>
 
-          <form-field
-            id="description"
-            label="Description"
-            [required]="true"
-            [error]="descriptionError()"
-          >
-            <atom-textarea
+            <form-field
               id="description"
-              [value]="description()"
-              [invalid]="descriptionError() !== null"
+              label="Description"
               [required]="true"
-              [disabled]="submitting()"
-              [rows]="6"
-              placeholder="Describe what's happening — what you expected, what's actually happening, and anything you've already tried."
-              (valueChange)="onDescriptionChange($event)"
-            />
-          </form-field>
+              [error]="descriptionError()"
+            >
+              <atom-textarea
+                id="description"
+                [value]="description()"
+                [invalid]="descriptionError() !== null"
+                [required]="true"
+                [disabled]="submitting()"
+                [rows]="5"
+                placeholder="What happened? When did it start? Any error messages?"
+                (valueChange)="onDescriptionChange($event)"
+              />
+            </form-field>
 
-          @if (description().length > 4500) {
-            <p class="char-counter">
-              {{ DESCRIPTION_MAX - description().length }} characters left
-            </p>
-          }
+            @if (description().length > 4500) {
+              <p class="char-counter">
+                {{ DESCRIPTION_MAX - description().length }} characters left
+              </p>
+            }
 
-          <form-field
-            id="category"
-            label="Category"
-            [error]="categoryError()"
-          >
-            <atom-select
-              id="category"
-              [value]="category()"
-              [options]="categoryOptions"
-              [placeholderOption]="{ value: '', label: 'Select category…' }"
-              [disabled]="submitting()"
-              (valueChange)="onCategoryChange($event)"
-            />
-          </form-field>
-          <p class="form-helper" data-testid="category-helper">
-            Optional — helps agents route your ticket
-          </p>
-
-          <form-field
-            id="priority"
-            label="Priority"
-            [required]="true"
-            [error]="priorityError()"
-          >
-            <atom-select
-              id="priority"
-              [value]="priority()"
-              [options]="priorityOptions"
-              [disabled]="submitting()"
-              (valueChange)="onPriorityChange($event)"
-            />
-          </form-field>
-
-          <form-field
-            id="attachment"
-            label="Attachment"
-            [error]="attachmentError()"
-          >
-            <div class="attachment-label-row">
-              <file-drop
-                id="attachment"
-                [disabled]="submitting() || attachmentDisabled()"
-                [currentFile]="attachment()"
-                [error]="attachmentError()"
-                (fileSelected)="onFilePicked($event)"
+            <div class="form-row">
+              <form-field
+                id="category"
+                label="Category"
+                [error]="categoryError()"
               >
-                <span class="dropzone-helper">Drag a file here, or click to browse</span>
-              </file-drop>
+                <atom-select
+                  id="category"
+                  [value]="category()"
+                  [options]="categoryOptions"
+                  [placeholderOption]="{ value: '', label: 'Select a category' }"
+                  [disabled]="submitting()"
+                  (valueChange)="onCategoryChange($event)"
+                />
+              </form-field>
+
+              <form-field
+                id="priority"
+                label="Priority"
+                [required]="true"
+                [error]="priorityError()"
+              >
+                <atom-select
+                  id="priority"
+                  [value]="priority()"
+                  [options]="priorityOptions"
+                  [disabled]="submitting()"
+                  (valueChange)="onPriorityChange($event)"
+                />
+              </form-field>
             </div>
-          </form-field>
+            <p class="form-helper" data-testid="category-helper">
+              Optional — helps agents route your ticket
+            </p>
+
+            <form-field
+              id="attachment"
+              label="Attachment"
+              [error]="attachmentError()"
+            >
+              <div class="attachment-label-row">
+                <file-drop
+                  id="attachment"
+                  [disabled]="submitting() || attachmentDisabled()"
+                  [currentFile]="attachment()"
+                  [error]="attachmentError()"
+                  (fileSelected)="onFilePicked($event)"
+                >
+                  <span class="dropzone-helper">Drag a file here, or click to browse</span>
+                </file-drop>
+              </div>
+            </form-field>
+          </div>
 
           @if (serverError(); as err) {
             <p class="server-error" role="alert">{{ err }}</p>
           }
 
-          <atom-button
-            variant="primary"
-            size="lg"
-            type="submit"
-            [loading]="submitting()"
-            [disabled]="!canSubmit()"
-          >Submit ticket</atom-button>
-
-          <a
-            class="cancel-link"
-            href="/dashboard"
-            (click)="onCancel($event)"
-          >Cancel — return to My Tickets</a>
+          <div class="card-actions">
+            <atom-button
+              variant="secondary"
+              type="button"
+              [disabled]="submitting()"
+              (pressed)="onCancel($event)"
+            >Cancel</atom-button>
+            <atom-button
+              variant="primary"
+              type="submit"
+              [loading]="submitting()"
+              [disabled]="!canSubmit()"
+            >Create Ticket</atom-button>
+          </div>
         </form>
-      </section>
-    </app-chrome>
+      </div>
+    </div>
   `,
   styles: [`
     :host {
       display: block;
     }
-    .create-ticket {
-      max-width: var(--form-max-width, 480px);
-      margin: 0 auto;
-      padding-bottom: 32px;
+    .create-ticket-page {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      box-sizing: border-box;
+      background: var(--color-page-bg);
     }
-    .back-link {
-      display: inline-block;
-      margin-bottom: 16px;
-      color: var(--color-muted);
-      font-size: 14px;
-      text-decoration: none;
+    .create-ticket-card {
+      width: 100%;
+      max-width: 480px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      box-shadow: var(--shadow-dropdown);
+      box-sizing: border-box;
+      overflow: hidden;
     }
-    .back-link:hover {
-      text-decoration: underline;
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--color-border);
     }
-    h1 {
-      margin: 0 0 24px;
-      font-size: 24px;
+    .card-title {
+      margin: 0;
+      font-size: 18px;
       font-weight: 600;
-      color: var(--color-primary);
+      color: var(--color-text);
+    }
+    .close-btn {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      color: var(--color-muted);
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+      transition: background-color 120ms ease, color 120ms ease;
+    }
+    .close-btn:hover {
+      background: var(--color-surface-subtle);
+      color: var(--color-text);
+    }
+    .close-btn:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: -2px;
     }
     form {
       display: flex;
       flex-direction: column;
-      gap: 24px;
+      gap: 16px;
+      padding: 24px;
+    }
+    .form-fields {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .form-helper {
+      margin: -8px 0 0;
+      color: var(--color-muted);
+      font-size: 12px;
     }
     .char-counter {
-      margin: -16px 0 0;
+      margin: -8px 0 0;
       color: var(--color-muted);
-      font-size: 13px;
+      font-size: 12px;
       text-align: right;
     }
     .attachment-label-row {
@@ -296,19 +355,13 @@ const PRIORITY_OPTIONS = [
       font-size: 14px;
       border-radius: 6px;
     }
-    .form-helper {
-      margin: -16px 0 0;
-      color: var(--color-muted);
-      font-size: 13px;
-    }
-    .cancel-link {
-      align-self: flex-start;
-      color: var(--color-muted);
-      font-size: 14px;
-      text-decoration: none;
-    }
-    .cancel-link:hover {
-      text-decoration: underline;
+    .card-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 16px 24px;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-surface-subtle);
     }
   `],
 })

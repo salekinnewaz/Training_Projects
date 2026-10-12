@@ -202,9 +202,9 @@ const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
       text-transform: uppercase;
     }
     .stat-count {
-      font-size: 24px;
+      font-size: 28px;
       font-weight: 600;
-      color: var(--color-primary);
+      color: var(--color-text);
       line-height: 1.2;
     }
   `],

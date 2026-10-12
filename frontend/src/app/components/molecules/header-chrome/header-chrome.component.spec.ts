@@ -1,23 +1,28 @@
 /**
- * header-chrome — molecule spec (HD-004).
+ * header-chrome — molecule spec (HD-004 + WDS-2026).
  *
  * Pins the chrome strip's contract:
  *
- *   (a) Renders the brand mark + wordmark on the left
+ *   (a) Renders the 28×28 brand mark + 16px wordmark on the left
  *   (b) When the user is null, the right column is empty (no
- *       profile trigger + no dropdown)
- *   (c) When the user is set, renders the profile trigger
- *       (avatar + name + caret) and the trigger's aria-expanded
- *       reflects dropdownOpen()
- *   (d) Clicking the trigger toggles the dropdown; the dropdown
+ *       nav, no profile, no search)
+ *   (c) Renders the "Tickets" nav link for every role; the link
+ *       target is role-correct (User → /dashboard, Agent/Admin →
+ *       /queue)
+ *   (d) Renders the "Users" nav link only when role === Admin
+ *   (e) Renders the search input only when role is Support Agent
+ *       or Admin (never for the user role)
+ *   (f) Renders the profile trigger (avatar + name + caret) and
+ *       the trigger's aria-expanded reflects dropdownOpen()
+ *   (g) Clicking the trigger toggles the dropdown; the dropdown
  *       contains the user header (avatar, name, role badge), a
- *       divider, and a "Log out" action
- *   (e) Clicking "Log out" opens the dialog-modal
- *   (f) Confirming the dialog calls auth.logout() + navigates to
+ *       divider, "Change password", a divider, and "Log out"
+ *   (h) Clicking "Log out" opens the dialog-modal
+ *   (i) Confirming the dialog calls auth.logout() + navigates to
  *       /login
- *   (g) The brand mark click navigates to auth.roleHomePath()
- *   (h) Esc closes the logout dialog first, then the dropdown
- *   (i) Click outside the chrome closes the dropdown
+ *   (j) The brand mark click navigates to auth.roleHomePath()
+ *   (k) Esc closes the logout dialog first, then the dropdown
+ *   (l) Click outside the chrome closes the dropdown
  *
  * AuthService is stubbed with a BehaviorSubject seeded with
  * the user so the component reads it via toSignal; the
@@ -25,7 +30,7 @@
  */
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter, Router } from '@angular/router';
+import { provideRouter, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 
 import { ApiError } from '../../../services/api-error';
@@ -56,8 +61,15 @@ describe('HeaderChromeComponent', () => {
     refreshUser: jasmine.Spy;
     logout: jasmine.Spy;
   };
+  let router: Router;
   let routerNavigateByUrlSpy: jasmine.Spy;
   let routerNavigateSpy: jasmine.Spy;
+
+  function setupRouterSpies(): void {
+    router = TestBed.inject(Router);
+    routerNavigateByUrlSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+    routerNavigateSpy = spyOn(router, 'navigate').and.resolveTo(true);
+  }
 
   beforeEach(async () => {
     // Clear any stragglers left in document.body by other suites
@@ -71,20 +83,18 @@ describe('HeaderChromeComponent', () => {
       refreshUser: jasmine.createSpy('refreshUser').and.resolveTo(),
       logout: jasmine.createSpy('logout').and.resolveTo(),
     };
-    routerNavigateByUrlSpy = jasmine.createSpy('navigateByUrl').and.resolveTo(true);
-    routerNavigateSpy = jasmine.createSpy('navigate').and.resolveTo(true);
+    routerNavigateByUrlSpy = jasmine.createSpy('navigateByUrl');
+    routerNavigateSpy = jasmine.createSpy('navigate');
 
     await TestBed.configureTestingModule({
       imports: [HeaderChromeComponent],
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: authService },
-        {
-          provide: Router,
-          useValue: { navigateByUrl: routerNavigateByUrlSpy, navigate: routerNavigateSpy },
-        },
       ],
     }).compileComponents();
+
+    setupRouterSpies();
   });
 
   afterEach(() => {
@@ -100,7 +110,7 @@ describe('HeaderChromeComponent', () => {
     authService.userSnapshot.and.returnValue(user);
   }
 
-  it('renders the brand mark + wordmark', () => {
+  it('renders the 28x28 brand mark + 16px wordmark', () => {
     fixture = TestBed.createComponent(HeaderChromeComponent);
     fixture.detectChanges();
 
@@ -108,15 +118,96 @@ describe('HeaderChromeComponent', () => {
     expect(brand).not.toBeNull();
     expect(brand.textContent).toContain('HL');
     expect(brand.textContent).toContain('HelpDesk Lite');
+    const mark = fixture.nativeElement.querySelector('.brand-mark') as HTMLElement;
+    // WDS-2026: brand mark is 28x28 (was 40x40 in HD-004).
+    // The width/height live in the component-scoped stylesheet, not
+    // as inline styles, so read them via getComputedStyle.
+    const computed = getComputedStyle(mark);
+    expect(computed.width).toBe('28px');
+    expect(computed.height).toBe('28px');
   });
 
-  it('does not render the profile trigger when the user is null', () => {
+  it('does not render nav, search, or profile when the user is null', () => {
     seedUser(null);
     fixture = TestBed.createComponent(HeaderChromeComponent);
     fixture.detectChanges();
 
+    expect(fixture.nativeElement.querySelector('.chrome-nav')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.chrome-search')).toBeNull();
     expect(fixture.nativeElement.querySelector('.profile-trigger')).toBeNull();
-    expect(fixture.nativeElement.querySelector('dropdown-panel')).toBeNull();
+  });
+
+  it('renders the "Tickets" link for the user role targeting /dashboard', () => {
+    seedUser(makeUser({ role: 'User' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const links = fixture.nativeElement.querySelectorAll('.nav-link') as NodeListOf<HTMLAnchorElement>;
+    expect(links.length).toBe(1);
+    expect(links[0].textContent?.trim()).toBe('Tickets');
+    expect(links[0].getAttribute('href')).toBe('/dashboard');
+  });
+
+  it('renders "Tickets" + "Users" links for admin, with Users targeting /users', () => {
+    seedUser(makeUser({ role: 'Admin' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const links = fixture.nativeElement.querySelectorAll('.nav-link') as NodeListOf<HTMLAnchorElement>;
+    expect(links.length).toBe(2);
+    const labels = Array.from(links).map((l) => l.textContent?.trim());
+    expect(labels).toContain('Tickets');
+    expect(labels).toContain('Users');
+    const usersLink = Array.from(links).find((l) => l.textContent?.trim() === 'Users') as HTMLAnchorElement;
+    expect(usersLink.getAttribute('href')).toBe('/users');
+  });
+
+  it('targets the "Tickets" link to /queue for support agents', () => {
+    seedUser(makeUser({ role: 'Support Agent' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector('.nav-link') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/queue');
+  });
+
+  it('does not render the search input for the user role', () => {
+    seedUser(makeUser({ role: 'User' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.chrome-search')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.chrome-search-spacer')).not.toBeNull();
+  });
+
+  it('renders the search input for support agents and admins', () => {
+    seedUser(makeUser({ role: 'Support Agent' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const search = fixture.nativeElement.querySelector('.chrome-search') as HTMLElement;
+    expect(search).not.toBeNull();
+    const input = search.querySelector('input.search-input') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    expect(input.placeholder).toContain('Search');
+  });
+
+  it('routes to /queue with q param when the search form is submitted', () => {
+    seedUser(makeUser({ role: 'Support Agent' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('input.search-input') as HTMLInputElement;
+    input.value = 'vpn';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    const form = fixture.nativeElement.querySelector('form.chrome-search') as HTMLFormElement;
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    fixture.detectChanges();
+
+    expect(routerNavigateSpy).toHaveBeenCalledWith(['/queue'], {
+      queryParams: { q: 'vpn' },
+    });
   });
 
   it('renders the profile trigger with the user name when the user is set', () => {
