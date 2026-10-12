@@ -80,6 +80,25 @@ Open `http://localhost:4200` in a browser — the Angular shell routes to `/logi
 
 ---
 
+## Tests
+
+The backend has two Jest projects:
+
+- **`unit`** (default) — every `*.spec.ts` co-located with source. Mocks at module boundaries, no DB. Fast (~2s).
+- **`integration`** — `*.integration.spec.ts` rooted under `backend/test/integration/`. Hits a live MySQL container to exercise real Sequelize transactions. The D9 spec pins the `ticketService.createTicket` transaction + `FOR UPDATE` counter + ticket-insert code path that the spec's DUPLICATE_NUMBER edge case promises.
+
+```bash
+# Run both projects (default)
+cd backend && npm test
+
+# Run just the integration suite — requires MySQL on :3306
+cd backend && npm run test:integration
+```
+
+The integration project uses a sibling database `helpdesk_lite_test` on the same container — schema is reset on every run. If MySQL is unreachable, the integration project gracefully skips (suite reports "DB unavailable") so the unit suite still completes. To redirect the integration tests at a different host, drop a `backend/.env.test` next to `.env` (gitignored; `backend/.env.test.example` is the template).
+
+---
+
 ## Tech stack (locked 2026-09-15)
 
 | Layer | Choice |
