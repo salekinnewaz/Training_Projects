@@ -5,16 +5,25 @@
  * the page renders, the breadcrumb shows the decoded `denied_from`
  * path with a single leading slash, and the "Go to your dashboard"
  * button triggers `router.navigateByUrl(roleHomePath())`.
+ *
+ * The page uses `<atom-link>` which wraps `RouterLink` and
+ * needs the real Router (the `events` Observable that
+ * `RouterLink` subscribes to in its constructor). A stub
+ * Router via `useValue` breaks this. Fix: provide a real
+ * Router via `provideRouter([])` and spy on `Router.navigateByUrl`
+ * for the assertion.
  */
 
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
-import { provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 
 import { AuthService } from '../../services/auth.service';
 import { ForbiddenPageComponent } from './forbidden-page.component';
 
 describe('ForbiddenPageComponent', () => {
+  let router: Router;
+  let routerNavigateByUrlSpy: jasmine.Spy;
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [ForbiddenPageComponent],
@@ -31,16 +40,18 @@ describe('ForbiddenPageComponent', () => {
         {
           provide: AuthService,
           useValue: {
+            user$: { subscribe: () => ({ unsubscribe: () => undefined }) },
             userSnapshot: () => null,
             roleHomePath: () => '/login',
+            refreshUser: () => Promise.resolve(),
+            logout: () => Promise.resolve(),
           },
-        },
-        {
-          provide: Router,
-          useValue: { navigateByUrl: jasmine.createSpy('navigateByUrl') },
         },
       ],
     }).compileComponents();
+
+    router = TestBed.inject(Router);
+    routerNavigateByUrlSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
   });
 
   it('renders the headline and breadcrumb', () => {
@@ -74,13 +85,12 @@ describe('ForbiddenPageComponent', () => {
         {
           provide: AuthService,
           useValue: {
+            user$: { subscribe: () => ({ unsubscribe: () => undefined }) },
             userSnapshot: () => null,
             roleHomePath: () => '/login',
+            refreshUser: () => Promise.resolve(),
+            logout: () => Promise.resolve(),
           },
-        },
-        {
-          provide: Router,
-          useValue: { navigateByUrl: jasmine.createSpy('navigateByUrl') },
         },
       ],
     }).compileComponents();
@@ -96,14 +106,11 @@ describe('ForbiddenPageComponent', () => {
     const fixture = TestBed.createComponent(ForbiddenPageComponent);
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    const router = TestBed.inject(Router) as unknown as {
-      navigateByUrl: jasmine.Spy;
-    };
 
     const button = compiled.querySelector('atom-button');
     (button as HTMLElement)?.dispatchEvent(new Event('click', { bubbles: true }));
     fixture.detectChanges();
 
-    expect(router.navigateByUrl).toHaveBeenCalledWith('/login');
+    expect(routerNavigateByUrlSpy).toHaveBeenCalledWith('/login');
   });
 });

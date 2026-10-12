@@ -11,10 +11,18 @@
  *   error  → `.error-message` shows SESSION_EXPIRED text AND
  *            router.navigate was called with ['/login'] +
  *            queryParams: { return_to: '/dashboard' }
+ *
+ * The page wraps itself in `<app-chrome>` (which contains
+ * `<header-chrome>` and `<atom-link>` elements that need a
+ * real Router + a `user$` Observable on the AuthService stub).
+ * The fix: provide a real Router via `provideRouter([])` and
+ * spy on `Router.navigate` for assertions, and provide a
+ * `user$` BehaviorSubject on the AuthService stub.
  */
 
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
+import { BehaviorSubject } from 'rxjs';
 
 import { ApiError } from '../../services/api-error';
 import { AuthService } from '../../services/auth.service';
@@ -23,11 +31,11 @@ import { EmployeeDashboardPageComponent } from './employee-dashboard-page.compon
 
 describe('EmployeeDashboardPageComponent', () => {
   let ticketService: { listMine: jasmine.Spy };
-  let router: { navigate: jasmine.Spy };
+  let router: Router;
+  let routerNavigateSpy: jasmine.Spy;
 
   beforeEach(async () => {
     ticketService = { listMine: jasmine.createSpy('listMine') };
-    router = { navigate: jasmine.createSpy('navigate') };
 
     await TestBed.configureTestingModule({
       imports: [EmployeeDashboardPageComponent],
@@ -37,13 +45,18 @@ describe('EmployeeDashboardPageComponent', () => {
         {
           provide: AuthService,
           useValue: {
+            user$: new BehaviorSubject<unknown>(null),
             userSnapshot: () => null,
             roleHomePath: () => '/login',
+            refreshUser: () => Promise.resolve(),
+            logout: () => Promise.resolve(),
           },
         },
-        { provide: Router, useValue: router },
       ],
     }).compileComponents();
+
+    router = TestBed.inject(Router);
+    routerNavigateSpy = spyOn(router, 'navigate').and.resolveTo(true);
   });
 
   it('renders empty-state when listMine() returns []', async () => {
@@ -57,7 +70,7 @@ describe('EmployeeDashboardPageComponent', () => {
 
     expect(compiled.querySelector('empty-state')).not.toBeNull();
     expect(compiled.querySelectorAll('ticket-row').length).toBe(0);
-    expect(router.navigate).not.toHaveBeenCalled();
+    expect(routerNavigateSpy).not.toHaveBeenCalled();
   });
 
   it('renders two ticket-rows when listMine() returns two tickets', async () => {
@@ -106,7 +119,7 @@ describe('EmployeeDashboardPageComponent', () => {
     const errorEl = compiled.querySelector('.error-message');
     expect(errorEl?.textContent).toContain('Your session expired');
 
-    expect(router.navigate).toHaveBeenCalledWith(['/login'], {
+    expect(routerNavigateSpy).toHaveBeenCalledWith(['/login'], {
       queryParams: { return_to: '/dashboard' },
     });
   });
