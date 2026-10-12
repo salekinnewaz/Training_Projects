@@ -51,7 +51,6 @@ describe('SubmissionConfirmationPageComponent', () => {
           },
         },
         { provide: TicketService, useValue: ticketService },
-        { provide: Router, useValue: router },
         {
           provide: AuthService,
           useValue: {
@@ -60,10 +59,19 @@ describe('SubmissionConfirmationPageComponent', () => {
             user$: new BehaviorSubject(null),
           },
         },
+        // Real Router via `provideRouter([])` so the `<a routerLink>`
+        // in `<header-chrome>` (transitively rendered via `<app-chrome>`)
+        // can construct. Jasmine spies are installed below.
       ],
     })
-      .overrideProvider(Router, { useValue: router })
-      .compileComponents();
+      .compileComponents()
+      .then(() => {
+        const realRouter = TestBed.inject(Router);
+        spyOn(realRouter, 'navigate').and.callFake(router.navigate as never);
+        spyOn(realRouter, 'navigateByUrl').and.callFake(router.navigateByUrl as never);
+        router.navigate = realRouter.navigate as jasmine.Spy;
+        router.navigateByUrl = realRouter.navigateByUrl as jasmine.Spy;
+      });
   }
 
   beforeEach(() => {
