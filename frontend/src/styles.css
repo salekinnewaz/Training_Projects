@@ -122,6 +122,59 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── D116: modern polish (smooth scroll, focus offset, transitions) ── */
+
+/* Smooth-scroll for in-page anchors and programmatic scrolls.
+   The hash-anchor pattern is used by ticket-detail-page and
+   the kanban's status filter chips. The behavior is scoped to
+   the root scroller; the page-internal scroll on ticket-detail
+   inherits it for free. */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Consistent focus ring offset across atoms + page-level
+   elements. The base :focus-visible rule below uses 2px which
+   is the design-system spec; we add a slight bump on the
+   root for an extra-clear hit on text/anchor elements. */
+:root {
+  --focus-ring-offset: 2px;
+}
+
+/* Animated transitions for interactive surfaces (buttons, links,
+   cards). The duration is short (120ms) so the click feels
+   snappy, and the easing is a standard ease-out so the
+   transition reads as a "depress + release" rather than a
+   linear slide. The default browser transition is `none` on
+   most surfaces, so this rule explicitly enables it. */
+button,
+a,
+[role="button"],
+.chrome-card,
+.kanban-card,
+.ticket-row .row {
+  transition: background-color 120ms ease-out, color 120ms ease-out,
+    border-color 120ms ease-out, box-shadow 120ms ease-out,
+    transform 120ms ease-out;
+}
+
+/* Respect prefers-reduced-motion: disable the smooth scroll +
+   the transition animations. The user is in control of the
+   experience. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  button,
+  a,
+  [role="button"],
+  .chrome-card,
+  .kanban-card,
+  .ticket-row .row {
+    transition: none;
+  }
+}
+
 h1, h2, h3, h4, h5, h6 {
   color: var(--color-primary);
   margin: 0;
