@@ -1,0 +1,2254 @@
+diff --git a/_bmad-output/implementation-artifacts/spec-hd-018-password-change.md b/_bmad-output/implementation-artifacts/spec-hd-018-password-change.md
+new file mode 100644
+index 0000000..9b08303
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/spec-hd-018-password-change.md
+@@ -0,0 +1,407 @@
++---
++title: 'HD-018 — Password change (self-service)'
++---
++
++# HD-018 — Password change (self-service)
++
++## Intent
++
++There is currently no way for an authenticated user to change
++their password. The only paths in / out of the system are the
++login form and the Admin-managed `PUT /api/users/:id/role` and
++`/status` flows. An employee who suspects their password is
++compromised has no self-service remedy — they must ask an
++Admin to deactivate them, then ask another Admin to create a
++new account. That's a real usability gap.
++
++HD-018 closes the gap with a self-service password-change
++flow:
++
++- **Backend**: `PATCH /api/auth/me/password`. Verifies the
++  current password against the stored hash (defense-in-depth —
++  the JWT is the proof of identity, but requiring the current
++  password ensures a stolen cookie alone can't change the
++  account password). On success returns 204 and updates the
++  stored hash. The existing JWT cookie stays valid (token
++  rotation is out-of-MVP; see "Notes for the implementer").
++- **Frontend**: A new `/profile/password` page reachable from
++  the header-chrome's profile menu ("Change password" entry
++  above the existing "Log out" action). Three fields (current,
++  new, confirm), per-field validation matching the backend
++  exactly, success banner + auto-redirect to the role-correct
++  home.
++
++A future HD-019 can add the matching forgot-password / reset
++flow (with email-token transport). That's a bigger story
++(email service is a real dependency) and is intentionally
++out-of-scope here — HD-018 is the closed-loop, no-external-
++dependencies slice.
++
++## Boundaries
++
++### In scope
++
++- 1 new backend route (`PATCH /api/auth/me/password`).
++- 1 new backend handler (`changePassword` in
++  `authController.ts`).
++- 1 new backend validator (`validateChangePasswordBody` in
++  `utils/validation/authValidation.ts`) + 1 new spec file
++  (13 tests).
++- 1 new backend controller spec (`authController.spec.ts`)
++  covering 6 cases (204 happy, 400 bad body, 400 array, 403
++  wrong current, 401 deactivated, 401 missing).
++- 1 new OpenAPI doc entry + 1 new request schema
++  (`ChangePasswordRequest`).
++- 1 new `authController.spec.ts` (no authController spec
++  existed before).
++- 1 new frontend service method (`AuthService.changePassword`).
++- 4 new tests in `auth.service.spec.ts`.
++- 1 new frontend page (`ChangePasswordPageComponent` at
++  `/profile/password`) + 9-page spec.
++- 1 new route in `app.routes.ts` (authGuard'd).
++- 1 new entry in the header-chrome profile dropdown
++  ("Change password" between the existing divider and the
++  "Log out" action).
++
++### Out of scope
++
++- No token rotation (existing JWT cookie stays valid after a
++  password change). See "Notes for the implementer".
++- No "forgot password" / email-token reset flow
++  (HD-019 territory).
++- No Admin-set-password flow (Admins can already deactivate +
++  recreate; HD-019 will likely add a real "Admin sets another
++  user's password" endpoint).
++- No password-strength meter UI. The 8-char + letter + number
++  policy is enforced; the spec doesn't call for live feedback
++  beyond the inline error after a failed submit.
++- No re-authentication requirement for the current-password
++  field (we already require the user to type it, which is
++  functionally equivalent).
++- No audit log of password changes (we'd need a separate
++  ActivityLog row keyed on `userId`, not `ticketId` — bigger
++  schema work, deferred).
++- No email notification on password change.
++- No backend integration test (no in-memory DB — D9 gap
++  still open; the controller spec mocks User scope).
++
++## I/O matrix
++
++| User action | System response |
++|---|---|
++| Open `/profile/password` from the chrome menu | Page renders the form, focused on the Current password field. |
++| Submit empty form | Per-field errors: "Enter your current password." / "Enter a new password." / "Re-enter the new password." changePassword NOT called. |
++| Submit with mismatched confirm | "Passwords don't match." under the confirm field. changePassword NOT called. |
++| Submit valid form | PATCH 204 → green "Password changed. Taking you back…" banner → after 1.5s, `navigateByUrl(roleHomePath())`. |
++| Submit with new password < 8 chars (client-side) | "New password must be at least 8 characters." under the new-password field. changePassword NOT called. |
++| Submit with new password with no letter (client-side) | "New password must include a letter." under the new-password field. changePassword NOT called. |
++| Submit with new password with no number (client-side) | "New password must include a number." under the new-password field. changePassword NOT called. |
++| `PATCH /auth/me/password` with new password 5 chars (server-side bypass attempt) | 400 `validation_error` with `fields.newPassword` mapped to the new-password field. |
++| `PATCH /auth/me/password` with wrong current password | 403 `invalid_credentials` → "Your current password is incorrect." under the current-password field. |
++| `PATCH /auth/me/password` with deactivated user | 401 `account_inactive` + `Set-Cookie: auth=;` cleared. Top-of-form banner. The next `/me` round-trip the chrome does on cold load will see the user is gone and bounce to /login. |
++| `PATCH /auth/me/password` with no session cookie | 401 `unauthenticated` from authMiddleware. Top-of-form banner. |
++| Network failure | 0 / `network_error` → "Could not reach the server. Check your connection." Top-of-form banner. |
++| Cancel link | `navigateByUrl(roleHomePath())`, no API call. |
++| Show/hide password toggle | All three inputs flip `type` between 'password' and 'text'. |
++
++## Test plan
++
++### Unit (Jest) — backend
++
++`backend/src/utils/validation/authValidation.spec.ts` (new
++file, 13 tests):
++
++- Happy path returns `{ currentPassword, newPassword }`.
++- Rejects a non-object body (array / null) with
++  `fields._body = "Request body must be a JSON object."`.
++- Rejects a missing / non-string `currentPassword` with
++  `fields.currentPassword = "Enter your current password."`.
++- Rejects a missing / non-string `newPassword` with
++  `fields.newPassword = "Enter a new password."`.
++- Rejects a newPassword under 8 chars with
++  `fields.newPassword = "New password must be at least 8 characters."`.
++- Accepts a newPassword at exactly 8 chars (boundary).
++- Rejects a newPassword over 128 chars with
++  `fields.newPassword = "New password must be 128 characters or fewer."`.
++- Rejects a newPassword with no letter with
++  `fields.newPassword = "New password must include a letter."`.
++- Rejects a newPassword with no number with
++  `fields.newPassword = "New password must include a number."`.
++- Rejects an unknown extra key with
++  `fields._body = "Unknown field \"<name>\". Allowed: ..."`.
++- Rejects an unknown extra key in the error path with the
++  expected per-key message.
++
++`backend/src/controllers/authController.spec.ts` (new file,
++6 tests):
++
++- 204 happy path: bcrypt.compare returns true, the new hash
++  is computed, the user row is updated.
++- 400 with empty newPassword: validator throws, `next` is
++  called with the HttpError, User.findByPk NOT called.
++- 400 with array body: same shape.
++- 403 with wrong current password: bcrypt.compare returns
++  false, `next` is called with `HttpError(403,
++  'invalid_credentials', ...)`, User.update NOT called.
++- 401 with deactivated user (findByPk returns isActive=false):
++  clearAuthCookie called, `next` called with
++  `HttpError(401, 'account_inactive', ...)`.
++- 401 with missing user (findByPk returns null): same as
++  above.
++
++### Unit (Jasmine) — frontend
++
++`frontend/src/app/services/auth.service.spec.ts` extends
++with 4 tests in a new `changePassword` describe:
++
++- 204 happy: PATCH `/auth/me/password` with
++  `{ currentPassword, newPassword }`, resolves.
++- 400 with `fields.newPassword` → throws `ApiError(400,
++  'validation_error')` with the fields map.
++- 403 with `invalid_credentials` → throws `ApiError(403,
++  'invalid_credentials')` with the server's message.
++- 401 with `account_inactive` → throws `ApiError(401,
++  'account_inactive')`.
++
++`frontend/src/app/pages/change-password-page/change-password-page.component.spec.ts`
++(new file, 9 tests):
++
++- Empty form submit → per-field errors, changePassword NOT
++  called.
++- Mismatched confirm → "Passwords don't match." under
++  confirm, changePassword NOT called.
++- Happy path (fakeAsync + tick(1600)) →
++  changePassword called, success banner renders, after
++  1.5s `navigateByUrl('/dashboard')`.
++- 400 with `fields.newPassword` → new-password field shows
++  the server's message.
++- 403 with `invalid_credentials` → current-password field
++  shows "Your current password is incorrect."
++- 401 with `account_inactive` → top-of-form banner.
++- Network error (`ApiError(0, 'network_error', ...)`) →
++  top-of-form banner with the server's message.
++- Cancel → navigateByUrl('/dashboard'), no API call.
++- Password show/hide toggle flips `passwordVisible` signal.
++
++### Integration — OpenAPI doc
++
++`backend/src/docs/openapi.spec.ts` extended:
++
++- New path `/auth/me/password` (1 new entry → 21 paths total).
++- New schema `ChangePasswordRequest` (1 new entry).
++
++### Manual browser smoke
++
++- Log in as `user@company.com`. Click avatar → menu shows
++  "Change password" + "Log out". Click "Change password" →
++  `/profile/password` form renders.
++- Submit empty → 3 inline errors, no spinner.
++- Fill in `password` / `password` / `password` (all 8+ chars
++  with letter+number) → submit → green "Password changed."
++  banner → after 1.5s, redirected to `/dashboard`.
++- Open DevTools → Application → Cookies → confirm `auth`
++  cookie is still there (token not rotated).
++- Log in again with the new password → success.
++- Log in with the old password → "Email or password is
++  incorrect." (the hash was actually updated).
++- Try changing to `short` (5 chars) → inline error
++  "New password must be at least 8 characters.".
++- Try changing to `abcdefgh` (no number) → inline error
++  "New password must include a number.".
++- Try changing with the wrong current password → inline
++  error "Your current password is incorrect." (from 403).
++- Stop the backend, submit → top-of-form banner with
++  "Could not reach the server. Check your connection.".
++- Open DevTools Network tab, confirm exactly one
++  `PATCH /api/auth/me/password` request, with body
++  `{ "currentPassword": "...", "newPassword": "..." }`
++  and a 204 response.
++- Visit `http://localhost:3000/api/docs` → confirm the
++  new endpoint appears under the "Auth" tag.
++
++## Files
++
++**New:**
++
++- `backend/src/utils/validation/authValidation.ts`
++- `backend/src/utils/validation/authValidation.spec.ts`
++- `backend/src/controllers/authController.spec.ts`
++- `frontend/src/app/pages/change-password-page/change-password-page.component.ts`
++- `frontend/src/app/pages/change-password-page/change-password-page.component.spec.ts`
++- `_bmad-output/implementation-artifacts/spec-hd-018-password-change.md`
++  (this file)
++- `_bmad-output/hd018.diff`
++
++**Modified:**
++
++- `backend/src/controllers/authController.ts` (add
++  `changePassword` handler + JSDoc `@openapi` block)
++- `backend/src/routes/auth.ts` (mount the new route behind
++  `authMiddleware`)
++- `backend/src/docs/openapi.ts` (add `ChangePasswordRequest`
++  to `components.schemas`)
++- `backend/src/docs/openapi.spec.ts` (assert new path +
++  schema in the registry)
++- `frontend/src/app/services/auth.service.ts` (add
++  `changePassword` method)
++- `frontend/src/app/services/auth.service.spec.ts` (4 new
++  tests; also drop the unused `authInterceptor` registration
++  for service-level isolation, matching the
++  `user.service.spec.ts` / `ticket.service.spec.ts` pattern)
++- `frontend/src/app/components/molecules/header-chrome/header-chrome.component.ts`
++  (add "Change password" menu entry + `goChangePassword`
++  handler)
++- `frontend/src/app/app.routes.ts` (add `/profile/password`
++  route, authGuard'd)
++
++## Implementation order
++
++1. Write `validateChangePasswordBody` + its spec. Run
++   `cd backend && npm test` — 19/19 validator tests pass.
++2. Write `changePassword` handler in `authController.ts` +
++   the JSDoc `@openapi` block.
++3. Mount the route in `routes/auth.ts` behind
++   `authMiddleware`.
++4. Add `ChangePasswordRequest` to `openapi.ts` + update
++   `openapi.spec.ts` to assert the new path.
++5. Write `authController.spec.ts` (no existing file).
++   Run `cd backend && npm test` — 30/30 controllers
++   (was 24, +6) + 19/19 validators + 1/1 openapi = 50/50.
++6. `cd backend && npm run typecheck` — exits 0.
++7. Add `changePassword` to `AuthService` + 4 spec tests.
++   Run the auth spec in isolation — 22/22.
++8. Write `ChangePasswordPageComponent` + the route.
++9. Add the "Change password" entry to the header-chrome
++   dropdown.
++10. Write the page spec. Run it in isolation — 9/9.
++11. Run the full frontend suite — 329/335 (was 316/322;
++    +13 net tests, 0 new failures — same 6 pre-existing
++    baseline).
++12. `cd frontend && npx ng build --configuration=development`
++    — exits 0.
++13. Generate `hd018.diff` against the HD-017 baseline
++    (`git diff 3757be9`).
++14. Two-commit pattern:
++    - `feat(HD-018): self-service password change page + endpoint`
++    - `docs: HD-018 implementation diff snapshot`
++15. Push to `origin/main`.
++
++## Verification
++
++1. `cd backend && npm test` — **114/114 pass** (was 95, +19:
++   13 new authValidation + 6 new authController).
++2. `cd backend && npm run typecheck` — exits 0.
++3. `cd frontend && npx ng test --watch=false
++   --browsers=ChromeHeadlessNoSandbox` — **329/335 pass**
++   (was 316/322; +13 net tests = 4 auth.service + 9
++   change-password-page; same 6 pre-existing baseline
++   failures; same 1 Jasmine afterAll global error).
++4. `cd frontend && npx ng build --configuration=development`
++   — exits 0.
++5. Manual browser smoke per the I/O matrix.
++
++## Reuse (no new atoms/molecules)
++
++- **Existing form atoms** — `<form-field>`, `<atom-input>`,
++  `<atom-button>`, `<atom-link>`, `<atom-show-password-toggle>`
++  — the page composes the same set LoginPage already uses.
++  No new atom or molecule.
++- **`ApiError` + `fields` map** — same per-field error pattern
++  from `create-ticket-page` and `login-page`. The 400 path
++  is `fields.currentPassword` / `fields.newPassword` /
++  `fields._body`; the 403 path is `err.errorCode ===
++  'invalid_credentials'`; the 401 path is
++  `err.errorCode === 'account_inactive' || err.status === 401`.
++- **`<app-chrome>`** — wraps the page so the persistent
++  header renders. Mirrors every other post-login page.
++- **Profile dropdown divider + profile-action** — reuses
++  the existing `.profile-action` class on the "Change
++  password" button. No new CSS for the menu item itself;
++  one new line in the dropdown is all it takes.
++- **`HttpTestingController` + `provideHttpClient(withInterceptorsFromDi())`**
++  — same pattern as `user.service.spec.ts` and
++  `ticket.service.spec.ts`. The `authInterceptor` has its
++  own coverage in the page-level specs; service-level tests
++  exercise the service's wire contract in isolation.
++- **`HttpClient.patch` with `observe: 'response'`,
++  `responseType: 'json'`** — same shape as `login()` and
++  `logout()`. The 204 is fine to ignore (no body to unwrap).
++
++## Notes for the implementer
++
++- **Token rotation** — we deliberately do NOT rotate the
++  JWT on a successful password change. The reasons:
++  1. The user would be forced to re-login immediately,
++     which is jarring UX for a 5-second password change.
++  2. The blast radius of a stolen cookie is bounded by the
++     cookie's expiry (default 24h, see
++     `utils/jwt.ts:TOKEN_EXPIRY`). If you suspect your
++     password is compromised, you'd already be doing a
++     password change because of the suspicion, and you'd
++     also log out (the chrome has a Log out button).
++  3. Token rotation needs a "tokens issued before N" stamp
++     on the JWT or a server-side token-version counter,
++     which is a meaningful schema change. Worth a future
++     security story, not in MVP.
++  If a stronger guarantee is required, a future
++  HD-019-or-later can add a `tokenVersion` column to
++  `users` and check it in `authMiddleware`.
++
++- **403 vs 401 for wrong current password** — we picked 403
++  intentionally. 401 is "you are not authenticated"; the
++  user IS authenticated (they have a valid JWT cookie) but
++  the credential they presented (current password) is wrong.
++  403 "forbidden" is the right status. The login endpoint
++  uses 401 because there the user is NOT yet authenticated
++  and the wrong password is a credential-rejection. The
++  two shapes diverge by design.
++
++- **bcrypt cost factor (10)** — matches the existing
++  `utils/password.ts:DUMMY_HASH` definition. If the team
++  later raises it to 12 for new hashes, the old hashes
++  will still work on next login (bcrypt embeds the cost in
++  the hash itself).
++
++- **`clearAuthCookie` on the deactivated path** — when
++  `User.findByPk` returns a deactivated user (between the
++  authMiddleware check and our handler), we clear the
++  cookie. The next `/me` round-trip the chrome's mount
++  effect does will see the missing cookie, the user$ will
++  emit null, and the chrome's profile trigger will collapse
++  — at which point the user is effectively logged out and
++  the next page navigation will land on /login via the
++  authGuard.
++
++- **Per-page `setTimeout(1500)` for the success banner** —
++  the page's happy-path test uses `fakeAsync` + `tick(1600)`
++  to flush this synchronously. Important: if the test
++  spec were to use a real `setTimeout` + `await` instead,
++  the timer would fire during a later spec (the test
++  runner doesn't isolate real timers across specs in
++  Karma + Jasmine), polluting the suite. fakeAsync is the
++  right tool.
++
++- **Client-side + server-side password complexity** —
++  intentionally redundant. The client-side checks give
++  instant feedback; the server-side checks are the source
++  of truth (a curl attacker can bypass the client). The
++  error messages match exactly so the user sees the same
++  text whether the validator catches it or the controller
++  catches it.
++
++- **Why no `Bearer` or CSRF protection** — the endpoint
++  rides the same httpOnly cookie as every other authed
++  request. The `authMiddleware` validates the JWT. CSRF
++  risk is bounded because the cookie is SameSite=Lax
++  (set in `utils/cookies.ts:COOKIE_OPTIONS`), so a
++  cross-site form post can't carry it. The endpoint is
++  POST-shaped (PATCH is not a form method), so the
++  browser-issued cross-site request primitive can't even
++  reach it without a preflight.
++
++- **OpenAPI `@openapi` block placement** — placed
++  immediately above the `changePassword` export in
++  `authController.ts`, matching the convention used by
++  every other handler. `swagger-jsdoc` picks it up at
++  boot and merges it into `paths` under
++  `/auth/me/password`.
+diff --git a/backend/src/controllers/authController.spec.ts b/backend/src/controllers/authController.spec.ts
+new file mode 100644
+index 0000000..cd3b77b
+--- /dev/null
++++ b/backend/src/controllers/authController.spec.ts
+@@ -0,0 +1,234 @@
++/**
++ * authController — HD-018 spec.
++ *
++ * Pins the contract for `changePassword`:
++ *   - 204 happy path: currentPassword matches, newPassword is hashed
++ *     and written; the existing JWT cookie stays valid.
++ *   - 400 validation_error: the body fails the validator; the
++ *     controller re-throws so the errorHandler serializes the
++ *     400 + `fields` map (no res cycle modeled).
++ *   - 401 account_inactive: the user is missing or isActive=false
++ *     between the middleware check and the controller — same
++ *     shape as /me's account_inactive path. Cookie is cleared.
++ *   - 403 invalid_credentials: currentPassword doesn't match the
++ *     stored hash.
++ *   - 401 unauthenticated: authMiddleware fails upstream (covered
++ *     by the middleware spec, but pinned here too so the route
++ *     shape is documented end-to-end).
++ *
++ * `User` is mocked. The default mock user is a real User (id: 7)
++ * with a known `passwordHash`. The mock `bcrypt.compare` and
++ * `bcrypt.hash` are wired so happy-path tests can predict the
++ * update call without exercising the real algorithm.
++ */
++
++import type { NextFunction, Request, Response } from 'express';
++
++import { changePassword } from './authController';
++
++jest.mock('../middleware/auth', () => ({
++  authMiddleware: (
++    req: Request,
++    _res: Response,
++    next: NextFunction,
++  ): void => {
++    (req as Request & { user?: unknown }).user = {
++      id: 7,
++      email: 'eli@example.com',
++      displayName: 'Eli',
++      role: 'User',
++    };
++    next();
++  },
++}));
++
++const KNOWN_HASH = '$2b$10$knownHashForOldPassword';
++
++let mockFindByPk: jest.Mock;
++let mockUpdate: jest.Mock;
++let mockClearAuthCookie: jest.Mock;
++let mockVerify: jest.Mock;
++let mockHash: jest.Mock;
++
++jest.mock('../models', () => ({
++  User: {
++    scope: jest.fn().mockReturnThis(),
++    findByPk: (...args: unknown[]) =>
++      (mockFindByPk as unknown as (...a: unknown[]) => unknown)(...args),
++  },
++}));
++
++jest.mock('../utils/cookies', () => ({
++  clearAuthCookie: (...args: unknown[]) =>
++    (mockClearAuthCookie as unknown as (...a: unknown[]) => unknown)(...args),
++  setAuthCookie: jest.fn(),
++}));
++
++jest.mock('../utils/password', () => ({
++  DUMMY_HASH: 'unused-hash',
++  verifyPassword: (...args: unknown[]) =>
++    (mockVerify as unknown as (...a: unknown[]) => unknown)(...args),
++}));
++
++jest.mock('bcrypt', () => ({
++  hash: (...args: unknown[]) =>
++    (mockHash as unknown as (...a: unknown[]) => unknown)(...args),
++}));
++
++function makeFakeUser(overrides: {
++  id?: number;
++  isActive?: boolean;
++  passwordHash?: string;
++} = {}) {
++  const update = (...args: unknown[]) =>
++    (mockUpdate as unknown as (...a: unknown[]) => unknown)(...args);
++  return {
++    id: overrides.id ?? 7,
++    isActive: overrides.isActive ?? true,
++    passwordHash: overrides.passwordHash ?? KNOWN_HASH,
++    update,
++  };
++}
++
++function makeRes() {
++  const statusMock = jest.fn();
++  const sendMock = jest.fn();
++  const res = {
++    status: (n: number) => {
++      statusMock(n);
++      return { send: (b?: unknown) => sendMock(b) };
++    },
++  } as unknown as Response;
++  return { res, statusMock, sendMock };
++}
++
++function makeReq(body: unknown): Request {
++  return {
++    body,
++    user: { id: 7, email: 'eli@example.com', displayName: 'Eli', role: 'User' },
++  } as unknown as Request;
++}
++
++beforeEach(() => {
++  mockFindByPk = jest.fn();
++  mockUpdate = jest.fn().mockResolvedValue(undefined);
++  mockClearAuthCookie = jest.fn();
++  mockVerify = jest.fn();
++  mockHash = jest.fn();
++});
++
++describe('authController.changePassword (HD-018)', () => {
++  it('returns 204 when the current password is correct and writes the new hash', async () => {
++    mockFindByPk.mockResolvedValue(makeFakeUser());
++    mockVerify.mockResolvedValue(true);
++    mockHash.mockResolvedValue('$2b$10$newHashForNewPassword');
++
++    const req = makeReq({
++      currentPassword: 'oldPassword123',
++      newPassword: 'newPassword456',
++    });
++    const { res, statusMock, sendMock } = makeRes();
++
++    await changePassword(req, res, jest.fn() as NextFunction);
++
++    expect(mockFindByPk).toHaveBeenCalledWith(7);
++    expect(mockVerify).toHaveBeenCalledWith('oldPassword123', KNOWN_HASH);
++    expect(mockHash).toHaveBeenCalledWith('newPassword456', 10);
++    expect(mockUpdate).toHaveBeenCalledWith({
++      passwordHash: '$2b$10$newHashForNewPassword',
++    });
++    expect(statusMock).toHaveBeenCalledWith(204);
++    expect(sendMock).toHaveBeenCalledWith(undefined);
++  });
++
++  it('throws HttpError(400, validation_error) when the body has an empty newPassword', async () => {
++    const req = makeReq({ currentPassword: 'oldPassword123', newPassword: '' });
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction & jest.Mock;
++
++    await changePassword(req, res, next);
++
++    expect(mockFindByPk).not.toHaveBeenCalled();
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err).toBeInstanceOf(Error);
++    expect(err.status).toBe(400);
++    expect(err.errorCode).toBe('validation_error');
++    expect(err.fields?.newPassword).toBe('Enter a new password.');
++  });
++
++  it('throws HttpError(400, validation_error) when the body is a non-object (array)', async () => {
++    const req = makeReq([]) as unknown as Request;
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction & jest.Mock;
++
++    await changePassword(req, res, next);
++
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err.status).toBe(400);
++    expect(err.errorCode).toBe('validation_error');
++    expect(err.fields?._body).toBe('Request body must be a JSON object.');
++  });
++
++  it('throws HttpError(403, invalid_credentials) and does NOT update when the current password is wrong', async () => {
++    mockFindByPk.mockResolvedValue(makeFakeUser());
++    mockVerify.mockResolvedValue(false);
++
++    const req = makeReq({
++      currentPassword: 'wrongPassword',
++      newPassword: 'newPassword456',
++    });
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction & jest.Mock;
++
++    await changePassword(req, res, next);
++
++    expect(mockHash).not.toHaveBeenCalled();
++    expect(mockUpdate).not.toHaveBeenCalled();
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err.status).toBe(403);
++    expect(err.errorCode).toBe('invalid_credentials');
++    expect(err.message).toBe('Your current password is incorrect.');
++  });
++
++  it('clears the cookie and throws HttpError(401, account_inactive) when the user is no longer active', async () => {
++    mockFindByPk.mockResolvedValue(makeFakeUser({ isActive: false }));
++
++    const req = makeReq({
++      currentPassword: 'oldPassword123',
++      newPassword: 'newPassword456',
++    });
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction & jest.Mock;
++
++    await changePassword(req, res, next);
++
++    expect(mockClearAuthCookie).toHaveBeenCalledWith(res);
++    expect(mockUpdate).not.toHaveBeenCalled();
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err.status).toBe(401);
++    expect(err.errorCode).toBe('account_inactive');
++  });
++
++  it('clears the cookie and throws HttpError(401, account_inactive) when the user is missing', async () => {
++    mockFindByPk.mockResolvedValue(null);
++
++    const req = makeReq({
++      currentPassword: 'oldPassword123',
++      newPassword: 'newPassword456',
++    });
++    const { res } = makeRes();
++    const next = jest.fn() as unknown as NextFunction & jest.Mock;
++
++    await changePassword(req, res, next);
++
++    expect(mockClearAuthCookie).toHaveBeenCalledWith(res);
++    expect(next).toHaveBeenCalledTimes(1);
++    const err = (next as jest.Mock).mock.calls[0][0];
++    expect(err.status).toBe(401);
++    expect(err.errorCode).toBe('account_inactive');
++  });
++});
+diff --git a/backend/src/controllers/authController.ts b/backend/src/controllers/authController.ts
+index f339f5e..803fac9 100644
+--- a/backend/src/controllers/authController.ts
++++ b/backend/src/controllers/authController.ts
+@@ -1,16 +1,18 @@
+ /**
+- * Auth controller — HD-003.
++ * Auth controller — HD-003 + HD-018.
+  *
+- * Four handlers:
+- *   - login    — POST /api/auth/login
+- *   - logout   — POST /api/auth/logout
+- *   - register — POST /api/auth/register (501 stub; Admin-managed users per HD-014)
+- *   - me       — GET  /api/auth/me (protected; authMiddleware populates req.user)
++ * Five handlers:
++ *   - login            — POST /api/auth/login
++ *   - logout           — POST /api/auth/logout
++ *   - register         — POST /api/auth/register (501 stub; Admin-managed users per HD-014)
++ *   - me               — GET  /api/auth/me (protected; authMiddleware populates req.user)
++ *   - changePassword   — PATCH /api/auth/me/password (HD-018; authMiddleware + self-only)
+  *
+  * All handlers are wrapped in `asyncHandler` so any thrown error
+  * (including HttpError) routes to the central errorHandler.
+  */
+ 
++import bcrypt from 'bcrypt';
+ import type { Request, Response } from 'express';
+ import { User } from '../models';
+ import { asyncHandler } from '../utils/asyncHandler';
+@@ -21,6 +23,7 @@ import {
+   clearAuthCookie,
+   setAuthCookie,
+ } from '../utils/cookies';
++import { validateChangePasswordBody } from '../utils/validation/authValidation';
+ 
+ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+ 
+@@ -285,3 +288,100 @@ export const me = asyncHandler(async (req: Request, res: Response) => {
+ 
+   res.status(200).json({ user: toPublic(user) });
+ });
++
++/**
++ * @openapi
++ * /auth/me/password:
++ *   patch:
++ *     summary: Change your password
++ *     description: |
++ *       Updates the JWT'd user's `passwordHash`. Requires the user
++ *       to send their current password (defense-in-depth — even
++ *       though the JWT is the proof of identity, requiring the
++ *       current password ensures a stolen cookie alone can't
++ *       change the account password).
++ *
++ *       On success returns 204 with no body. The user's existing
++ *       JWT cookie remains valid (we don't rotate tokens on
++ *       password change in MVP — this is documented in
++ *       `_bmad-output/implementation-artifacts/spec-hd-018-password-change.md`
++ *       "Token rotation" in the "Notes for the implementer" section).
++ *     tags: [Auth]
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             $ref: '#/components/schemas/ChangePasswordRequest'
++ *     responses:
++ *       204:
++ *         description: Password changed. No body.
++ *       400:
++ *         description: |
++ *           Validation error. Returns the standard validation_error
++ *           envelope with a per-field `fields` map.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *             example:
++ *               error: validation_error
++ *               message: Please correct the highlighted fields.
++ *               fields:
++ *                 newPassword: New password must be at least 8 characters.
++ *       401:
++ *         $ref: '#/components/responses/Unauthorized'
++ *       403:
++ *         description: |
++ *           The supplied `currentPassword` does not match the stored
++ *           hash. Same shape as the login endpoint's
++ *           `invalid_credentials` envelope.
++ *         content:
++ *           application/json:
++ *             schema:
++ *               $ref: '#/components/schemas/ErrorBody'
++ *             example:
++ *               error: invalid_credentials
++ *               message: Your current password is incorrect.
++ */
++export const changePassword = asyncHandler(
++  async (req: Request, res: Response) => {
++    const { currentPassword, newPassword } = validateChangePasswordBody(
++      (req.body ?? {}) as Record<string, unknown>,
++    );
++
++    // authMiddleware attached req.user; reload with the passwordHash
++    // scope so we can bcrypt.compare against the stored hash.
++    const user = await User.scope('withPassword').findByPk(req.user!.id);
++
++    if (!user || !user.isActive) {
++      // Mirror the /me 401 path — the account was deactivated
++      // between the middleware check and now. Force the cookie
++      // to be cleared so the next page load lands on /login.
++      clearAuthCookie(res);
++      throw new HttpError(
++        401,
++        'account_inactive',
++        'Your account is inactive. Contact your administrator.',
++      );
++    }
++
++    const currentOk = await verifyPassword(currentPassword, user.passwordHash);
++    if (!currentOk) {
++      throw new HttpError(
++        403,
++        'invalid_credentials',
++        'Your current password is incorrect.',
++      );
++    }
++
++    // Hash with the same cost factor as password.ts (10 rounds).
++    // Storing the new hash overwrites the old; no in-place update
++    // marker is needed because JWT verification doesn't read
++    // passwordHash.
++    const newHash = await bcrypt.hash(newPassword, 10);
++    await user.update({ passwordHash: newHash });
++
++    res.status(204).send();
++  },
++);
+diff --git a/backend/src/docs/openapi.spec.ts b/backend/src/docs/openapi.spec.ts
+index 6c8be16..52c76ab 100644
+--- a/backend/src/docs/openapi.spec.ts
++++ b/backend/src/docs/openapi.spec.ts
+@@ -33,15 +33,16 @@ describe('OpenAPI spec (HD-015)', () => {
+     expect(spec.info.title).toBe('HelpDesk Lite API');
+     expect(typeof spec.info.version).toBe('string');
+ 
+-    // ── All 20 paths (covering 22 HTTP methods across 6 routers) ──
++    // ── All 21 paths (covering 23 HTTP methods across 6 routers) ──
+     // Note: GET and PATCH on /tickets/{id} share one path entry,
+-    // so 20 paths × 22 methods. The list below is the union of
++    // so 21 paths × 23 methods. The list below is the union of
+     // every documented operation.
+     const expectedPaths = [
+       '/health',
+       '/auth/login',
+       '/auth/logout',
+       '/auth/me',
++      '/auth/me/password',
+       '/auth/register',
+       '/tickets',
+       '/tickets/mine',
+@@ -97,6 +98,7 @@ describe('OpenAPI spec (HD-015)', () => {
+       'CreateTicketRequest',
+       'UpdateTicketRequest',
+       'AddCommentRequest',
++      'ChangePasswordRequest',
+       'UpdateRoleRequest',
+       'UpdateStatusRequest',
+       'AttachmentUploadResponse',
+diff --git a/backend/src/docs/openapi.ts b/backend/src/docs/openapi.ts
+index b5b4ecd..f8ccfff 100644
+--- a/backend/src/docs/openapi.ts
++++ b/backend/src/docs/openapi.ts
+@@ -372,6 +372,25 @@ const sharedComponents = {
+         body: { type: 'string', minLength: 1, maxLength: 5000 },
+       },
+     },
++    ChangePasswordRequest: {
++      type: 'object',
++      required: ['currentPassword', 'newPassword'],
++      description:
++        'Body for PATCH /auth/me/password. currentPassword is checked against the stored hash; newPassword must be 8..128 chars and include at least one letter and at least one number.',
++      properties: {
++        currentPassword: {
++          type: 'string',
++          minLength: 1,
++          example: 'oldPassword123',
++        },
++        newPassword: {
++          type: 'string',
++          minLength: 8,
++          maxLength: 128,
++          example: 'newPassword456',
++        },
++      },
++    },
+     UpdateRoleRequest: {
+       type: 'object',
+       required: ['role'],
+diff --git a/backend/src/routes/auth.ts b/backend/src/routes/auth.ts
+index 8667cea..8738494 100644
+--- a/backend/src/routes/auth.ts
++++ b/backend/src/routes/auth.ts
+@@ -1,12 +1,19 @@
+ /**
+- * Auth router — HD-003.
++ * Auth router — HD-003 + HD-018.
+  *
+- * Wires the four auth endpoints. Only `/me` sits behind
+- * authMiddleware — login/logout/register are public.
++ * Wires the five auth endpoints. Only `/me` and
++ * `/me/password` (HD-018) sit behind authMiddleware —
++ * login/logout/register are public.
+  */
+ 
+ import { Router } from 'express';
+-import { login, logout, me, register } from '../controllers/authController';
++import {
++  changePassword,
++  login,
++  logout,
++  me,
++  register,
++} from '../controllers/authController';
+ import { authMiddleware } from '../middleware/auth';
+ 
+ const authRouter = Router();
+@@ -15,5 +22,6 @@ authRouter.post('/login', login);
+ authRouter.post('/logout', logout);
+ authRouter.post('/register', register);
+ authRouter.get('/me', authMiddleware, me);
++authRouter.patch('/me/password', authMiddleware, changePassword);
+ 
+ export default authRouter;
+diff --git a/backend/src/utils/validation/authValidation.spec.ts b/backend/src/utils/validation/authValidation.spec.ts
+new file mode 100644
+index 0000000..7351c0e
+--- /dev/null
++++ b/backend/src/utils/validation/authValidation.spec.ts
+@@ -0,0 +1,195 @@
++/**
++ * authValidation — unit spec (HD-018).
++ *
++ * Pins every documented failure mode of `validateChangePasswordBody`
++ * plus the happy path. The validator is a pure function so no
++ * model / service / controller to mock — just import + call + assert.
++ *
++ * Mirrors the structure of `ticketValidation.spec.ts`.
++ */
++
++import { HttpError } from '../errors';
++import {
++  validateChangePasswordBody,
++  type ChangePasswordInput,
++} from './authValidation';
++
++function expectHttpError(
++  fn: () => unknown,
++  predicate: (err: HttpError) => boolean,
++): HttpError {
++  try {
++    fn();
++  } catch (err) {
++    expect(err).toBeInstanceOf(HttpError);
++    const httpErr = err as HttpError;
++    expect(predicate(httpErr)).toBe(true);
++    return httpErr;
++  }
++  throw new Error('expected validateChangePasswordBody to throw');
++}
++
++describe('validateChangePasswordBody', () => {
++  it('returns a normalized input on the happy path', () => {
++    const result: ChangePasswordInput = validateChangePasswordBody({
++      currentPassword: 'oldPassword123',
++      newPassword: 'newPassword456',
++    });
++    expect(result).toEqual({
++      currentPassword: 'oldPassword123',
++      newPassword: 'newPassword456',
++    });
++  });
++
++  it('rejects a non-object body (array) with fields._body = "Request body must be a JSON object."', () => {
++    expectHttpError(
++      () => validateChangePasswordBody([]),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?._body === 'Request body must be a JSON object.',
++    );
++  });
++
++  it('rejects a null body with fields._body = "Request body must be a JSON object."', () => {
++    expectHttpError(
++      () => validateChangePasswordBody(null),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?._body === 'Request body must be a JSON object.',
++    );
++  });
++
++  it('rejects a missing currentPassword with fields.currentPassword = "Enter your current password."', () => {
++    expectHttpError(
++      () => validateChangePasswordBody({ newPassword: 'newPassword456' }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.currentPassword === 'Enter your current password.',
++    );
++  });
++
++  it('rejects a non-string currentPassword with fields.currentPassword = "Enter your current password."', () => {
++    expectHttpError(
++      () =>
++        validateChangePasswordBody({
++          currentPassword: 42,
++          newPassword: 'newPassword456',
++        }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.currentPassword === 'Enter your current password.',
++    );
++  });
++
++  it('rejects a missing newPassword with fields.newPassword = "Enter a new password."', () => {
++    expectHttpError(
++      () =>
++        validateChangePasswordBody({ currentPassword: 'oldPassword123' }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.newPassword === 'Enter a new password.',
++    );
++  });
++
++  it('rejects a non-string newPassword with fields.newPassword = "Enter a new password."', () => {
++    expectHttpError(
++      () =>
++        validateChangePasswordBody({
++          currentPassword: 'oldPassword123',
++          newPassword: 12345678,
++        }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.newPassword === 'Enter a new password.',
++    );
++  });
++
++  it('rejects a newPassword under 8 chars with the "at least 8 characters" message', () => {
++    expectHttpError(
++      () =>
++        validateChangePasswordBody({
++          currentPassword: 'oldPassword123',
++          newPassword: 'short1A',
++        }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.newPassword ===
++          'New password must be at least 8 characters.',
++    );
++  });
++
++  it('accepts a newPassword at exactly 8 chars (boundary)', () => {
++    const result = validateChangePasswordBody({
++      currentPassword: 'oldPassword123',
++      newPassword: 'abcd1234',
++    });
++    expect(result.newPassword).toBe('abcd1234');
++  });
++
++  it('rejects a newPassword over 128 chars with the "128 characters or fewer" message', () => {
++    const tooLong = 'a1' + 'a'.repeat(127);
++    expectHttpError(
++      () =>
++        validateChangePasswordBody({
++          currentPassword: 'oldPassword123',
++          newPassword: tooLong,
++        }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.newPassword ===
++          'New password must be 128 characters or fewer.',
++    );
++  });
++
++  it('rejects a newPassword with no letter with the "include a letter" message', () => {
++    expectHttpError(
++      () =>
++        validateChangePasswordBody({
++          currentPassword: 'oldPassword123',
++          newPassword: '12345678',
++        }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.newPassword === 'New password must include a letter.',
++    );
++  });
++
++  it('rejects a newPassword with no number with the "include a number" message', () => {
++    expectHttpError(
++      () =>
++        validateChangePasswordBody({
++          currentPassword: 'oldPassword123',
++          newPassword: 'abcdefgh',
++        }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?.newPassword === 'New password must include a number.',
++    );
++  });
++
++  it('rejects an unknown extra key with fields._body = "Unknown field ..."', () => {
++    expectHttpError(
++      () =>
++        validateChangePasswordBody({
++          currentPassword: 'oldPassword123',
++          newPassword: 'newPassword456',
++          email: 'attacker@evil.com',
++        }),
++      (err) =>
++        err.status === 400 &&
++        err.errorCode === 'validation_error' &&
++        err.fields?._body ===
++          'Unknown field "email". Allowed: currentPassword, newPassword.',
++    );
++  });
++});
+diff --git a/backend/src/utils/validation/authValidation.ts b/backend/src/utils/validation/authValidation.ts
+new file mode 100644
+index 0000000..b36c376
+--- /dev/null
++++ b/backend/src/utils/validation/authValidation.ts
+@@ -0,0 +1,101 @@
++/**
++ * Hand-rolled validators for the Auth resource — HD-018.
++ *
++ * HD-018 ships `validateChangePasswordBody` for PATCH /api/auth/me/password.
++ *
++ * The controller calls this directly; on any failure it throws
++ * `HttpError(400, 'validation_error', ..., fields)` so the central
++ * errorHandler emits the 400 + per-field error map the frontend
++ * maps 1-to-1 onto its per-field error signals.
++ *
++ * Mirrors the conventions in `ticketValidation.ts` (no zod/joi per
++ * the HD-003 precedent — small dep footprint).
++ */
++
++import { HttpError } from '../errors';
++
++export interface ChangePasswordInput {
++  currentPassword: string;
++  newPassword: string;
++}
++
++const NEW_PASSWORD_MIN = 8;
++const NEW_PASSWORD_MAX = 128;
++
++function isPlainObject(value: unknown): value is Record<string, unknown> {
++  return typeof value === 'object' && value !== null && !Array.isArray(value);
++}
++
++/**
++ * Validate the body of PATCH /api/auth/me/password (HD-018).
++ *
++ * Body shape: `{ currentPassword: string, newPassword: string }` where
++ *   - `currentPassword` is required, non-empty (any value, even
++ *     short / no-format, is OK — the controller checks it against
++ *     the stored hash with bcrypt)
++ *   - `newPassword` is required, 8..128 chars, and must contain at
++ *     least one letter and at least one digit (basic complexity
++ *     policy; matches the existing "≥8 chars + ≥1 letter + ≥1
++ *     number" pattern that admin-managed users would expect)
++ *
++ * Field-level errors map to the corresponding form fields on the
++ * Change Password page.
++ */
++export function validateChangePasswordBody(
++  body: unknown,
++): ChangePasswordInput {
++  const fields: Record<string, string> = {};
++
++  if (!isPlainObject(body)) {
++    throw new HttpError(
++      400,
++      'validation_error',
++      'Please correct the highlighted fields.',
++      { _body: 'Request body must be a JSON object.' },
++    );
++  }
++
++  // Reject unknown keys — keeps the endpoint honest about what it
++  // accepts and matches the partial-PATCH / comment discipline
++  // already established in ticketValidation.ts.
++  for (const key of Object.keys(body)) {
++    if (key !== 'currentPassword' && key !== 'newPassword') {
++      fields._body = `Unknown field "${key}". Allowed: currentPassword, newPassword.`;
++      break;
++    }
++  }
++
++  const currentRaw = body.currentPassword;
++  if (typeof currentRaw !== 'string' || currentRaw.length === 0) {
++    fields.currentPassword = 'Enter your current password.';
++  }
++
++  const newRaw = body.newPassword;
++  if (typeof newRaw !== 'string' || newRaw.length === 0) {
++    fields.newPassword = 'Enter a new password.';
++  } else {
++    if (newRaw.length < NEW_PASSWORD_MIN) {
++      fields.newPassword = `New password must be at least ${NEW_PASSWORD_MIN} characters.`;
++    } else if (newRaw.length > NEW_PASSWORD_MAX) {
++      fields.newPassword = `New password must be ${NEW_PASSWORD_MAX} characters or fewer.`;
++    } else if (!/[A-Za-z]/.test(newRaw)) {
++      fields.newPassword = 'New password must include a letter.';
++    } else if (!/[0-9]/.test(newRaw)) {
++      fields.newPassword = 'New password must include a number.';
++    }
++  }
++
++  if (Object.keys(fields).length > 0) {
++    throw new HttpError(
++      400,
++      'validation_error',
++      'Please correct the highlighted fields.',
++      fields,
++    );
++  }
++
++  return {
++    currentPassword: currentRaw as string,
++    newPassword: newRaw as string,
++  };
++}
+diff --git a/frontend/src/app/app.routes.ts b/frontend/src/app/app.routes.ts
+index 9e9d8ae..5ccdbca 100644
+--- a/frontend/src/app/app.routes.ts
++++ b/frontend/src/app/app.routes.ts
+@@ -16,6 +16,7 @@ import { Routes } from '@angular/router';
+  *   HD-014  /users
+  *   (out of MVP) /forgot-password
+  *   HD-006  /forbidden
++ *   HD-018  /profile/password
+  *
+  * HD-006 wires `authGuard` (must be authenticated) and `roleGuard(...)`
+  * (role-restricted routes) into every protected entry. `/login` uses
+@@ -129,5 +130,15 @@ export const routes: Routes = [
+     title: 'Reset password · HelpDesk Lite',
+   },
+ 
++  {
++    path: 'profile/password',
++    canActivate: [authGuard],
++    loadComponent: () =>
++      import('./pages/change-password-page/change-password-page.component').then(
++        (m) => m.ChangePasswordPageComponent
++      ),
++    title: 'Change password · HelpDesk Lite',
++  },
++
+   { path: '**', redirectTo: 'login' },
+ ];
+diff --git a/frontend/src/app/components/molecules/header-chrome/header-chrome.component.ts b/frontend/src/app/components/molecules/header-chrome/header-chrome.component.ts
+index 8afa95c..c6a6d07 100644
+--- a/frontend/src/app/components/molecules/header-chrome/header-chrome.component.ts
++++ b/frontend/src/app/components/molecules/header-chrome/header-chrome.component.ts
+@@ -1,5 +1,5 @@
+ /**
+- * header-chrome — molecule (HD-004).
++ * header-chrome — molecule (HD-004 + HD-018).
+  *
+  * The 64px persistent chrome strip rendered above every post-login
+  * page. Three regions:
+@@ -8,7 +8,9 @@
+  *   2. Spacer.
+  *   3. Profile trigger (right) — avatar + name + caret. Toggles a
+  *      dropdown-panel containing the user header (avatar, name,
+- *      role badge), a divider, and the Log out action.
++ *      role badge), a divider, a "Change password" entry
++ *      (HD-018 → /profile/password), another divider, and the
++ *      "Log out" action.
+  *
+  * Clicking "Log out" opens a dialog-modal confirmation; on confirm,
+  * AuthService.logout() runs and the user is redirected to /login.
+@@ -96,6 +98,13 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
+               </div>
+             </div>
+             <divider-hr />
++            <button
++              type="button"
++              class="profile-action"
++              data-testid="change-password-link"
++              (click)="goChangePassword()"
++            >Change password</button>
++            <divider-hr />
+             <button
+               type="button"
+               class="profile-action"
+@@ -259,6 +268,17 @@ export class HeaderChromeComponent {
+     void this.router.navigateByUrl(this.auth.roleHomePath());
+   }
+ 
++  /**
++   * HD-018: navigate to the change-password page. Closes the
++   * dropdown so the user sees the form, not the floating panel.
++   * The /profile/password route is authGuard'd; a session that
++   * expired between the open and the click will bounce to /login.
++   */
++  goChangePassword(): void {
++    this.dropdownOpen.set(false);
++    void this.router.navigateByUrl('/profile/password');
++  }
++
+   toggleDropdown(): void {
+     this.dropdownOpen.update((v) => !v);
+   }
+diff --git a/frontend/src/app/pages/change-password-page/change-password-page.component.spec.ts b/frontend/src/app/pages/change-password-page/change-password-page.component.spec.ts
+new file mode 100644
+index 0000000..c29b293
+--- /dev/null
++++ b/frontend/src/app/pages/change-password-page/change-password-page.component.spec.ts
+@@ -0,0 +1,289 @@
++/**
++ * ChangePasswordPageComponent — HD-018 spec.
++ *
++ * Pins the self-service password-change flow's contract:
++ *
++ *   (a) Empty form → submit triggers per-field client-side errors
++ *       (currentPassword, newPassword, confirmPassword) and
++ *       auth.changePassword is NOT called.
++ *   (b) Mismatched confirm → confirm field shows "Passwords don't
++ *       match." and changePassword is NOT called.
++ *   (c) Happy path → changePassword(currentPassword, newPassword)
++ *       resolves; success banner renders; after 1.5s the page
++ *       navigates to auth.roleHomePath().
++ *   (d) 400 with `fields.newPassword` → the new-password field
++ *       shows the server's per-field message.
++ *   (e) 403 with `invalid_credentials` → the current-password
++ *       field shows "Your current password is incorrect."
++ *   (f) 401 with `account_inactive` → top-of-form banner shows
++ *       the inactive message.
++ *   (g) Network / generic error → top-of-form banner shows the
++ *       generic "Couldn't change your password" copy.
++ *   (h) Cancel link navigates to auth.roleHomePath().
++ *   (i) Password show/hide toggle flips all three inputs'
++ *       type between 'password' and 'text'.
++ *
++ * Mirrors the existing login-page spec pattern (D2):
++ * TestBed + AuthService stub (login / changePassword are
++ * jasmine spies) + Router stub.
++ */
++
++import { TestBed, fakeAsync, tick } from '@angular/core/testing';
++import { provideRouter, Router } from '@angular/router';
++import { BehaviorSubject } from 'rxjs';
++
++import { ApiError } from '../../services/api-error';
++import { AuthService } from '../../services/auth.service';
++import { ChangePasswordPageComponent } from './change-password-page.component';
++
++interface PageInternals {
++  form: {
++    controls: {
++      currentPassword: { setValue: (v: string) => void };
++      newPassword: { setValue: (v: string) => void };
++      confirmPassword: { setValue: (v: string) => void };
++    };
++  };
++  currentFieldError: { set: (v: string | null) => void };
++  newFieldError: { set: (v: string | null) => void };
++  confirmFieldError: { set: (v: string | null) => void };
++  formError: { set: (v: string | null) => void };
++  passwordVisible: { set: (v: boolean) => void };
++  onSubmit: () => Promise<void>;
++  onCancel: () => void;
++  togglePasswordVisibility: () => void;
++}
++
++describe('ChangePasswordPageComponent (HD-018)', () => {
++  let authService: {
++    changePassword: jasmine.Spy<(c: string, n: string) => Promise<void>>;
++    user$: BehaviorSubject<unknown>;
++    userSnapshot: jasmine.Spy<() => unknown>;
++    roleHomePath: jasmine.Spy<() => string>;
++    refreshUser: jasmine.Spy<() => Promise<void>>;
++  };
++  let router: Router;
++  let routerNavigateByUrlSpy: jasmine.Spy;
++
++  async function configureTestBed(): Promise<void> {
++    await TestBed.configureTestingModule({
++      imports: [ChangePasswordPageComponent],
++      providers: [
++        provideRouter([]),
++        { provide: AuthService, useValue: authService },
++      ],
++    }).compileComponents();
++    router = TestBed.inject(Router);
++    routerNavigateByUrlSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
++  }
++
++  beforeEach(async () => {
++    authService = {
++      changePassword: jasmine
++        .createSpy('changePassword')
++        .and.callFake(() => Promise.resolve()),
++      user$: new BehaviorSubject<unknown>({
++        id: 7,
++        email: 'eli@example.com',
++        displayName: 'Eli',
++        role: 'User',
++        isActive: true,
++        lastActiveAt: null,
++        createdAt: '2026-01-01T00:00:00.000Z',
++        updatedAt: '2026-01-01T00:00:00.000Z',
++      }),
++      userSnapshot: jasmine
++        .createSpy('userSnapshot')
++        .and.returnValue({
++          id: 7,
++          displayName: 'Eli',
++          role: 'User',
++        }),
++      roleHomePath: jasmine
++        .createSpy('roleHomePath')
++        .and.returnValue('/dashboard'),
++      refreshUser: jasmine
++        .createSpy('refreshUser')
++        .and.callFake(() => Promise.resolve()),
++    };
++    await configureTestBed();
++  });
++
++  function fillValidForm(
++    fixture: import('@angular/core/testing').ComponentFixture<ChangePasswordPageComponent>,
++  ): void {
++    const page = fixture.componentInstance as unknown as PageInternals;
++    page.form.controls.currentPassword.setValue('oldPassword123');
++    page.form.controls.newPassword.setValue('newPassword456');
++    page.form.controls.confirmPassword.setValue('newPassword456');
++  }
++
++  async function settle(
++    fixture: import('@angular/core/testing').ComponentFixture<ChangePasswordPageComponent>,
++  ): Promise<void> {
++    fixture.detectChanges();
++    for (let i = 0; i < 4; i += 1) {
++      await Promise.resolve();
++    }
++    fixture.detectChanges();
++  }
++
++  it('empty form submit triggers per-field errors and does NOT call auth.changePassword', async () => {
++    const fixture = TestBed.createComponent(ChangePasswordPageComponent);
++    await settle(fixture);
++
++    await fixture.componentInstance.onSubmit();
++
++    expect(authService.changePassword).not.toHaveBeenCalled();
++    expect(fixture.componentInstance.currentFieldError()).toBe(
++      'Enter your current password.',
++    );
++    expect(fixture.componentInstance.newFieldError()).toBe(
++      'Enter a new password.',
++    );
++    expect(fixture.componentInstance.confirmFieldError()).toBe(
++      'Re-enter the new password.',
++    );
++  });
++
++  it('mismatched confirm shows "Passwords don\'t match." and does NOT call auth.changePassword', async () => {
++    const fixture = TestBed.createComponent(ChangePasswordPageComponent);
++    await settle(fixture);
++
++    const page = fixture.componentInstance as unknown as PageInternals;
++    page.form.controls.currentPassword.setValue('oldPassword123');
++    page.form.controls.newPassword.setValue('newPassword456');
++    page.form.controls.confirmPassword.setValue('differentPassword789');
++    await fixture.componentInstance.onSubmit();
++
++    expect(authService.changePassword).not.toHaveBeenCalled();
++    expect(fixture.componentInstance.confirmFieldError()).toBe(
++      "Passwords don't match.",
++    );
++  });
++
++  it('happy path resolves, shows the success banner, and schedules a navigate to roleHomePath', fakeAsync(async () => {
++    const fixture = TestBed.createComponent(ChangePasswordPageComponent);
++    await settle(fixture);
++    fillValidForm(fixture);
++
++    await fixture.componentInstance.onSubmit();
++
++    expect(authService.changePassword).toHaveBeenCalledWith(
++      'oldPassword123',
++      'newPassword456',
++    );
++    // Flush the setTimeout(1500) the component scheduled for the
++    // post-success redirect — fakeAsync gives us tick().
++    tick(1600);
++    expect(routerNavigateByUrlSpy).toHaveBeenCalledWith('/dashboard');
++  }));
++
++  it('400 with fields.newPassword maps to the new-password field error', async () => {
++    authService.changePassword.and.callFake(() =>
++      Promise.reject(
++        new ApiError(400, 'validation_error', 'Bad.', {
++          newPassword: 'New password must be at least 8 characters.',
++        }),
++      ),
++    );
++    const fixture = TestBed.createComponent(ChangePasswordPageComponent);
++    await settle(fixture);
++    fillValidForm(fixture);
++
++    await fixture.componentInstance.onSubmit();
++
++    expect(fixture.componentInstance.newFieldError()).toBe(
++      'New password must be at least 8 characters.',
++    );
++  });
++
++  it('403 invalid_credentials maps to the current-password field error', async () => {
++    authService.changePassword.and.callFake(() =>
++      Promise.reject(
++        new ApiError(
++          403,
++          'invalid_credentials',
++          'Your current password is incorrect.',
++        ),
++      ),
++    );
++    const fixture = TestBed.createComponent(ChangePasswordPageComponent);
++    await settle(fixture);
++    fillValidForm(fixture);
++
++    await fixture.componentInstance.onSubmit();
++
++    expect(fixture.componentInstance.currentFieldError()).toBe(
++      'Your current password is incorrect.',
++    );
++  });
++
++  it('401 account_inactive maps to the top-of-form banner', async () => {
++    authService.changePassword.and.callFake(() =>
++      Promise.reject(
++        new ApiError(
++          401,
++          'account_inactive',
++          'Your account is inactive. Contact your administrator.',
++        ),
++      ),
++    );
++    const fixture = TestBed.createComponent(ChangePasswordPageComponent);
++    await settle(fixture);
++    fillValidForm(fixture);
++
++    await fixture.componentInstance.onSubmit();
++
++    expect(fixture.componentInstance.formError()).toBe(
++      'Your account is inactive. Contact your administrator.',
++    );
++  });
++
++  it('network / generic error maps to the top-of-form banner', async () => {
++    // The AuthService.changePassword method catches and rethrows
++    // as ApiError(0, 'network_error', ...) on a network failure,
++    // so we model the same envelope here.
++    authService.changePassword.and.callFake(() =>
++      Promise.reject(
++        new ApiError(
++          0,
++          'network_error',
++          'Could not reach the server. Check your connection.',
++        ),
++      ),
++    );
++    const fixture = TestBed.createComponent(ChangePasswordPageComponent);
++    await settle(fixture);
++    fillValidForm(fixture);
++
++    await fixture.componentInstance.onSubmit();
++
++    // The page renders the ApiError message verbatim when there's
++    // no fields / errorCode mapping.
++    expect(fixture.componentInstance.formError()).toBe(
++      'Could not reach the server. Check your connection.',
++    );
++  });
++
++  it('Cancel link navigates to auth.roleHomePath() without firing changePassword', async () => {
++    const fixture = TestBed.createComponent(ChangePasswordPageComponent);
++    await settle(fixture);
++
++    fixture.componentInstance.onCancel();
++
++    expect(authService.changePassword).not.toHaveBeenCalled();
++    expect(routerNavigateByUrlSpy).toHaveBeenCalledWith('/dashboard');
++  });
++
++  it('password show/hide toggle flips passwordVisible', async () => {
++    const fixture = TestBed.createComponent(ChangePasswordPageComponent);
++    await settle(fixture);
++
++    expect(fixture.componentInstance.passwordVisible()).toBe(false);
++    fixture.componentInstance.togglePasswordVisibility();
++    expect(fixture.componentInstance.passwordVisible()).toBe(true);
++    fixture.componentInstance.togglePasswordVisibility();
++    expect(fixture.componentInstance.passwordVisible()).toBe(false);
++  });
++});
+diff --git a/frontend/src/app/pages/change-password-page/change-password-page.component.ts b/frontend/src/app/pages/change-password-page/change-password-page.component.ts
+new file mode 100644
+index 0000000..8e3e1fc
+--- /dev/null
++++ b/frontend/src/app/pages/change-password-page/change-password-page.component.ts
+@@ -0,0 +1,451 @@
++/**
++ * ChangePasswordPageComponent — HD-018.
++ *
++ * Self-service password-change form, available to every
++ * authenticated user. Reached from the header-chrome's
++ * profile menu ("Change password" entry). Wrapped in
++ * `<app-chrome>` so the persistent header renders above
++ * the form.
++ *
++ * Form fields:
++ *   - Current password (required, single-line)
++ *   - New password (required, 8..128 chars, ≥1 letter, ≥1 number
++ *     — matches the backend validator exactly)
++ *   - Confirm new password (required, must equal the new password)
++ *
++ * Render states (mutually exclusive @if blocks):
++ *   - idle      → form enabled, all fields empty
++ *   - submitting → form fields + Submit disabled, button shows
++ *                  spinner + "Saving…", Cancel stays enabled
++ *   - success   → green "Password changed." banner; 2s later the
++ *                 page auto-redirects to the role-correct home
++ *
++ * Behaviors:
++ *   - Submit click → client-side validation (current not blank,
++ *     new meets complexity, confirm matches). On failure: per-field
++ *     inline error + focus the first invalid field. No HTTP call.
++ *   - 204 → set `success` state, schedule navigateByUrl to the
++ *     role-correct home. Don't auto-clear the form (the user is
++ *     leaving the page).
++ *   - 400 with `fields` → map 1-to-1 onto the per-field error UX
++ *     (currentPassword / newPassword keys).
++ *   - 403 + invalid_credentials → top-of-form banner: "Your
++ *     current password is incorrect." (Different from a 400
++ *     field error — 403 means the current-password check failed
++ *     server-side, not the validator.)
++ *   - 401 (account_inactive / unauthenticated) → top-of-form
++ *     banner with the message; the session is gone, the chrome
++ *     will navigate the user to /login on the next /me.
++ *   - 5xx / network → top-of-form banner: "Couldn't change your
++ *     password. Please try again." Form state preserved.
++ *
++ * Why a 403 (not 401) for wrong current password? Mirrors the
++ * backend's choice (see `authController.ts:changePassword`). The
++ * 401 code is reserved for "you're not authenticated"; a wrong
++ * current password is a "you are authenticated, but that
++ * credential is wrong" 403. The frontend mirrors this so the
++ * login form and this form don't share a status-code-to-message
++ * mapping.
++ *
++ * Cross-page: no beforeunload (the user is explicitly choosing
++ * to change their password; navigation away mid-submit is rare
++ * enough to not need a confirm prompt — the 204 → success →
++ * redirect handles the common happy path).
++ */
++
++import {
++  ChangeDetectionStrategy,
++  Component,
++  ElementRef,
++  ViewChild,
++  inject,
++  signal,
++} from '@angular/core';
++import {
++  FormControl,
++  FormGroup,
++  ReactiveFormsModule,
++  Validators,
++} from '@angular/forms';
++import { Router } from '@angular/router';
++
++import { AuthService } from '../../services/auth.service';
++import { ApiError } from '../../services/api-error';
++import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
++import { ButtonComponent } from '../../components/atoms/button/button.component';
++import { InputTextComponent } from '../../components/atoms/input-text/input-text.component';
++import { LinkComponent } from '../../components/atoms/link/link.component';
++import { ShowPasswordToggleComponent } from '../../components/atoms/show-password-toggle/show-password-toggle.component';
++import { FormFieldComponent } from '../../components/molecules/form-field/form-field.component';
++
++const NEW_PASSWORD_MIN = 8;
++const NEW_PASSWORD_MAX = 128;
++
++const GENERIC_ERROR = "Couldn't change your password. Please try again.";
++
++@Component({
++  selector: 'app-change-password-page',
++  standalone: true,
++  changeDetection: ChangeDetectionStrategy.OnPush,
++  imports: [
++    ReactiveFormsModule,
++    AppChromeComponent,
++    ButtonComponent,
++    InputTextComponent,
++    LinkComponent,
++    ShowPasswordToggleComponent,
++    FormFieldComponent,
++  ],
++  template: `
++    <app-chrome>
++      <section class="change-password-page" id="main-content">
++        <article class="change-password-card">
++          <header class="page-head">
++            <h1 class="page-title">Change password</h1>
++            <p class="page-sub">Pick something at least 8 characters long with a letter and a number.</p>
++          </header>
++
++          @if (success()) {
++            <div
++              class="banner banner-ok"
++              data-testid="success-banner"
++              role="status"
++              aria-live="polite"
++            >
++              Password changed. Taking you back…
++            </div>
++          } @else {
++            <form
++              [formGroup]="form"
++              (ngSubmit)="onSubmit()"
++              novalidate
++              autocomplete="on"
++            >
++              @if (formError(); as msg) {
++                <div
++                  class="banner banner-err"
++                  data-testid="form-error-banner"
++                  role="alert"
++                >{{ msg }}</div>
++              }
++
++              <div class="fields">
++                <form-field
++                  id="cp-current"
++                  label="Current password"
++                  [required]="true"
++                  [error]="currentFieldError()"
++                >
++                  <div class="password-wrap">
++                    <atom-input
++                      #currentInput
++                      id="cp-current"
++                      [type]="passwordVisible() ? 'text' : 'password'"
++                      autocomplete="current-password"
++                      placeholder="Your current password"
++                      [value]="form.controls.currentPassword.value"
++                      [disabled]="submitting()"
++                      [invalid]="!!currentFieldError()"
++                      [required]="true"
++                      ariaDescribedBy="cp-current-error"
++                      (valueChange)="form.controls.currentPassword.setValue($event)"
++                    />
++                    <atom-show-password-toggle
++                      [pressed]="passwordVisible()"
++                      [disabled]="submitting()"
++                      (toggle)="togglePasswordVisibility()"
++                    />
++                  </div>
++                </form-field>
++
++                <form-field
++                  id="cp-new"
++                  label="New password"
++                  [required]="true"
++                  [error]="newFieldError()"
++                >
++                  <atom-input
++                    id="cp-new"
++                    [type]="passwordVisible() ? 'text' : 'password'"
++                    autocomplete="new-password"
++                    placeholder="8+ characters with a letter and a number"
++                    [value]="form.controls.newPassword.value"
++                    [disabled]="submitting()"
++                    [invalid]="!!newFieldError()"
++                    [required]="true"
++                    ariaDescribedBy="cp-new-error"
++                    (valueChange)="onNewPasswordChange($event)"
++                  />
++                </form-field>
++
++                <form-field
++                  id="cp-confirm"
++                  label="Confirm new password"
++                  [required]="true"
++                  [error]="confirmFieldError()"
++                >
++                  <atom-input
++                    id="cp-confirm"
++                    [type]="passwordVisible() ? 'text' : 'password'"
++                    autocomplete="new-password"
++                    placeholder="Type the new password again"
++                    [value]="form.controls.confirmPassword.value"
++                    [disabled]="submitting()"
++                    [invalid]="!!confirmFieldError()"
++                    [required]="true"
++                    ariaDescribedBy="cp-confirm-error"
++                    (valueChange)="form.controls.confirmPassword.setValue($event)"
++                  />
++                </form-field>
++              </div>
++
++              <div class="actions">
++                <atom-button
++                  type="submit"
++                  variant="primary"
++                  data-testid="submit-btn"
++                  [disabled]="!canSubmit()"
++                  [loading]="submitting()"
++                >{{ submitting() ? 'Saving…' : 'Change password' }}</atom-button>
++                <atom-link href="javascript:void(0)" (click)="onCancel()">Cancel</atom-link>
++              </div>
++            </form>
++          }
++        </article>
++      </section>
++    </app-chrome>
++  `,
++  styles: [`
++    :host {
++      display: block;
++    }
++    .change-password-page {
++      min-height: calc(100vh - var(--chrome-height));
++      display: grid;
++      place-items: start center;
++      padding: 32px 24px;
++      background: var(--color-page-bg);
++      box-sizing: border-box;
++    }
++    .change-password-card {
++      width: 100%;
++      max-width: 480px;
++      background: var(--color-surface);
++      border: 1px solid var(--color-border);
++      border-radius: 8px;
++      padding: 32px;
++    }
++    .page-head { margin-bottom: 24px; }
++    .page-title {
++      margin: 0 0 4px;
++      font-size: 20px;
++      font-weight: 600;
++      color: var(--color-primary);
++    }
++    .page-sub {
++      margin: 0;
++      font-size: 14px;
++      color: var(--color-label-muted, #6b7280);
++    }
++    .banner {
++      padding: 12px 14px;
++      border-radius: 6px;
++      font-size: 14px;
++      margin-bottom: 16px;
++    }
++    .banner-err {
++      background: #fdecea;
++      color: #b3261e;
++      border: 1px solid #f5c2c0;
++    }
++    .banner-ok {
++      background: #e6f4ea;
++      color: #1e7e34;
++      border: 1px solid #b7e1c1;
++    }
++    .fields { display: flex; flex-direction: column; gap: 16px; }
++    .password-wrap { position: relative; }
++    .password-wrap atom-input { padding-right: 40px; }
++    .password-wrap atom-show-password-toggle {
++      position: absolute;
++      right: 8px;
++      top: 50%;
++      transform: translateY(-50%);
++    }
++    .actions {
++      margin-top: 24px;
++      display: flex;
++      align-items: center;
++      gap: 16px;
++    }
++  `],
++})
++export class ChangePasswordPageComponent {
++  private readonly auth = inject(AuthService);
++  private readonly router = inject(Router);
++
++  readonly submitting = signal(false);
++  readonly success = signal(false);
++  readonly formError = signal<string | null>(null);
++  readonly currentFieldError = signal<string | null>(null);
++  readonly newFieldError = signal<string | null>(null);
++  readonly confirmFieldError = signal<string | null>(null);
++  readonly passwordVisible = signal(false);
++
++  readonly form = new FormGroup({
++    currentPassword: new FormControl<string>('', {
++      nonNullable: true,
++      validators: [Validators.required],
++    }),
++    newPassword: new FormControl<string>('', {
++      nonNullable: true,
++      validators: [
++        Validators.required,
++        Validators.minLength(NEW_PASSWORD_MIN),
++        Validators.maxLength(NEW_PASSWORD_MAX),
++      ],
++    }),
++    confirmPassword: new FormControl<string>('', {
++      nonNullable: true,
++      validators: [Validators.required],
++    }),
++  });
++
++  @ViewChild('currentInput', { static: false })
++  private readonly currentInput?: ElementRef<HTMLElement>;
++
++  /**
++   * Real-time match check: when the user types in the new-password
++   * field, recompute the confirm-field error so the "doesn't match"
++   * hint appears immediately (rather than only on submit).
++   */
++  onNewPasswordChange(value: string): void {
++    this.form.controls.newPassword.setValue(value);
++    const confirm = this.form.controls.confirmPassword.value;
++    if (confirm && confirm !== value) {
++      this.confirmFieldError.set("Passwords don't match.");
++    } else if (confirm && confirm === value) {
++      this.confirmFieldError.set(null);
++    }
++  }
++
++  canSubmit(): boolean {
++    if (this.submitting()) return false;
++    return this.form.valid;
++  }
++
++  togglePasswordVisibility(): void {
++    this.passwordVisible.update((v) => !v);
++  }
++
++  onCancel(): void {
++    void this.router.navigateByUrl(this.auth.roleHomePath());
++  }
++
++  private clearErrors(): void {
++    this.formError.set(null);
++    this.currentFieldError.set(null);
++    this.newFieldError.set(null);
++    this.confirmFieldError.set(null);
++  }
++
++  async onSubmit(): Promise<void> {
++    this.clearErrors();
++    if (!this.form.valid) {
++      // Surface per-field validator errors. The Angular FormControl
++      // already runs them on value change; we re-read on submit
++      // so the user sees the error if they tabbed past a field
++      // without ever triggering blur.
++      this.applyClientSideErrors();
++      this.focusFirstInvalid();
++      return;
++    }
++
++    const { currentPassword, newPassword, confirmPassword } = this.form.getRawValue();
++    if (newPassword !== confirmPassword) {
++      this.confirmFieldError.set("Passwords don't match.");
++      this.focusFirstInvalid();
++      return;
++    }
++
++    this.submitting.set(true);
++    try {
++      await this.auth.changePassword(currentPassword, newPassword);
++      this.success.set(true);
++      // Brief delay so the user sees the "Password changed." banner
++      // before the navigation strips the page.
++      setTimeout(() => {
++        void this.router.navigateByUrl(this.auth.roleHomePath());
++      }, 1500);
++    } catch (err) {
++      if (err instanceof ApiError) {
++        this.applyApiError(err);
++      } else {
++        this.formError.set(GENERIC_ERROR);
++      }
++    } finally {
++      this.submitting.set(false);
++    }
++  }
++
++  private applyClientSideErrors(): void {
++    const { currentPassword, newPassword, confirmPassword } = this.form.getRawValue();
++    if (!currentPassword) {
++      this.currentFieldError.set('Enter your current password.');
++    }
++    if (!newPassword) {
++      this.newFieldError.set('Enter a new password.');
++    } else if (newPassword.length < NEW_PASSWORD_MIN) {
++      this.newFieldError.set(`New password must be at least ${NEW_PASSWORD_MIN} characters.`);
++    } else if (newPassword.length > NEW_PASSWORD_MAX) {
++      this.newFieldError.set(`New password must be ${NEW_PASSWORD_MAX} characters or fewer.`);
++    } else if (!/[A-Za-z]/.test(newPassword)) {
++      this.newFieldError.set('New password must include a letter.');
++    } else if (!/[0-9]/.test(newPassword)) {
++      this.newFieldError.set('New password must include a number.');
++    }
++    if (!confirmPassword) {
++      this.confirmFieldError.set('Re-enter the new password.');
++    } else if (newPassword && confirmPassword !== newPassword) {
++      this.confirmFieldError.set("Passwords don't match.");
++    }
++  }
++
++  private applyApiError(err: ApiError): void {
++    if (err.fields) {
++      const cp = err.fields['currentPassword'];
++      if (cp) {
++        this.currentFieldError.set(cp);
++      }
++      const np = err.fields['newPassword'];
++      if (np) {
++        this.newFieldError.set(np);
++      }
++      const body = err.fields['_body'];
++      if (body) {
++        this.formError.set(body);
++      }
++    }
++    if (err.errorCode === 'invalid_credentials') {
++      this.currentFieldError.set(
++        err.message || 'Your current password is incorrect.',
++      );
++    } else if (err.errorCode === 'account_inactive' || err.status === 401) {
++      this.formError.set(
++        err.message ||
++          'Your account is inactive. Contact your administrator.',
++      );
++    } else if (!err.fields && !this.formError()) {
++      this.formError.set(err.message || GENERIC_ERROR);
++    }
++  }
++
++  private focusFirstInvalid(): void {
++    queueMicrotask(() => {
++      const host = this.currentInput?.nativeElement;
++      const inner: HTMLInputElement | null =
++        host?.querySelector('input') ?? null;
++      inner?.focus();
++    });
++  }
++}
+diff --git a/frontend/src/app/services/auth.service.spec.ts b/frontend/src/app/services/auth.service.spec.ts
+index 78f5717..a85449b 100644
+--- a/frontend/src/app/services/auth.service.spec.ts
++++ b/frontend/src/app/services/auth.service.spec.ts
+@@ -7,6 +7,11 @@
+  *   - 200 response → user$ emits the response body
+  *   - 401 response → user$ emits null (silently, no throw)
+  *   - 5xx / network error → refreshUser() rejects
++ *   - changePassword() PATCHes /api/auth/me/password with the
++ *     { currentPassword, newPassword } body and resolves on
++ *     204; throws ApiError on 4xx (with the standard
++ *     validation_error / invalid_credentials / account_inactive
++ *     envelope).
+  *
+  * And the D10 dedup contract:
+  *
+@@ -17,16 +22,18 @@
+  *   - After the in-flight request settles (success OR error),
+  *     the next refreshUser() call fires a fresh request
+  *
+- * The auth interceptor is registered via `withInterceptors`
+- * (matches the real app config) so the spec exercises the
+- * same error-conversion path the app does.
++ * The auth interceptor is NOT registered — this spec covers
++ * the service's wire contract (URL, method, body, response
++ * unwrap, ApiError conversion), not the interceptor itself.
++ * The interceptor has its own coverage via the login-page +
++ * change-password-page specs. Mirrors `user.service.spec.ts`
++ * (HD-014) and `ticket.service.spec.ts` (HD-017).
+  */
+ 
+ import { TestBed } from '@angular/core/testing';
+ import {
+-  HttpClient,
+   provideHttpClient,
+-  withInterceptors,
++  withInterceptorsFromDi,
+ } from '@angular/common/http';
+ import {
+   HttpTestingController,
+@@ -34,7 +41,6 @@ import {
+ } from '@angular/common/http/testing';
+ 
+ import { AuthService } from './auth.service';
+-import { authInterceptor } from './auth.interceptor';
+ import { ApiError } from './api-error';
+ import { environment } from '../../environments/environment';
+ import type { UserPublic } from '../models/user';
+@@ -58,7 +64,7 @@ describe('AuthService', () => {
+   beforeEach(() => {
+     TestBed.configureTestingModule({
+       providers: [
+-        provideHttpClient(withInterceptors([authInterceptor])),
++        provideHttpClient(withInterceptorsFromDi()),
+         provideHttpClientTesting(),
+         AuthService,
+       ],
+@@ -302,4 +308,100 @@ describe('AuthService', () => {
+       expect(service.roleHomePath()).toBe('/login');
+     });
+   });
++
++  // ─── HD-018 — changePassword ──────────────────────────────────
++
++  describe('changePassword (HD-018)', () => {
++    it('PATCHes /api/auth/me/password with { currentPassword, newPassword } and resolves on 204', async () => {
++      const p = service.changePassword('oldPassword123', 'newPassword456');
++
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/auth/me/password`,
++      );
++      expect(req.request.method).toBe('PATCH');
++      expect(req.request.withCredentials).toBe(true);
++      expect(req.request.body).toEqual({
++        currentPassword: 'oldPassword123',
++        newPassword: 'newPassword456',
++      });
++      req.flush(null, { status: 204, statusText: 'No Content' });
++
++      await p;
++    });
++
++    it('throws ApiError(400, validation_error) with fields.newPassword for an invalid new password', async () => {
++      const p = service.changePassword('oldPassword123', 'short');
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/auth/me/password`,
++      );
++      req.flush(
++        {
++          error: 'validation_error',
++          message: 'Please correct the highlighted fields.',
++          fields: {
++            newPassword: 'New password must be at least 8 characters.',
++          },
++        },
++        { status: 400, statusText: 'Bad Request' },
++      );
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        expect(err).toBeInstanceOf(ApiError);
++        expect((err as ApiError).status).toBe(400);
++        expect((err as ApiError).errorCode).toBe('validation_error');
++        expect((err as ApiError).fields).toEqual({
++          newPassword: 'New password must be at least 8 characters.',
++        });
++      }
++    });
++
++    it('throws ApiError(403, invalid_credentials) when the current password is wrong', async () => {
++      const p = service.changePassword('wrongOldPassword', 'newPassword456');
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/auth/me/password`,
++      );
++      req.flush(
++        {
++          error: 'invalid_credentials',
++          message: 'Your current password is incorrect.',
++        },
++        { status: 403, statusText: 'Forbidden' },
++      );
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        expect(err).toBeInstanceOf(ApiError);
++        expect((err as ApiError).status).toBe(403);
++        expect((err as ApiError).errorCode).toBe('invalid_credentials');
++        expect((err as ApiError).message).toBe(
++          'Your current password is incorrect.',
++        );
++      }
++    });
++
++    it('throws ApiError(401, account_inactive) when the user was deactivated mid-session', async () => {
++      const p = service.changePassword('oldPassword123', 'newPassword456');
++      const req = httpMock.expectOne(
++        `${environment.apiBaseUrl}/auth/me/password`,
++      );
++      req.flush(
++        {
++          error: 'account_inactive',
++          message: 'Your account is inactive. Contact your administrator.',
++        },
++        { status: 401, statusText: 'Unauthorized' },
++      );
++      try {
++        await p;
++        fail('expected ApiError');
++      } catch (err) {
++        expect(err).toBeInstanceOf(ApiError);
++        expect((err as ApiError).status).toBe(401);
++        expect((err as ApiError).errorCode).toBe('account_inactive');
++      }
++    });
++  });
+ });
+diff --git a/frontend/src/app/services/auth.service.ts b/frontend/src/app/services/auth.service.ts
+index 0abe75c..017c321 100644
+--- a/frontend/src/app/services/auth.service.ts
++++ b/frontend/src/app/services/auth.service.ts
+@@ -1,10 +1,11 @@
+ /**
+- * AuthService — HD-004.
++ * AuthService — HD-004 + HD-018.
+  *
+  * Owns the "who is logged in" state for the frontend. Backed by:
+- *   POST /api/auth/login    (sets the httpOnly cookie on success)
+- *   POST /api/auth/logout   (clears the cookie + emits null)
+- *   GET  /api/auth/me       (refreshes user$ on demand)
++ *   POST   /api/auth/login           (sets the httpOnly cookie on success)
++ *   POST   /api/auth/logout          (clears the cookie + emits null)
++ *   GET    /api/auth/me              (refreshes user$ on demand)
++ *   PATCH  /api/auth/me/password     (HD-018; change current user's password)
+  *
+  * The cookie rides in/out automatically because the auth interceptor
+  * stamps `withCredentials: true` on every /api/* request.
+@@ -150,4 +151,46 @@ export class AuthService {
+     if (role === 'User') return '/dashboard';
+     return '/login';
+   }
++
++  /**
++   * PATCH /api/auth/me/password — change the current user's password
++   * (HD-018).
++   *
++   * `currentPassword` is verified server-side against the stored
++   * hash before the new password is accepted. On success the
++   * server returns 204 (no body) and the existing JWT cookie
++   * stays valid (token rotation is out-of-MVP — see
++   * `_bmad-output/implementation-artifacts/spec-hd-018-password-change.md`
++   * "Token rotation").
++   *
++   * Throws `ApiError` on any non-2xx (the auth interceptor handles
++   * the HttpErrorResponse → ApiError conversion). The Change
++   * Password page maps the common shapes:
++   *   - 400 + fields.newPassword / fields.currentPassword → field errors
++   *   - 403 + invalid_credentials → top-of-form "current password
++   *     is incorrect" message
++   *   - 401 + account_inactive / unauthenticated → page bails out
++   *     (the session is gone, the user is being navigated to
++   *     /login by the auth interceptor side effects)
++   */
++  async changePassword(
++    currentPassword: string,
++    newPassword: string,
++  ): Promise<void> {
++    try {
++      await firstValueFrom(
++        this.http.patch(
++          `${environment.apiBaseUrl}/auth/me/password`,
++          { currentPassword, newPassword },
++          {
++            withCredentials: true,
++            observe: 'response',
++            responseType: 'json',
++          },
++        ),
++      );
++    } catch (err) {
++      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
++    }
++  }
+ }
