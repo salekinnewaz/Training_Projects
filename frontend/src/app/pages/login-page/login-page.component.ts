@@ -99,7 +99,7 @@ const PASSWORD_REQUIRED = 'Enter your password.';
           <span class="brand-wordmark">HelpDesk Lite</span>
         </header>
 
-        <h1 class="visually-hidden">Sign in</h1>
+        <h1 class="login-title">Sign in to your account</h1>
 
         <form
           [formGroup]="form"
@@ -158,6 +158,21 @@ const PASSWORD_REQUIRED = 'Enter your password.';
             </form-field>
           </div>
 
+          <div class="helper-row">
+            <label class="remember-label">
+              <input
+                type="checkbox"
+                id="remember-me"
+                data-testid="remember-me"
+                [checked]="rememberMe()"
+                (change)="onRememberMeChange($event)"
+                [disabled]="submitting()"
+              />
+              <span>Remember me</span>
+            </label>
+            <a class="forgot-link" href="/forgot-password" data-testid="forgot-password-link">Forgot password?</a>
+          </div>
+
           <atom-button
             type="submit"
             variant="primary"
@@ -166,22 +181,6 @@ const PASSWORD_REQUIRED = 'Enter your password.';
           >
             {{ submitting() ? 'Signing in…' : 'Sign in' }}
           </atom-button>
-
-          <div class="remember-row">
-            <input
-              type="checkbox"
-              id="remember-me"
-              data-testid="remember-me"
-              [checked]="rememberMe()"
-              (change)="onRememberMeChange($event)"
-              [disabled]="submitting()"
-            />
-            <label for="remember-me" class="remember-label">Remember me</label>
-          </div>
-
-          <div class="forgot-row">
-            <atom-link href="/forgot-password">Forgot password?</atom-link>
-          </div>
 
           <div class="register-row">
             <span class="register-copy">Don&apos;t have an account?</span>
@@ -264,30 +263,46 @@ const PASSWORD_REQUIRED = 'Enter your password.';
       display: block;
       width: 100%;
     }
-    .forgot-row {
-      margin-top: 16px;
+    .login-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--color-text);
       text-align: center;
+      margin: 0 0 24px;
     }
-    .remember-row {
+    .helper-row {
       display: flex;
+      justify-content: space-between;
       align-items: center;
-      gap: 8px;
-      margin-top: 4px;
+      margin: 0 0 16px;
+      font-size: 14px;
     }
-    .remember-row input[type="checkbox"] {
+    .remember-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--color-label);
+      cursor: pointer;
+      user-select: none;
+      font-weight: 400;
+    }
+    .remember-label input[type="checkbox"] {
       width: 16px;
       height: 16px;
       margin: 0;
       cursor: pointer;
+      accent-color: var(--color-primary);
     }
-    .remember-label {
+    .forgot-link {
+      color: var(--color-primary);
+      text-decoration: none;
       font-size: 14px;
-      color: var(--color-label);
-      cursor: pointer;
-      user-select: none;
+    }
+    .forgot-link:hover {
+      text-decoration: underline;
     }
     .register-row {
-      margin-top: 12px;
+      margin-top: 16px;
       text-align: center;
       font-size: 14px;
       color: var(--color-muted);

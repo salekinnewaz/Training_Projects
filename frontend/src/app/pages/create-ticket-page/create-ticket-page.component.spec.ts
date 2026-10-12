@@ -440,4 +440,50 @@ describe('CreateTicketPageComponent', () => {
       'Optional — helps agents route your ticket',
     );
   });
+
+  // ── WDS-2026 — modal layout pins ──────────────────────────────────
+
+  it('renders the create-ticket card as a centered dialog with a header + close button', () => {
+    const fixture = TestBed.createComponent(CreateTicketPageComponent);
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const card = root.querySelector(
+      '.create-ticket-card[role="dialog"]',
+    ) as HTMLElement;
+    expect(card).not.toBeNull();
+    expect(
+      card.querySelector('.card-header .card-title')?.textContent?.trim(),
+    ).toBe('Create Ticket');
+
+    const close = card.querySelector(
+      'button.close-btn[aria-label="Close"]',
+    ) as HTMLButtonElement;
+    expect(close).not.toBeNull();
+  });
+
+  it('places the Cancel + Create Ticket buttons in a card-actions footer', () => {
+    const fixture = TestBed.createComponent(CreateTicketPageComponent);
+    fixture.detectChanges();
+
+    const actions = (fixture.nativeElement as HTMLElement).querySelector(
+      '.card-actions',
+    ) as HTMLElement;
+    expect(actions).not.toBeNull();
+
+    const buttons = actions.querySelectorAll('atom-button');
+    expect(buttons.length).toBe(2);
+    expect(buttons[0]?.textContent?.trim()).toBe('Cancel');
+    expect(buttons[1]?.textContent?.trim()).toBe('Create Ticket');
+  });
+
+  it('the close button is type=button (does not submit the form)', () => {
+    const fixture = TestBed.createComponent(CreateTicketPageComponent);
+    fixture.detectChanges();
+
+    const close = (fixture.nativeElement as HTMLElement).querySelector(
+      'button.close-btn',
+    ) as HTMLButtonElement;
+    expect(close.type).toBe('button');
+  });
 });

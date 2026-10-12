@@ -479,7 +479,7 @@ describe('LoginPageComponent (D2)', () => {
     fixture.detectChanges();
 
     const link = fixture.nativeElement.querySelector(
-      'atom-link[href="/forgot-password"]',
+      'a.forgot-link[href="/forgot-password"]',
     );
     expect(link).not.toBeNull();
   });
