@@ -439,6 +439,7 @@ test.describe('Feature: Admin Dashboard count badge = bucket total', () => {
       expect(countText).toBe(expectedTotal);
     }
   });
+});
 
 test.describe('Feature: Admin Dashboard', () => {
   test('admin lands on /admin and sees the Dashboard tab', async ({ page }) => {
