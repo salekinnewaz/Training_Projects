@@ -250,6 +250,9 @@ const PRIORITY_OPTIONS = [
                   <span class="dropzone-helper">Drag a file here, or click to browse</span>
                 </file-drop>
               </div>
+              <p class="form-helper" data-testid="attachment-helper">
+                (optional, 10 MB max)
+              </p>
             </form-field>
           </div>
 
