@@ -377,4 +377,23 @@ test.describe('Feature: Auth chrome (header strip)', () => {
     // The panel should show a Log out action.
     await expect(page.getByRole('button', { name: /^log out$/i })).toBeVisible();
   });
+
+  test('clicking Log out opens the wireframe-required confirmation dialog before signing out', async ({ page }) => {
+    // Wireframe header-profile-logout.md §"Logout confirmation
+    // dialog": click "Log out" inside the dropdown → confirmation
+    // dialog "Log out of HelpDesk Lite?" + Cancel + Log out.
+    // Cancel preserves the session; confirmed Log out clears the
+    // session and redirects to /login.
+    await loginAs(page, 'eli');
+    await page.getByRole('button', { name: 'Eli Tanaka' }).click();
+    await page.getByRole('button', { name: /^log out$/i }).first().click();
+    // The dialog must render before any session-clearing happens.
+    await expect(
+      page.getByText('Log out of HelpDesk Lite?', { exact: true }),
+    ).toBeVisible();
+    // Cancel preserves the session and closes the dialog.
+    await page.getByRole('button', { name: /^cancel$/i }).click();
+    await expect(page).not.toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/dashboard/);
+  });
 });
