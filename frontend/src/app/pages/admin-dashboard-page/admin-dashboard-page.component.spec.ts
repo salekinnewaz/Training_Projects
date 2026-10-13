@@ -117,7 +117,13 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
     expect(badges.length).toBe(4);
   });
 
-  it('shows the right counts in each card top zone', async () => {
+  it('shows the right counts in each card top zone (count = bucket.total, not rows.length)', async () => {
+    // Per wireframe admin-dashboard.md §"Card top zone" the count
+    // badge is the bucket total (e.g. "11" for Open even though the
+    // card body only renders 2 rows + the "Showing 2 of 11" footer).
+    // Regressions to rows.length have been the silent failure mode
+    // here — pinning to the totals keeps the wireframe-anchored
+    // contract honest.
     ticketService.adminDashboard.and.resolveTo(makeSummary());
     fixture.detectChanges();
     await fixture.whenStable();
@@ -129,8 +135,7 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
     const counts = Array.from(cards).map(
       (card) => (card as HTMLElement).querySelector('.count')?.textContent?.trim(),
     );
-    // rows.length for each bucket
-    expect(counts).toEqual(['2', '1', '1', '1']);
+    expect(counts).toEqual(['11', '5', '4', '3']);
   });
 
   it('renders Closed card with the muted class and no routerLink on Closed rows', async () => {

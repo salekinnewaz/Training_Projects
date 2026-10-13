@@ -176,7 +176,8 @@ const COMMENT_MAX = 5000;
                   [href]="backHref()"
                   data-testid="back-link"
                 >← Back to {{ backLabel() }}</a>
-                <h1 class="title-text">{{ t.title }}</h1>
+                <h1 class="title-text">Ticket #{{ t.number }}</h1>
+                <p class="ticket-title">{{ t.title }}</p>
                 <span class="ticket-number">#{{ t.number }}</span>
               </header>
 
@@ -184,6 +185,42 @@ const COMMENT_MAX = 5000;
                 <div class="closed-banner" role="status" data-testid="closed-banner">
                   This ticket is closed.
                 </div>
+              }
+
+              @if (showActionZone()) {
+                <section class="action-zone" data-testid="action-zone" aria-label="Ticket actions">
+                  @if (canComment()) {
+                    <atom-button
+                      variant="primary"
+                      size="md"
+                      data-testid="add-comment-btn"
+                      (pressed)="focusComposer()"
+                    >+ Comment</atom-button>
+                  }
+                  @if (canEditMeta() && t.status !== 'Resolved' && t.status !== 'Closed') {
+                    <atom-button
+                      variant="secondary"
+                      size="md"
+                      data-testid="change-status-btn"
+                      (pressed)="onChangeStatusClick()"
+                    >Change status ▾</atom-button>
+                    <atom-button
+                      variant="secondary"
+                      size="md"
+                      data-testid="reassign-btn"
+                      (pressed)="onReassignClick()"
+                    >Reassign</atom-button>
+                    <atom-button
+                      variant="secondary"
+                      size="md"
+                      data-testid="change-priority-btn"
+                      (pressed)="onChangePriorityClick()"
+                    >Change priority ▾</atom-button>
+                  }
+                  @if (isClosed()) {
+                    <span class="closed-readonly" data-testid="closed-readonly">Closed · read-only</span>
+                  }
+                </section>
               }
 
               <section class="meta-grid" data-testid="meta-grid">
@@ -220,24 +257,45 @@ const COMMENT_MAX = 5000;
                   />
                 </label>
 
-                <label class="meta-cell">
-                  <span class="meta-label">Assignee</span>
-                  <atom-select
-                    id="meta-assignee"
-                    [value]="t.owner ? t.owner.id.toString() : ''"
-                    [options]="assigneeOptions()"
-                    [disabled]="!canEditMeta()"
-                    (valueChange)="onAssigneeChange($event)"
-                  />
-                  @if (canSelfAssign()) {
-                    <button
-                      type="button"
-                      class="self-assign-link"
-                      data-testid="self-assign-btn"
-                      (click)="onSelfAssign()"
-                    >Assign to me</button>
+                <div class="meta-cell">
+                  <span class="meta-label">Owner</span>
+                  @if (canEditMeta()) {
+                    <atom-select
+                      id="meta-assignee"
+                      [value]="t.owner ? t.owner.id.toString() : ''"
+                      [options]="assigneeOptions()"
+                      [disabled]="!canEditMeta()"
+                      (valueChange)="onAssigneeChange($event)"
+                    />
+                    @if (canSelfAssign()) {
+                      <button
+                        type="button"
+                        class="self-assign-link"
+                        data-testid="self-assign-btn"
+                        (click)="onSelfAssign()"
+                      >Assign to me</button>
+                    }
+                  } @else {
+                    <span class="meta-value" data-testid="meta-owner-value">
+                      {{ t.owner ? t.owner.displayName : 'Unassigned' }}
+                    </span>
                   }
-                </label>
+                </div>
+
+                <div class="meta-cell">
+                  <span class="meta-label">Submitter</span>
+                  <span class="meta-value" data-testid="meta-submitter-value">
+                    {{ t.submitter.displayName }}
+                    <span class="role-badge employee">Employee</span>
+                  </span>
+                </div>
+
+                <div class="meta-cell">
+                  <span class="meta-label">Created</span>
+                  <span class="meta-value" data-testid="meta-created-value">
+                    {{ formatCreatedAt(t.createdAt) }}
+                  </span>
+                </div>
               </section>
 
               @if (canReopen() || canConfirmClose()) {
@@ -356,7 +414,7 @@ const COMMENT_MAX = 5000;
               </section>
 
               <section class="activity-section" data-testid="activity-section">
-                <h2 class="section-title">Activity ({{ activity().length }})</h2>
+                <h2 class="section-title">Activity log ({{ activity().length }})</h2>
                 @if (activity().length === 0) {
                   <p class="empty-marker">No activity yet.</p>
                 } @else {
@@ -423,12 +481,19 @@ const COMMENT_MAX = 5000;
       margin-bottom: 20px;
     }
     .title-text {
-      font-size: 28px;
-      font-weight: 700;
+      font-size: 22px;
+      font-weight: 600;
       color: var(--color-text);
       margin: 0;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.01em;
       line-height: 1.2;
+    }
+    .ticket-title {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--color-text-soft);
+      margin: 4px 0 0 0;
+      line-height: 1.4;
     }
     .ticket-number {
       font-family: var(--font-mono);
@@ -439,6 +504,24 @@ const COMMENT_MAX = 5000;
       background: var(--color-page-bg);
       border: 1px solid var(--color-border-subtle);
       border-radius: 8px;
+      display: inline-block;
+      align-self: flex-start;
+    }
+    .action-zone {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 10px;
+    }
+    .closed-readonly {
+      font-size: 14px;
+      color: var(--color-muted);
+      font-weight: 500;
     }
     .closed-banner {
       background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%);
@@ -465,7 +548,7 @@ const COMMENT_MAX = 5000;
     }
     .meta-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 12px;
       margin-bottom: 20px;
     }
@@ -488,6 +571,29 @@ const COMMENT_MAX = 5000;
       font-weight: 700;
       letter-spacing: 0.05em;
       text-transform: uppercase;
+    }
+    .meta-value {
+      font-size: 14px;
+      color: var(--color-text);
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .role-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      padding: 2px 8px;
+      border-radius: 999px;
+      line-height: 1.4;
+    }
+    .role-badge.employee {
+      background: #F1F5F9;
+      color: #475569;
+      border: 1px solid #CBD5E1;
     }
     .self-assign-link {
       background: none;
@@ -875,6 +981,20 @@ export class TicketDetailPageComponent implements OnInit, OnDestroy {
 
   readonly canComment = computed<boolean>(() => !this.isClosed());
 
+  /**
+   * The action zone renders when there's at least one button
+   * available: `+ Comment` for any non-Closed ticket, agent
+   * controls for Support Agent/Admin on non-terminal tickets, or
+   * the "Closed · read-only" indicator on Closed tickets. The
+   * "Reopen"/"Confirm (close)" buttons live in the dedicated
+   * submitter-actions block below; they're not duplicated here.
+   */
+  readonly showActionZone = computed<boolean>(() => {
+    if (this.isClosed()) return true; // shows "Closed · read-only"
+    if (this.canComment()) return true; // shows "+ Comment"
+    return this.canEditMeta() && !this.isClosed();
+  });
+
   readonly canSubmitComment = computed<boolean>(() => {
     const trimmed = this.composerValue().trim();
     return (
@@ -1189,6 +1309,76 @@ export class TicketDetailPageComponent implements OnInit, OnDestroy {
     if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
     const gb = mb / 1024;
     return `${gb.toFixed(gb < 10 ? 1 : 0)} GB`;
+  }
+
+  /**
+   * Format a ticket's `createdAt` for the meta-grid "Created"
+   * row. Per wireframe (ticket-detail.md §"Header block" item
+   * "Created-at timestamp"), the format is absolute:
+   * "Created Mmm DD, YYYY · HH:mm". Empty string on unparseable
+   * input so we never print "Invalid Date" to the user.
+   */
+  formatCreatedAt(iso: string): string {
+    const then = new Date(iso).getTime();
+    if (Number.isNaN(then)) return '';
+    return `Created ${formatAbsolute(then)}`;
+  }
+
+  /**
+   * `+ Comment` action zone button handler (HD-010 / wireframe
+   * §"Header actions"). Per spec: "focuses the composer at the
+   * bottom of the Comments section and scrolls it into view (so
+   * Sam acts in-place rather than clicking-and-losing-position)".
+   * The composer is always rendered for non-Closed tickets, so we
+   * just scroll the existing element into the viewport and put
+   * focus on the textarea.
+   */
+  focusComposer(): void {
+    const el = document.querySelector('[data-testid="comment-composer"] textarea') as HTMLTextAreaElement | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // queueMicrotask so the smooth-scroll has a chance to start
+    // before focus jumps (avoids a jarring instant jump).
+    queueMicrotask(() => el.focus());
+  }
+
+  /**
+   * `Change status ▾` action zone button handler. The meta-grid
+   * Status dropdown is always present (atom-select); we focus /
+   * open it so the agent can change status without scrolling
+   * down. Per the action matrix, Change status is hidden at
+   * Resolved/Closed, so this branch is only reachable at
+   * Open/In Progress.
+   */
+  onChangeStatusClick(): void {
+    const el = document.getElementById('meta-status') as HTMLSelectElement | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    queueMicrotask(() => el.focus());
+  }
+
+  /**
+   * `Reassign` action zone button handler. The Owner dropdown
+   * lives in the meta-grid; we focus / open it. Visible only
+   * for agents on non-Closed tickets.
+   */
+  onReassignClick(): void {
+    const el = document.getElementById('meta-assignee') as HTMLSelectElement | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    queueMicrotask(() => el.focus());
+  }
+
+  /**
+   * `Change priority ▾` action zone button handler. The Priority
+   * dropdown lives in the meta-grid; we focus / open it. Visible
+   * only for agents on non-Closed tickets.
+   */
+  onChangePriorityClick(): void {
+    const el = document.getElementById('meta-priority') as HTMLSelectElement | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    queueMicrotask(() => el.focus());
   }
 
   // ─── Loading ──────────────────────────────────────────────────────
