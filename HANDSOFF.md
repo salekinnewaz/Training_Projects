@@ -309,3 +309,123 @@ against the live page.
 
 ---
 
+### Iteration 5 — create-ticket page aligned with wireframe (commit `0dc6447`)
+
+**Action.** Audited the live `/tickets/new` page against
+`design-process/D-UX-Design/create-ticket.md` §"Content &
+Actions". The wireframe lists 10 specific elements in order;
+the live page diverged in 6 ways:
+
+| # | Element             | Wireframe                  | Live (pre-fix)            |
+|---|---------------------|----------------------------|---------------------------|
+| 1 | H1 heading          | "New ticket"               | "Create Ticket"           |
+| 2 | Submit button label | "Submit ticket"            | "Create Ticket"           |
+| 3 | Title placeholder   | "Short summary of the issue" | "Briefly describe the issue" |
+| 4 | Description placeholder | "Describe what's happening…" | "What happened? When did it start?" |
+| 5 | "← Back to My Tickets" link (top-left) | (present)  | absent |
+| 6 | "Cancel — return to My Tickets" link (below Submit) | (present) | absent |
+
+Made the following changes to
+`frontend/src/app/pages/create-ticket-page/create-ticket-page.component.ts`:
+
+- H1: "Create Ticket" → "New ticket"
+- Submit button: "Create Ticket" → "Submit ticket"
+- Title placeholder: "Briefly describe the issue" →
+  "Short summary of the issue"
+- Description placeholder: "What happened? When did it
+  start? Any error messages?" → "Describe what's
+  happening — what you expected, what's actually
+  happening, and anything you've already tried."
+- Added `<a class="back-link" data-testid="back-to-my-tickets">← Back to My Tickets</a>` above the form card,
+  wired to `/dashboard`.
+- Added `<a class="cancel-link" data-testid="cancel-return-link">Cancel — return to My Tickets</a>` below the
+  Submit button, wired to `/dashboard`.
+
+Updated `create-ticket-page.component.spec.ts` to assert
+the new H1 + button labels and added a third test for the
+two new navigation links. Updated `feature.spec.ts` to use
+the new "Submit ticket" button name and added two new
+tests: one for the wireframe-correct placeholders, one as
+a tripwire asserting the pre-fix "Create Ticket"
+button/heading labels are no longer present.
+
+**Result.** 15/15 unit tests pass for the create-ticket
+page. 27/27 E2E tests pass on the live deployment.
+
+---
+
+### Iteration 6 — agent kanban Closed column gap (commit `4e816fd`)
+
+**Action.** Audited the Agent Kanban against
+`design-process/D-UX-Design/agent-kanban.md` §"Behavior":
+
+> "Closed column is read-only. Sam cannot drag into or out
+> of Closed — Closed is Eli-only. The column exists for
+> history visibility."
+
+The wireframe spec'd Closed as a read-only history column
+with no "View list" link, no drag, no actions. The live
+page rendered a `<a class="view-list-link"
+href="/tickets?status=Closed">View list →</a>` in the
+Closed column footer when the column was non-empty and
+unfiltered. Removed the `<footer>` element from the
+template and the now-unused `.column-footer` /
+`.view-list-link` styles. Replaced two pre-existing unit
+tests that asserted the link was rendered with a
+wireframe tripwire test asserting the link is NOT
+rendered (and that no `a.view-list-link` exists anywhere
+on the page).
+
+**Result.** 21/21 unit tests pass for the agent-kanban
+page. 36/36 E2E tests pass on the live deployment.
+
+---
+
+### Iteration 7 — logout confirmation dialog coverage (commit `609a6cd`)
+
+**Action.** Audited the auth chrome against
+`design-process/D-UX-Design/header-profile-logout.md`
+§"Logout confirmation dialog":
+
+> Clicking "Logout" inside the panel → confirmation dialog
+> "Log out of HelpDesk Lite?" + Cancel + Log out. Cancel
+> preserves the session. Confirmed logout clears the
+> session and redirects to `/login`.
+
+The live impl already renders this dialog
+(`header-chrome.component.ts` line 181-190) — `dialog-modal`
+with `headline="Log out of HelpDesk Lite?"`, `cancelLabel="Cancel"`,
+`confirmLabel="Log out"`. The QA fixtures were skipping it
+on the assumption that logout was a single-click action.
+Updated `logout()` in `qa/tests/fixtures.ts` to click
+through the confirmation step. Added a new E2E test that
+explicitly asserts the dialog renders and that Cancel
+preserves the session (the user remains on `/dashboard`
+after Cancel; the URL does not change to `/login`).
+
+**Result.** 37/37 E2E tests pass on the live deployment.
+
+---
+
+### Iteration 8 — additional feature coverage (commit `9a22c55`)
+
+**Action.** Added 4 more wireframe-anchored tests:
+
+- **Admin Dashboard — 4 status cards** (admin-dashboard.md
+  §"Content & Actions" #3 — "Four status summary cards in
+  a single horizontal row, each 320px wide: Open / In
+  Progress / Resolved / Closed"). The test asserts all
+  four status labels are visible on `/admin`.
+- **Profile dropdown contents** (header-profile-logout.md
+  §"My Profile dropdown panel") — asserts the dropdown
+  panel includes both "View profile" and "Change password"
+  entries in addition to "Log out".
+- **View profile navigation** — clicking "View profile"
+  inside the dropdown routes to `/profile`.
+- **Change password navigation** — clicking "Change
+  password" routes to `/profile/password`.
+
+**Result.** 43/43 E2E tests pass on the live deployment.
+
+---
+
