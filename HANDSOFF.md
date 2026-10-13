@@ -531,3 +531,69 @@ tests pass on the live deployment.
 
 ---
 
+
+---
+
+### Iteration 11 — deep live-URL audit caught remaining wireframe gaps (commits `223dc8b`, `4dcfc2c`, `2bceaab`)
+
+**Trigger.** User reported: *"still i see from the live url, the existing issues is on there"*. My earlier `verify-live.mjs` proved all 18 prior fixes were live, but a deeper pass over every page on the live URL (`scripts/wireframe-audit.mjs` + per-page DOM inspection) revealed that my tripwires only checked *presence* of elements — they didn't check that values matched the wireframe spec.
+
+**Audit method.**
+1. Wrote `qa/scripts/inspect-each-page-deep.mjs` to dump the actual
+   DOM structure of every post-login page (chrome, employee
+   dashboard, kanban, ticket detail, create ticket, admin dashboard,
+   users tab).
+2. Cross-referenced every rendered text/structure against the 9
+   design-process/D-UX-Design/*.md spec files.
+3. Distinguished **real wireframe gaps** (UI missing/wrong per spec)
+   from **test selector bugs** (my regex was wrong).
+
+**Real wireframe gaps found.**
+
+| # | Page | Wireframe spec | Live impl (before) | Fix |
+|---|------|----------------|--------------------|-----|
+| 1 | Admin Dashboard | Card top zone count = bucket total | Count = visible rows.length | commit `223dc8b` |
+| 2 | Ticket Detail | H1 reads "Ticket #HD-47" (SR-only) | H1 = ticket title | commit `4dcfc2c` |
+| 3 | Ticket Detail | Action zone: `+ Comment` always (non-Closed); `Change status ▾` / `Reassign` / `Change priority ▾` for agents on non-terminal | Action zone didn't exist; only meta-grid dropdowns | commit `4dcfc2c` |
+| 4 | Ticket Detail | Meta-grid label "Owner" (used 12+ times in spec) | Label was "Assignee" | commit `4dcfc2c` |
+| 5 | Ticket Detail | "Submitter — Eli's name + 'Employee' badge" | Submitter row missing | commit `4dcfc2c` |
+| 6 | Ticket Detail | "Created Mmm DD, YYYY · HH:mm" timestamp | Created row missing | commit `4dcfc2c` |
+| 7 | Ticket Detail | Section header "Activity log" | Header was "Activity" | commit `4dcfc2c` |
+| 8 | Ticket Detail | Closed: "Closed · read-only" indicator in header | Closed-banner below header; no header read-only indicator | commit `4dcfc2c` |
+
+**Test selector bugs (no fix needed) — but flagged for future audits.**
+- Chrome caret is an `<svg>` path, not a Unicode `▾` / `▼` char.
+  My `[\u25be\u25bc]` regex was wrong.
+- Kanban columns are `<section class="column">` with `<h2
+  class="column-title">`, not `.kanban-column` or
+  `[data-testid="kanban-column"]`.
+- Ticket Detail Employee Open has no separate "+ Comment" button
+  in the action zone (the comment composer was just there without
+  a focus shortcut); the new fix #3 above adds it.
+
+**Files touched.**
+
+- `frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.ts` — card top zone count badge.
+- `frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.spec.ts` — updated assertion from rows.length to bucket.total.
+- `frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts` — H1, action zone, meta-grid (Owner/Submitter/Created), Activity log header, focusComposer/onChangeStatusClick/onReassignClick/onChangePriorityClick methods, formatCreatedAt method, showActionZone computed signal, action-zone / role-badge / meta-value CSS.
+
+**Tests added (commit `2bceaab`).** 6 new E2E tripwires under
+"Feature: Ticket Detail" and "Feature: Admin Dashboard count badge":
+
+- H1 reads "Ticket #HD-N", not the title.
+- Meta-grid shows "Owner" + "Submitter" + "Created"; no "Assignee".
+- Action zone renders "+ Comment" for Employee on Open.
+- "Closed · read-only" indicator on Closed tickets.
+- Section header "Activity log" (not just "Activity").
+- Admin card count == bucket.total (matches "Showing N of M" footer M).
+
+**Result.** 392/392 unit tests pass. E2E tests pending Vercel
+re-deploy to verify the live URL reflects all changes
+(typically takes 60s after push).
+
+**Known issue.** The seed database now has 50+ `qa-auto-*` and
+`qa-confirm-*` tickets from the earlier test runs. These are
+visible in Eli's `My Tickets` and the kanban. They're cosmetic
+noise, not a wireframe gap. A `DELETE FROM tickets WHERE title
+LIKE 'qa-%';` against the Neon DB would clean them up — out of
+scope for this iteration since they don't affect functionality.
