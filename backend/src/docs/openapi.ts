@@ -34,9 +34,9 @@
  * adds a route and forgets to update the file.
  */
 
-import swaggerJSDoc from 'swagger-jsdoc';
 import type { Request } from 'express';
 
+import { INLINED_OPENAPI_PATHS } from './openapi.paths';
 import packageJson from '../../package.json';
 
 /**
@@ -531,52 +531,43 @@ const sharedComponents = {
 };
 
 /**
- * swagger-jsdoc configuration. The `apis` glob is resolved
- * relative to the project root (where `node` is invoked),
- * which matches the swagger-jsdoc documented behavior.
+ * The static base of the OpenAPI document. `paths` comes from
+ * `INLINED_OPENAPI_PATHS` (a build-time codegen output that
+ * captures what swagger-jsdoc would have returned if its `apis`
+ * glob could resolve at runtime — see
+ * backend/scripts/inline-openapi-paths.js for the full
+ * rationale). Everything else is hand-written above.
  *
- * The first call to `swaggerJSDoc(...)` parses every JSDoc
- * block in the matched files and assembles the full spec.
- * The result is cached at module load so every subsequent
- * `getOpenApiSpec()` call returns the same object.
- *
- * **Why no `servers` block here:** the server URL is request-
- * dependent (local dev, Vercel preview, Vercel production are
- * all different origins), so we synthesize it in
- * `getOpenApiSpec(req)` based on the incoming request. The
- * Swagger UI dropdown will then offer both the current host
- * (auto-derived) and the dev URL as a fallback for users who
- * want to point at a locally-running backend.
+ * The static `servers` block is intentionally omitted: the
+ * server URL is request-dependent (local dev, Vercel preview,
+ * Vercel production are all different origins), so we
+ * synthesize it in `getOpenApiSpec(req)` based on the incoming
+ * request. The Swagger UI dropdown will then offer both the
+ * current host (auto-derived) and the dev URL as a fallback
+ * for users who want to point at a locally-running backend.
  */
-const swaggerOptions: swaggerJSDoc.Options = {
-  definition: {
-    openapi: '3.0.3',
-    info: {
-      title: 'HelpDesk Lite API',
-      version: packageJson.version,
-      description:
-        'Internal helpdesk — tickets, comments, user management. ' +
-        'All endpoints under `/api`. Most require an `auth` HttpOnly ' +
-        'cookie (set by `POST /api/auth/login`). Click "Authorize" in ' +
-        'the UI to attach the cookie to subsequent requests.',
-    },
-    components: sharedComponents,
-    tags: [
-      { name: 'Health', description: 'Liveness / metadata.' },
-      { name: 'Auth', description: 'Login, logout, current user.' },
-      { name: 'Tickets', description: 'Ticket lifecycle (HD-007 to HD-012).' },
-      { name: 'Users', description: 'User listing + admin role / status management (HD-010, HD-014).' },
-      { name: 'Admin', description: 'Admin-only surfaces (HD-013).' },
-      { name: 'Attachments', description: 'File upload + download (HD-016).' },
-    ],
+const cachedSpec = {
+  openapi: '3.0.3',
+  info: {
+    title: 'HelpDesk Lite API',
+    version: packageJson.version,
+    description:
+      'Internal helpdesk — tickets, comments, user management. ' +
+      'All endpoints under `/api`. Most require an `auth` HttpOnly ' +
+      'cookie (set by `POST /api/auth/login`). Click "Authorize" in ' +
+      'the UI to attach the cookie to subsequent requests.',
   },
-  apis: [
-    './src/routes/*.ts',
-    './src/controllers/*.ts',
+  components: sharedComponents,
+  tags: [
+    { name: 'Health', description: 'Liveness / metadata.' },
+    { name: 'Auth', description: 'Login, logout, current user.' },
+    { name: 'Tickets', description: 'Ticket lifecycle (HD-007 to HD-012).' },
+    { name: 'Users', description: 'User listing + admin role / status management (HD-010, HD-014).' },
+    { name: 'Admin', description: 'Admin-only surfaces (HD-013).' },
+    { name: 'Attachments', description: 'File upload + download (HD-016).' },
   ],
+  paths: INLINED_OPENAPI_PATHS,
 };
-
-const cachedSpec = swaggerJSDoc(swaggerOptions);
 
 /**
  * Build the `servers` array for a spec response.

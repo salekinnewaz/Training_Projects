@@ -177,7 +177,14 @@ const INIT_JS_TEMPLATE = `
 window.onload = function() {
   // Build a system
   const ui = SwaggerUIBundle({
-    url: "/api/docs.json",
+    // No url field here on purpose: setting spec to the
+    // inlined JSON object makes Swagger UI use it directly.
+    // If a url is also set, swagger-ui v5 fetches it and
+    // overwrites the inlined spec - and if that fetch 404s
+    // or returns a non-spec body, the UI silently ends up
+    // with an empty spec (operations missing, tags still
+    // visible because those come from the hand-written
+    // tags array in the OpenAPI definition).
     dom_id: "#swagger-ui",
     deepLinking: true,
     presets: [
