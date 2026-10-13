@@ -19,6 +19,14 @@
  */
 
 import { Sequelize } from 'sequelize';
+// Side-effect import of `pg` so Vercel's function bundler
+// (`@vercel/nft`) traces it as a static dep and includes it in
+// the deployment. Sequelize itself only `require()`s pg at
+// runtime via its dialect module loader, so without this hint
+// the function cold-starts with "Please install pg package
+// manually". Once bundled, Sequelize picks it up via the
+// standard pg import path.
+import 'pg';
 import dotenv from 'dotenv';
 import '../models';
 
