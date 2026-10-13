@@ -93,56 +93,6 @@ const PASSWORD_REQUIRED = 'Enter your password.';
   ],
   template: `
     <section class="login-page" id="main-content">
-      <aside class="login-hero" aria-hidden="true">
-        <div class="hero-bg"></div>
-        <div class="hero-orb hero-orb-1"></div>
-        <div class="hero-orb hero-orb-2"></div>
-        <div class="hero-orb hero-orb-3"></div>
-
-        <div class="hero-content">
-          <div class="hero-brand">
-            <span class="hero-brand-mark">HL</span>
-            <span class="hero-brand-text">HelpDesk Lite</span>
-          </div>
-
-          <h1 class="hero-headline">
-            One queue.<br />
-            <span class="hero-headline-accent">Zero chaos.</span>
-          </h1>
-          <p class="hero-subhead">
-            Triage, assign, and resolve support requests in one calm,
-            focused workspace — built for teams of 5 to 20.
-          </p>
-
-          <ul class="hero-features">
-            <li>
-              <span class="hero-feature-icon">
-                <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true">
-                  <path d="M4 10l3 3 9-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </span>
-              Trello-style board for agents
-            </li>
-            <li>
-              <span class="hero-feature-icon">
-                <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true">
-                  <path d="M4 10l3 3 9-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </span>
-              Full ticket history &amp; comments
-            </li>
-            <li>
-              <span class="hero-feature-icon">
-                <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true">
-                  <path d="M4 10l3 3 9-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </span>
-              Reopen with one click
-            </li>
-          </ul>
-        </div>
-      </aside>
-
       <main class="login-form-pane">
         <article class="login-card">
           <header class="brand">
@@ -150,8 +100,7 @@ const PASSWORD_REQUIRED = 'Enter your password.';
             <span class="brand-wordmark">HelpDesk Lite</span>
           </header>
 
-          <h1 class="login-title">Welcome back</h1>
-          <p class="login-subtitle">Sign in to continue to your dashboard.</p>
+          <h1 class="visually-hidden">Sign in</h1>
 
           <form
             [formGroup]="form"
@@ -210,38 +159,20 @@ const PASSWORD_REQUIRED = 'Enter your password.';
               </form-field>
             </div>
 
-            <div class="helper-row">
-              <label class="remember-label">
-                <input
-                  type="checkbox"
-                  id="remember-me"
-                  data-testid="remember-me"
-                  [checked]="rememberMe()"
-                  (change)="onRememberMeChange($event)"
-                  [disabled]="submitting()"
-                />
-                <span>Remember me</span>
-              </label>
-              <a class="forgot-link" href="/forgot-password" data-testid="forgot-password-link">Forgot password?</a>
-            </div>
-
             <atom-button
               type="submit"
               variant="primary"
               [disabled]="!form.controls.email.value || !form.controls.password.value"
               [loading]="submitting()"
             >
-              {{ submitting() ? 'Signing in…' : 'Sign in' }}
+              {{ submitting() ? 'Logging in…' : 'Log in' }}
             </atom-button>
 
-            <div class="register-row">
-              <span class="register-copy">Don&apos;t have an account?</span>
-              <a
-                class="register-link"
-                href="/register"
-                data-testid="register-link"
-              >Register</a>
-            </div>
+            <a
+              class="forgot-link"
+              href="/forgot-password"
+              data-testid="forgot-password-link"
+            >Forgot password?</a>
           </form>
         </article>
       </main>
@@ -250,205 +181,83 @@ const PASSWORD_REQUIRED = 'Enter your password.';
   styles: [`
     :host {
       display: block;
+      min-height: 100vh;
+      background: var(--color-page-bg);
     }
+
+    /* SR-only: visually hidden but present for screen readers.
+       Wireframe §"Content & Actions" #2: the page title is the
+       H1 landmark for the page and is never rendered visually. */
+    .visually-hidden {
+      position: absolute !important;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* ── Form column ──────────────────────────────────────────── */
+    /* Wireframe §"Visual Tokens":
+         - Page width 1440
+         - Form column width 400
+         - Form column horizontal center x = 720
+         - Field height 44
+         - Field radius 4
+         - Button height 48, radius 6
+         - Logomark 40×40, radius 6
+         - Spacing label→field 12, field→field 28, password→button 28,
+           button→forgot 32
+    */
     .login-page {
       min-height: 100vh;
-      display: grid;
-      grid-template-columns: 1.1fr 1fr;
+      display: block;
       background: var(--color-page-bg);
-      overflow: hidden;
     }
-
-    /* ── Hero panel (left, gradient) ──────────────────────────── */
-    .login-hero {
-      position: relative;
-      background: var(--gradient-hero);
-      color: var(--color-text-inverse);
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      padding: 64px 56px;
-      isolation: isolate;
-    }
-    .hero-bg {
-      position: absolute;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-      background-size: 32px 32px;
-      mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
-      opacity: 0.5;
-      z-index: -2;
-    }
-    .hero-orb {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(60px);
-      opacity: 0.5;
-      z-index: -1;
-      animation: float 8s ease-in-out infinite;
-    }
-    .hero-orb-1 {
-      width: 360px;
-      height: 360px;
-      background: #EC4899;
-      top: -120px;
-      left: -100px;
-      animation-delay: 0s;
-    }
-    .hero-orb-2 {
-      width: 420px;
-      height: 420px;
-      background: #06B6D4;
-      bottom: -160px;
-      right: -120px;
-      animation-delay: 2s;
-    }
-    .hero-orb-3 {
-      width: 240px;
-      height: 240px;
-      background: #FBBF24;
-      top: 50%;
-      left: 60%;
-      animation-delay: 4s;
-    }
-    .hero-content {
-      max-width: 520px;
-      animation: fadeInUp 700ms var(--ease-out) both;
-    }
-    .hero-brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      padding: 8px 14px 8px 8px;
-      background: rgba(255, 255, 255, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.20);
-      border-radius: 999px;
-      backdrop-filter: blur(12px);
-      margin-bottom: 32px;
-      font-weight: 600;
-      font-size: 14px;
-    }
-    .hero-brand-mark {
-      width: 28px;
-      height: 28px;
-      display: grid;
-      place-items: center;
-      background: var(--color-surface);
-      color: var(--color-primary);
-      border-radius: 50%;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.4px;
-    }
-    .hero-headline {
-      font-size: 56px;
-      line-height: 1.05;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      color: var(--color-text-inverse);
-      margin: 0 0 20px;
-    }
-    .hero-headline-accent {
-      background: linear-gradient(135deg, #FBBF24 0%, #F472B6 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .hero-subhead {
-      font-size: 17px;
-      line-height: 1.6;
-      color: rgba(255, 255, 255, 0.85);
-      margin: 0 0 36px;
-      font-weight: 400;
-    }
-    .hero-features {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-    .hero-features li {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 15px;
-      color: rgba(255, 255, 255, 0.92);
-      font-weight: 500;
-    }
-    .hero-feature-icon {
-      display: inline-grid;
-      place-items: center;
-      width: 24px;
-      height: 24px;
-      background: rgba(255, 255, 255, 0.18);
-      border-radius: 50%;
-      color: var(--color-text-inverse);
-      flex-shrink: 0;
-    }
-
-    /* ── Form pane (right) ───────────────────────────────────── */
     .login-form-pane {
-      display: grid;
-      place-items: center;
-      padding: 32px;
-      background: var(--color-surface);
-      animation: fadeIn 600ms var(--ease-out) both;
+      width: 100%;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 180px 32px 96px;
     }
     .login-card {
-      width: 100%;
-      max-width: 420px;
-      background: transparent;
-      padding: 0;
-      box-shadow: none;
-      box-sizing: border-box;
+      width: 400px;
+      max-width: 100%;
+      margin: 0 auto;
     }
     .brand {
       display: flex;
       align-items: center;
       gap: 12px;
-      margin-bottom: 40px;
+      margin-bottom: 64px;
     }
     .brand-mark {
       width: 40px;
       height: 40px;
       display: grid;
       place-items: center;
-      background: var(--gradient-brand);
+      background: var(--color-primary, #212529);
       color: #ffffff;
       font-weight: 700;
       font-size: 14px;
-      border-radius: 10px;
+      border-radius: 6px;
       letter-spacing: 0.5px;
-      box-shadow: var(--shadow-button);
     }
     .brand-wordmark {
       font-size: 18px;
       font-weight: 700;
-      color: var(--color-text);
-      letter-spacing: -0.02em;
+      color: var(--color-text, #212529);
+      letter-spacing: -0.01em;
     }
-    .login-title {
-      font-size: 28px;
-      font-weight: 700;
-      color: var(--color-text);
-      text-align: left;
-      margin: 0 0 6px;
-      letter-spacing: -0.02em;
-    }
-    .login-subtitle {
-      font-size: 15px;
-      color: var(--color-label);
-      margin: 0 0 32px;
-    }
+
     .fields {
       display: flex;
       flex-direction: column;
-      gap: 18px;
-      margin-bottom: 24px;
+      gap: 28px;
+      margin-bottom: 28px;
     }
     .password-wrap {
       position: relative;
@@ -464,101 +273,32 @@ const PASSWORD_REQUIRED = 'Enter your password.';
       top: 50%;
       transform: translateY(-50%);
     }
+
     form > atom-button {
       display: block;
       width: 100%;
-      margin-top: 4px;
     }
-    .helper-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin: 0 0 20px;
-      font-size: 14px;
-    }
-    .remember-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      color: var(--color-label);
-      cursor: pointer;
-      user-select: none;
-      font-weight: 500;
-    }
-    .remember-label input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      margin: 0;
-      cursor: pointer;
-      accent-color: var(--color-primary);
-      border-radius: 4px;
-    }
+    /* Wireframe: 32px gap from button bottom to Forgot password?
+       baseline. */
     .forgot-link {
-      color: var(--color-primary);
+      display: inline-block;
+      margin-top: 32px;
+      color: var(--color-muted, #868e96);
       text-decoration: none;
       font-size: 14px;
-      font-weight: 500;
-      transition: color var(--duration-fast) var(--ease-out);
+      transition: color var(--duration-fast, 150ms) var(--ease-out, ease);
     }
     .forgot-link:hover {
-      color: var(--color-primary-deep);
+      color: var(--color-primary, #212529);
       text-decoration: underline;
-    }
-    .register-row {
-      margin-top: 24px;
-      text-align: center;
-      font-size: 14px;
-      color: var(--color-muted);
-    }
-    .register-link {
-      color: var(--color-primary);
-      text-decoration: none;
-      font-weight: 600;
-      margin-left: 4px;
-    }
-    .register-link:hover {
-      color: var(--color-primary-deep);
-      text-decoration: underline;
-    }
-    .register-copy {
-      color: var(--color-muted);
     }
 
-    /* ── Responsive: stack hero above form on tablet/mobile ─────── */
-    @media (max-width: 960px) {
-      .login-page {
-        grid-template-columns: 1fr;
-      }
-      .login-hero {
-        padding: 40px 28px;
-        min-height: 240px;
-      }
-      .hero-headline {
-        font-size: 36px;
-      }
-      .hero-subhead {
-        font-size: 15px;
-        margin-bottom: 20px;
-      }
-      .hero-features {
-        display: none;
-      }
-      .login-form-pane {
-        padding: 32px 24px;
-      }
-    }
     @media (max-width: 520px) {
-      .login-hero {
-        padding: 28px 20px;
-      }
-      .hero-brand {
-        margin-bottom: 20px;
-      }
-      .hero-headline {
-        font-size: 28px;
-      }
       .login-form-pane {
-        padding: 28px 20px;
+        padding: 64px 20px 48px;
+      }
+      .login-card {
+        width: 100%;
       }
     }
   `],
@@ -586,15 +326,6 @@ export class LoginPageComponent implements AfterViewInit {
   readonly emailFieldError = signal<string | null>(null);
   readonly passwordFieldError = signal<string | null>(null);
   readonly passwordVisible = signal(false);
-  /**
-   * Local-only "remember me" toggle. Per the MVP wireframe note,
-   * this is a UI affordance only — the actual cookie persistence
-   * behavior is unchanged (the JWT cookie is httpOnly and rides
-   * the same way regardless of this checkbox). We keep the state
-   * here so the checkbox renders deterministically through OnPush
-   * change detection.
-   */
-  readonly rememberMe = signal(false);
 
   @ViewChild('emailInput', { static: false })
   private readonly emailInput?: ElementRef<HTMLElement>;
@@ -650,11 +381,6 @@ export class LoginPageComponent implements AfterViewInit {
 
   togglePasswordVisibility(): void {
     this.passwordVisible.update((v) => !v);
-  }
-
-  onRememberMeChange(event: Event): void {
-    const target = event.target as HTMLInputElement | null;
-    this.rememberMe.set(target?.checked ?? false);
   }
 
   async onSubmit(): Promise<void> {
