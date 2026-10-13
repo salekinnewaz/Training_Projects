@@ -63,9 +63,13 @@ test.describe('Feature: Agent Kanban', () => {
     await expect(
       page.locator('input#filter-search'),
     ).toHaveAttribute('placeholder', /search queue/i);
-    // 4 status column headers
+    // 4 status column headers (rendered as h2 elements per
+    // the page snapshot, so target them by role to skip the
+    // hidden <option> entries in the filter select).
     for (const status of ['Open', 'In Progress', 'Resolved', 'Closed']) {
-      await expect(page.getByText(status, { exact: true }).first()).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: status, level: 2 }),
+      ).toBeVisible();
     }
   });
 
@@ -122,5 +126,112 @@ test.describe('Feature: Health + API smoke', () => {
   test('GET /api/auth/me without cookie returns 401', async ({ request }) => {
     const res = await request.get('/api/auth/me');
     expect(res.status()).toBe(401);
+  });
+});
+
+test.describe('Feature: Create Ticket', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page, 'eli');
+  });
+
+  test('renders the form with the wireframe-listed fields', async ({ page }) => {
+    await page.goto('/tickets/new');
+    // The live page renders the form in a modal-style dialog
+    // (visible from the page snapshot — banner "Create Ticket"
+    // + × close button + Title/Description fields). The form
+    // has the wireframe-listed inputs.
+    await expect(page.locator('input#title')).toBeVisible();
+    await expect(page.locator('textarea#description')).toBeVisible();
+    await expect(page.locator('select#category')).toBeVisible();
+    await expect(page.locator('select#priority')).toBeVisible();
+    await expect(page.locator('input[type="file"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: /create ticket/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^cancel$/i })).toBeVisible();
+  });
+
+  test('disables Submit until Title and Description are filled', async ({ page }) => {
+    await page.goto('/tickets/new');
+    const submit = page.getByRole('button', { name: /create ticket/i });
+    await expect(submit).toBeDisabled();
+    await page.locator('input#title').fill('My keyboard shortcut is broken');
+    await expect(submit).toBeDisabled();
+    await page.locator('textarea#description').fill('Cmd+S no longer works in the editor.');
+    await expect(submit).toBeEnabled();
+  });
+
+  test('Cancel button closes the form and returns to /dashboard', async ({ page }) => {
+    await page.goto('/tickets/new');
+    await page.getByRole('button', { name: /^cancel$/i }).click();
+    await expect(page).toHaveURL(/\/dashboard/);
+  });
+
+  test('submitting a valid form lands on the created page', async ({ page }) => {
+    await page.goto('/tickets/new');
+    const unique = `qa-auto-${Date.now()}`;
+    await page.locator('input#title').fill(unique);
+    await page.locator('textarea#description').fill('Created by the QA loop.');
+    await page.getByRole('button', { name: /create ticket/i }).click();
+    await page.waitForURL(/\/tickets\/.+\/created/, { timeout: 10_000 });
+    expect(page.url()).toMatch(/\/tickets\/.+\/created/);
+  });
+});
+
+test.describe('Feature: Submission Confirmation', () => {
+  test('shows the wireframe-anchored signals after a fresh ticket create', async ({ page }) => {
+    await loginAs(page, 'eli');
+    await page.goto('/tickets/new');
+    const unique = `qa-confirm-${Date.now()}`;
+    await page.locator('input#title').fill(unique);
+    await page.locator('textarea#description').fill('Created by the QA loop for confirmation coverage.');
+    await page.getByRole('button', { name: /create ticket/i }).click();
+    await page.waitForURL(/\/tickets\/.+\/created/, { timeout: 10_000 });
+
+    // Wireframe §"Content & Actions" — the page renders:
+    //   - "Ticket created" headline
+    //   - ticket number (#HD-#)
+    //   - Initial status label + Open chip
+    //   - View ticket CTA
+    //   - Back to My Tickets secondary link
+    // (No ticket title per wireframe — only the number is the
+    // user-facing identifier on this page.)
+    await expect(page.getByText('Ticket created', { exact: true })).toBeVisible();
+    await expect(page.getByText(/^#HD-\d+$/)).toBeVisible();
+    await expect(page.getByText('Open', { exact: true }).first()).toBeVisible();
+    // "View ticket" and "Back to My Tickets" are both
+    // implemented as buttons in the live page.
+    await expect(page.getByRole('button', { name: /view ticket/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /back to my tickets/i })).toBeVisible();
+  });
+});
+
+test.describe('Feature: Ticket Detail', () => {
+  test('employee can open their own ticket', async ({ page }) => {
+    await loginAs(page, 'eli');
+    // Pick the first ticket from the dashboard.
+    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
+    await page.locator('ticket-row a.row').first().click();
+    // The live URL pattern is /tickets/<id> (numeric) — accept either
+    // /tickets/42 or /tickets/HD-42.
+    await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
+    // Should show the back link to the dashboard.
+    await expect(page.getByRole('link', { name: /back to/i })).toBeVisible();
+  });
+});
+
+test.describe('Feature: Admin Dashboard', () => {
+  test('admin lands on /admin and sees the Dashboard tab', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
+    // Admin should see a Users tab — wireframe says admin-only.
+    await expect(page.getByRole('tab', { name: /^users$/i }).or(
+      page.getByRole('link', { name: /^users$/i })
+    ).first()).toBeVisible();
+  });
+});
+
+test.describe('Feature: 404 / unknown route', () => {
+  test('GET /this-does-not-exist renders the 404 page', async ({ page }) => {
+    await page.goto('/this-does-not-exist');
+    await expect(page.getByText(/404|not found|page.*doesn.?t exist/i).first()).toBeVisible();
   });
 });
