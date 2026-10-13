@@ -119,12 +119,12 @@ describe('HeaderChromeComponent', () => {
     expect(brand.textContent).toContain('HL');
     expect(brand.textContent).toContain('HelpDesk Lite');
     const mark = fixture.nativeElement.querySelector('.brand-mark') as HTMLElement;
-    // WDS-2026: brand mark is 28x28 (was 40x40 in HD-004).
+    // WDS-2026: brand mark is 32x32 (was 40x40 in HD-004).
     // The width/height live in the component-scoped stylesheet, not
     // as inline styles, so read them via getComputedStyle.
     const computed = getComputedStyle(mark);
-    expect(computed.width).toBe('28px');
-    expect(computed.height).toBe('28px');
+    expect(computed.width).toBe('32px');
+    expect(computed.height).toBe('32px');
   });
 
   it('does not render nav, search, or profile when the user is null', () => {
