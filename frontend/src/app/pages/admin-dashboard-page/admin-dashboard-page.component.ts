@@ -41,7 +41,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { TicketService, type AdminDashboardSummary } from '../../services/ticket.service';
 import { ApiError } from '../../services/api-error';
@@ -83,6 +83,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
               [fragment]="'dashboard'"
               [attr.aria-selected]="activeTab() === 'dashboard'"
               [attr.tabindex]="activeTab() === 'dashboard' ? 0 : -1"
+              (click)="onTabClick('dashboard')"
               (keydown)="onTabKeydown($event, 'dashboard')"
             >Dashboard</a>
             <a
@@ -94,6 +95,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
               [fragment]="'users'"
               [attr.aria-selected]="activeTab() === 'users'"
               [attr.tabindex]="activeTab() === 'users' ? 0 : -1"
+              (click)="onTabClick('users')"
               (keydown)="onTabKeydown($event, 'users')"
             >Users</a>
           </nav>
@@ -206,6 +208,8 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
 export class AdminDashboardPageComponent implements OnInit {
   private readonly ticketService = inject(TicketService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   readonly renderState = signal<RenderState>('loading');
   readonly errorMessage = signal<string | null>(null);
@@ -254,6 +258,25 @@ export class AdminDashboardPageComponent implements OnInit {
 
   ngOnInit(): void {
     this.syncTabFromUrl();
+    // Subscribe to fragment changes so the activeTab signal stays
+    // in sync with the URL hash when the user clicks a tab link
+    // (routerLink + [fragment] only mutates the URL; without this
+    // subscription the activeTab signal would never update and
+    // the wrong tab content would render). The fragment observable
+    // emits `null` (not the current hash) on first subscribe in
+    // some test configurations, so we cross-check against
+    // window.location.hash: if the observable's value disagrees
+    // with the URL, trust the URL.
+    this.route.fragment.subscribe((fragment) => {
+      const fromObservable = (fragment ?? '').toLowerCase() === 'users' ? 'users' : 'dashboard';
+      const fromUrl = (typeof window !== 'undefined' ? window.location.hash : '')
+        .replace(/^#/, '')
+        .toLowerCase() === 'users' ? 'users' : 'dashboard';
+      const next = fromObservable === 'users' || fromUrl === 'users' ? 'users' : 'dashboard';
+      if (next !== this.activeTab()) {
+        this.activeTab.set(next);
+      }
+    });
     // Per design §4, the Users tab content is a placeholder for
     // HD-014 (which will absorb the Users content into this page).
     // The URL hash stays on /admin#users so the page contract
@@ -277,6 +300,18 @@ export class AdminDashboardPageComponent implements OnInit {
 
   onRefresh(): void {
     void this.load();
+  }
+
+  /**
+   * Click handler for the tab links. routerLink + [fragment]
+   * mutates the URL hash but the fragment subscription is
+   * async; we update the activeTab signal synchronously so the
+   * page flips immediately and there's no flicker of stale
+   * dashboard content. The fragment subscription is still the
+   * source of truth for direct-arrivals and back/forward nav.
+   */
+  onTabClick(tab: TabKey): void {
+    this.activeTab.set(tab);
   }
 
   /**
