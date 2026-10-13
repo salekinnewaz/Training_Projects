@@ -593,3 +593,70 @@ git push origin main
 3. **Do you have a custom domain** you want to point at the Vercel deployment, or use the free `*.vercel.app` subdomain?
 
 Once you confirm, I can create the `vercel.json`, the Railway config (`railway.toml` or `nixpacks.toml`), and the healthcheck endpoint in one pass.
+
+---
+
+## 11. Live deployment (status)
+
+The plan above pivoted mid-flight: instead of Vercel + Railway, the
+backend is also on Vercel (as a Function), and the database is on
+**Neon Postgres (free, 512 MB)** accessed via Vercel env vars. The
+deployment has been running since 2026-10-13.
+
+| Layer           | Where                                                       |
+| --------------- | ----------------------------------------------------------- |
+| Frontend (SPA)  | https://helpdesk-lite-tawny.vercel.app (Vercel static)      |
+| API (Function)  | https://helpdesk-lite-tawny.vercel.app/api/* (Vercel Function, same origin) |
+| Database        | Neon free tier, project `sweet-boat-76912606`, region `aws-us-east-1` |
+| Migrations + seed | Applied once via `neonctl` + `npm run db:migrate --workspace backend && npm run db:seed --workspace backend` |
+
+### Environment variables set on the Vercel project
+
+| Name                | Environments           | Source                                                    |
+| ------------------- | ---------------------- | --------------------------------------------------------- |
+| `POSTGRES_URL`      | Production / Preview / Development (Secret) | Neon pooled connection string                          |
+| `POSTGRES_URL_DIRECT` | Production / Preview / Development (Secret) | Neon direct (non-pooled) connection string             |
+| `JWT_SECRET`        | Production / Preview / Development (Secret) | `openssl rand -hex 32` (regenerated per project)        |
+| `FRONTEND_ORIGIN`   | Production / Preview / Development | `https://helpdesk-lite-tawny.vercel.app`                 |
+
+### Smoke-test results
+
+```
+GET  /                            → 200, Angular HTML shell served
+GET  /api/health                  → 200 {"status":"ok","service":"helpdesk-lite-backend",...}
+GET  /api/docs.json               → 200, full OpenAPI 3.0.3 spec
+POST /api/auth/login (admin)      → 200 + Set-Cookie: auth=...
+GET  /api/tickets/mine (admin)    → 200, real rows from Neon
+GET  /api/tickets/queue (admin)   → 403, role gate enforced (Support Agent only)
+```
+
+### Files that made the deploy work
+
+- `api/index.ts` — Vercel Function passthrough that re-exports
+  `backend/src/server` (Express app).
+- `vercel.json` — rewrites `/api/*` → the Function, `/` → Angular
+  SPA. `installCommand: "npm install --include-workspace-root
+  --workspaces"` so both the root and workspace deps install.
+- `.vercelignore` — excludes `node_modules/`, `dist/`,
+  `coverage/`, `logs/`, `.env*`, design + process artifacts from
+  the upload (the deploy would otherwise blow the 100 MB file
+  limit).
+- `package.json` (root) — hoists `pg`, `pg-hstore`, `sequelize`,
+  `express`, `helmet`, `jsonwebtoken`, `morgan`, `multer`,
+  `cookie-parser`, `cors`, `dotenv`, `express-rate-limit`,
+  `bcrypt` into root `dependencies`. Vercel runs `npm install`
+  against the root package.json, so without this hoisting the
+  Function cold-starts with "Please install pg package manually".
+- `backend/src/config/database.ts` — `import 'pg'` side-effect to
+  force Vercel's function bundler (`@vercel/nft`) to include `pg`
+  in the deployment payload. Sequelize loads `pg` dynamically, so
+  without the hint nft excludes it from the bundle.
+- `backend/src/config/sequelizeConfig.js` — sequelize-cli config
+  that prefers `POSTGRES_URL_DIRECT` (non-pooled) so migrations
+  keep one long-lived connection.
+
+### Local capture
+
+The Neon connection strings and JWT secret for this project are
+stored in `.vercel-neon.env` (gitignored). NEVER commit that file
+or `neonctl`'s `.neon` project file.
