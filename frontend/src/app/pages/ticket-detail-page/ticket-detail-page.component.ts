@@ -401,50 +401,73 @@ const COMMENT_MAX = 5000;
       width: 100%;
       max-width: 960px;
       margin: 0 auto;
+      animation: fadeInUp var(--duration-slow) var(--ease-out) both;
     }
     /* .breadcrumb and .header .back-link styles are in global
        styles.css to keep this component's style budget under 4kB. */
     .error-toast {
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
+      background: #FEF2F2;
+      border: 1px solid #FECACA;
       border-left: 4px solid var(--color-error);
-      border-radius: 6px;
-      padding: 10px 14px;
+      border-radius: 12px;
+      padding: 12px 16px;
       color: var(--color-error);
       font-size: 14px;
       margin-bottom: 16px;
+      font-weight: 500;
     }
     .header {
       display: flex;
-      align-items: baseline;
-      gap: 12px;
-      margin-bottom: 16px;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
     }
     .title-text {
-      font-size: 24px;
-      font-weight: 600;
-      color: var(--color-primary);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--color-text);
       margin: 0;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
     }
     .ticket-number {
       font-family: var(--font-mono);
-      font-size: 16px;
+      font-size: 14px;
       color: var(--color-muted);
+      font-weight: 600;
+      padding: 4px 10px;
+      background: var(--color-page-bg);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 8px;
     }
     .closed-banner {
-      background: var(--color-surface-subtle);
+      background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%);
       border: 1px solid var(--color-border);
-      border-radius: 8px;
-      padding: 12px 16px;
-      color: var(--color-muted);
+      border-radius: 12px;
+      padding: 14px 18px;
+      color: var(--color-text-soft);
       font-size: 14px;
       margin-bottom: 16px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .closed-banner::before {
+      content: '';
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2364748B'><path fill-rule='evenodd' d='M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z' clip-rule='evenodd'/></svg>");
+      background-size: contain;
+      background-repeat: no-repeat;
+      flex-shrink: 0;
     }
     .meta-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 12px;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
     }
     @media (max-width: 720px) {
       .meta-grid { grid-template-columns: repeat(2, 1fr); }
@@ -452,12 +475,19 @@ const COMMENT_MAX = 5000;
     .meta-cell {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
       position: relative;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 12px;
+      padding: 12px 14px;
     }
     .meta-label {
-      font-size: 12px;
+      font-size: 11px;
       color: var(--color-muted);
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
     }
     .self-assign-link {
       background: none;
@@ -469,6 +499,7 @@ const COMMENT_MAX = 5000;
       font-size: 12px;
       color: var(--color-primary);
       text-align: left;
+      font-weight: 600;
     }
     .self-assign-link:hover {
       text-decoration: underline;
@@ -476,7 +507,7 @@ const COMMENT_MAX = 5000;
     .submitter-actions {
       display: flex;
       gap: 8px;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
     }
     .submitter-actions atom-button {
       width: auto;
@@ -484,39 +515,47 @@ const COMMENT_MAX = 5000;
     }
     .description-card, .comments-section, .activity-section, .attachment-card {
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
-      padding: 16px;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 14px;
+      padding: 20px 22px;
       margin-bottom: 16px;
+      box-shadow: var(--shadow-card);
     }
     .section-title {
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--color-primary);
-      margin: 0 0 12px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--color-text);
+      margin: 0 0 14px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
     .description-body {
       margin: 0;
       white-space: pre-wrap;
-      color: var(--color-primary);
-      line-height: 1.5;
+      color: var(--color-text-soft);
+      line-height: 1.65;
+      font-size: 15px;
     }
     .attachment-row {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 8px 12px;
-      border-radius: 6px;
+      padding: 12px 14px;
+      border-radius: 10px;
       text-decoration: none;
-      color: var(--color-primary);
-      transition: background-color 0.1s;
+      color: var(--color-text);
+      background: var(--color-page-bg);
+      border: 1px solid var(--color-border-subtle);
     }
     .attachment-row:hover {
-      background: var(--color-surface-subtle);
+      background: var(--color-primary-tint);
+      border-color: var(--color-primary);
+      color: var(--color-primary);
     }
     .attachment-row:focus-visible {
-      outline: 2px solid var(--color-primary);
-      outline-offset: 2px;
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px var(--color-primary-ring);
     }
     .attachment-name {
       flex: 1;
@@ -543,19 +582,14 @@ const COMMENT_MAX = 5000;
     }
     .comment {
       display: flex;
-      gap: 12px;
-      padding: 12px 0 12px 12px;
-      border-bottom: 1px solid var(--color-border);
+      gap: 14px;
+      padding: 14px 14px 14px 16px;
+      border-bottom: 1px solid var(--color-border-subtle);
       border-left: 3px solid transparent;
     }
     .comment:last-child {
       border-bottom: none;
     }
-    /* The comment-role-user and comment-role-agent border-left-color
-       rules are defined globally in styles.css (HD-011) so the
-       per-component style budget stays under 2 kB. The component
-       only adds the class names; the tokens are reused from
-       root. */
     .comment-body {
       flex: 1;
       min-width: 0;
@@ -564,22 +598,24 @@ const COMMENT_MAX = 5000;
       display: flex;
       align-items: center;
       gap: 8px;
-      margin: 0 0 4px;
+      margin: 0 0 6px;
       font-size: 14px;
     }
     .comment-author {
       font-weight: 600;
-      color: var(--color-primary);
+      color: var(--color-text);
     }
     .agent-badge {
       display: inline-block;
-      background: var(--color-primary);
+      background: var(--gradient-brand);
       color: #ffffff;
-      padding: 2px 8px;
+      padding: 2px 9px;
       border-radius: 999px;
-      font-size: 11px;
-      font-weight: 600;
-      line-height: 1.4;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.6;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
     .comment-time {
       font-size: 12px;
@@ -588,8 +624,8 @@ const COMMENT_MAX = 5000;
     }
     .comment-text {
       margin: 0;
-      color: var(--color-primary);
-      line-height: 1.5;
+      color: var(--color-text-soft);
+      line-height: 1.625;
       white-space: pre-wrap;
     }
     .composer {

@@ -44,33 +44,40 @@ import {
     input {
       width: 100%;
       height: var(--field-height);
-      padding: 0 12px;
+      padding: 0 14px;
       border: 1px solid var(--color-border);
       border-radius: var(--field-radius);
       background: var(--color-surface);
-      color: var(--color-primary);
+      color: var(--color-text);
       font-family: inherit;
       font-size: 14px;
       line-height: 1.4;
+      font-weight: 500;
       outline: none;
-      transition: border-color 120ms ease, box-shadow 120ms ease;
+      box-shadow: var(--shadow-xs);
       box-sizing: border-box;
     }
     input::placeholder {
       color: var(--color-muted);
+      font-weight: 400;
     }
     input:disabled {
-      background: var(--color-surface-subtle);
+      background: var(--color-page-bg);
       color: var(--color-disabled);
       cursor: not-allowed;
+      box-shadow: none;
     }
     input[aria-invalid="true"] {
       border-color: var(--color-error);
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
     }
     input:focus-visible {
-      outline: var(--focus-ring-width) solid var(--focus-ring-color);
-      outline-offset: 0;
-      border-color: var(--focus-ring-color);
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 4px var(--color-primary-ring);
+    }
+    input:hover:not(:disabled):not([aria-invalid="true"]) {
+      border-color: var(--color-border-strong);
     }
   `],
 })

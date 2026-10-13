@@ -153,14 +153,22 @@ const TOAST_DURATION_MS = 1500;
       flex-direction: column;
       align-items: center;
       gap: 24px;
-      padding: 40px 0 0;
+      padding: 56px 32px;
+      max-width: 560px;
+      margin: 32px auto;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 20px;
+      box-shadow: var(--shadow-card);
       text-align: center;
+      animation: fadeInUp var(--duration-slow) var(--ease-out) both;
     }
     .success-headline {
-      font-size: 28px;
-      font-weight: 600;
-      color: var(--color-primary);
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--color-text);
       margin: 0;
+      letter-spacing: -0.02em;
     }
     .number-block {
       display: flex;
@@ -171,28 +179,40 @@ const TOAST_DURATION_MS = 1500;
     }
     .copy-toast {
       display: inline-block;
-      background: var(--color-primary);
+      background: var(--color-text);
       color: var(--color-surface);
       padding: 4px 10px;
-      border-radius: var(--field-radius);
+      border-radius: 999px;
       font-size: 12px;
       font-weight: 600;
       line-height: 1.4;
+      animation: fadeInUp var(--duration-fast) var(--ease-out) both;
     }
     .ticket-number {
-      background: none;
-      border: none;
-      padding: 0;
+      background: var(--color-page-bg);
+      border: 1px solid var(--color-border-subtle);
+      padding: 12px 20px;
       margin: 0;
       cursor: pointer;
       font-family: var(--font-mono);
-      font-size: 32px;
-      font-weight: 600;
+      font-size: 28px;
+      font-weight: 700;
       color: var(--color-primary);
       letter-spacing: 0.5px;
+      border-radius: 14px;
+      transition:
+        border-color var(--duration-fast) var(--ease-out),
+        box-shadow var(--duration-fast) var(--ease-out),
+        transform var(--duration-fast) var(--ease-out);
     }
     .ticket-number:hover {
-      text-decoration: underline;
+      border-color: var(--color-primary);
+      transform: translateY(-1px);
+    }
+    .ticket-number:focus-visible {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 4px var(--color-primary-ring);
     }
     .status-block {
       display: flex;
@@ -202,8 +222,11 @@ const TOAST_DURATION_MS = 1500;
     }
     .micro-label {
       margin: 0;
-      font-size: 12px;
+      font-size: 11px;
       color: var(--color-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 700;
     }
     .cta-block {
       width: 100%;
@@ -218,18 +241,21 @@ const TOAST_DURATION_MS = 1500;
       cursor: pointer;
       font-family: inherit;
       font-size: 14px;
+      font-weight: 500;
       color: var(--color-muted);
+      transition: color var(--duration-fast) var(--ease-out);
     }
     .back-link:hover {
-      text-decoration: underline;
+      color: var(--color-primary);
     }
     .state-card {
       max-width: 480px;
       margin: 48px auto;
-      padding: 32px;
+      padding: 40px 32px;
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 16px;
+      box-shadow: var(--shadow-card);
       text-align: center;
       display: flex;
       flex-direction: column;
@@ -238,18 +264,21 @@ const TOAST_DURATION_MS = 1500;
     }
     .state-card .title {
       font-size: 22px;
-      font-weight: 600;
-      color: var(--color-primary);
+      font-weight: 700;
+      color: var(--color-text);
       margin: 0;
+      letter-spacing: -0.02em;
     }
     .state-card .message {
       margin: 0;
       font-size: 14px;
       color: var(--color-muted);
+      line-height: 1.5;
     }
     .state-card atom-button {
       width: auto;
       min-width: 200px;
+      margin-top: 8px;
     }
   `],
 })

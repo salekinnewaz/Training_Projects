@@ -351,29 +351,38 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
       justify-content: space-between;
       align-items: center;
       gap: 16px;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
     }
     .kanban-header h1 {
       margin: 0;
-      font-size: 24px;
-      font-weight: 600;
-      color: var(--color-primary);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--color-text);
+      letter-spacing: -0.02em;
     }
     .error-toast {
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
+      border: 1px solid #FECACA;
       border-left: 4px solid var(--color-error);
-      border-radius: 6px;
-      padding: 10px 14px;
+      border-radius: 10px;
+      padding: 12px 16px;
       color: var(--color-error);
       font-size: 14px;
+      font-weight: 500;
       margin-bottom: 16px;
+      box-shadow: var(--shadow-card);
+      animation: fadeInUp var(--duration-base) var(--ease-out) both;
     }
     .filter-strip {
       display: flex;
       align-items: flex-end;
       gap: 12px;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
+      padding: 16px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 14px;
+      box-shadow: var(--shadow-card);
       flex-wrap: wrap;
     }
     .filter-strip > * {
@@ -381,10 +390,12 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
     }
     .filter-label {
       display: block;
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
       color: var(--color-muted);
-      margin-bottom: 4px;
+      margin-bottom: 6px;
     }
     .filter-search {
       flex: 1 1 240px;
@@ -402,53 +413,131 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
       background: transparent;
       color: var(--color-primary);
       font-size: 13px;
+      font-weight: 600;
       cursor: pointer;
-      text-decoration: underline;
       min-height: var(--field-height, 40px);
       line-height: var(--field-height, 40px);
+      transition: color var(--duration-fast) var(--ease-out);
+    }
+    .clear-link:hover {
+      color: var(--color-primary-deep);
     }
     .clear-link:focus-visible {
-      outline: var(--focus-ring-width) solid var(--focus-ring-color);
-      outline-offset: 2px;
+      outline: none;
+      box-shadow: 0 0 0 3px var(--color-primary-ring);
+      border-radius: 6px;
     }
     .state-card {
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
-      padding: 32px;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 14px;
+      padding: 40px 32px;
       box-sizing: border-box;
       text-align: center;
       max-width: 480px;
-      margin: 32px auto;
+      margin: 48px auto;
+      box-shadow: var(--shadow-card);
     }
     .state-card .title {
-      margin: 0 0 8px;
+      margin: 0 0 12px;
       font-size: 18px;
       font-weight: 600;
-      color: var(--color-primary);
+      color: var(--color-text);
+    }
+    .column {
+      display: flex;
+      flex-direction: column;
+      min-height: 320px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 14px;
+      box-shadow: var(--shadow-card);
+      transition:
+        box-shadow var(--duration-base) var(--ease-out),
+        transform var(--duration-base) var(--ease-out);
+    }
+    .column-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--color-border-subtle);
+      transition: background-color var(--duration-base) var(--ease-out);
+    }
+    .column-title {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--color-text);
+      letter-spacing: -0.01em;
+    }
+    .column-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 24px;
+      height: 24px;
+      padding: 0 8px;
+      background: var(--color-page-bg);
+      color: var(--color-muted);
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 999px;
+    }
+    .column-body {
+      flex: 1 1 auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition:
+        background-color var(--duration-base) var(--ease-out),
+        box-shadow var(--duration-base) var(--ease-out);
+    }
+    .column-body[data-drag-over="true"] {
+      background: var(--color-primary-soft-tint, rgba(99, 102, 241, 0.06));
+      box-shadow: inset 0 0 0 2px var(--color-primary);
+      border-radius: 0 0 14px 14px;
+    }
+    .column-body[data-drag-invalid="true"] {
+      background: rgba(239, 68, 68, 0.06);
+      box-shadow: inset 0 0 0 2px var(--color-error);
+      border-radius: 0 0 14px 14px;
+      animation: shake 220ms ease-in-out;
+    }
+    .column-body.readonly {
+      background: var(--color-page-bg);
     }
     .column-empty {
-      margin: 0;
+      margin: auto 0;
+      padding: 24px 12px;
       font-size: 13px;
       color: var(--color-muted);
       text-align: center;
     }
     .card-slot {
       cursor: pointer;
+      border-radius: 12px;
     }
     .column-footer {
-      padding: 8px 12px;
-      border-top: 1px solid var(--color-border);
+      padding: 10px 12px;
+      border-top: 1px solid var(--color-border-subtle);
       text-align: center;
     }
     .view-list-link {
       color: var(--color-primary);
       font-size: 12px;
       text-decoration: none;
-      font-weight: 500;
+      font-weight: 600;
+      transition: color var(--duration-fast) var(--ease-out);
     }
     .view-list-link:hover {
-      text-decoration: underline;
+      color: var(--color-primary-deep);
+    }
+    .view-list-link:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--color-primary-ring);
+      border-radius: 4px;
     }
     /* Keyboard move-mode — give the focused/active card a subtle
        outline + crosshair so it's visible which card the keys
@@ -456,7 +545,7 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
     .card-slot--moving {
       outline: 2px dashed var(--color-primary);
       outline-offset: 4px;
-      border-radius: 6px;
+      border-radius: 12px;
       cursor: crosshair;
     }
     .card-slot--moving:focus-visible {
@@ -466,12 +555,12 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
     /* When a column is the current keyboard-move target, paint
        a soft tint so the user knows where Enter will land. */
     .column-targeted > .column-header {
-      background: var(--color-kanban-orphan-tint, rgba(15, 23, 42, 0.04));
-      border-radius: 4px;
+      background: rgba(99, 102, 241, 0.06);
+      border-radius: 14px 14px 0 0;
     }
     .column-targeted > .column-body {
       box-shadow: inset 0 0 0 2px var(--color-primary);
-      border-radius: 6px;
+      border-radius: 0 0 14px 14px;
     }
     /* Visually hidden but available to assistive tech. */
     .sr-only {
@@ -484,6 +573,19 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
       clip: rect(0, 0, 0, 0);
       white-space: nowrap;
       border: 0;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-4px); }
+      40% { transform: translateX(4px); }
+      60% { transform: translateX(-2px); }
+      80% { transform: translateX(2px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .error-toast,
+      .column-body[data-drag-invalid="true"] {
+        animation: none;
+      }
     }
   `],
 })

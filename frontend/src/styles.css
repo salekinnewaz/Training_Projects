@@ -17,71 +17,111 @@
   --font-stack: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
+  /* ── Brand & accent (modern, vibrant) ─────────────────────────── */
+  --color-primary: #4F46E5;          /* indigo-600 — modern primary */
+  --color-primary-soft: #6366F1;     /* indigo-500 — hover/light */
+  --color-primary-deep: #4338CA;     /* indigo-700 — press/active */
+  --color-primary-tint: #EEF2FF;     /* indigo-50 — subtle backgrounds */
+  --color-primary-glow: rgba(79, 70, 229, 0.18);
+  --color-primary-ring: rgba(79, 70, 229, 0.30);
+
+  /* Brand gradient — used in hero panel, primary buttons, brand mark */
+  --gradient-brand: linear-gradient(135deg, #6366F1 0%, #4F46E5 50%, #7C3AED 100%);
+  --gradient-brand-soft: linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%);
+  --gradient-hero: linear-gradient(135deg, #4F46E5 0%, #7C3AED 50%, #DB2777 100%);
+  --gradient-success: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  --gradient-warning: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  --gradient-danger: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+  --gradient-mesh: radial-gradient(at 27% 37%, hsla(252, 75%, 64%, 0.18) 0px, transparent 50%),
+                   radial-gradient(at 97% 21%, hsla(295, 75%, 64%, 0.12) 0px, transparent 50%),
+                   radial-gradient(at 52% 99%, hsla(354, 75%, 64%, 0.10) 0px, transparent 50%),
+                   radial-gradient(at 10% 29%, hsla(256, 75%, 64%, 0.15) 0px, transparent 50%),
+                   radial-gradient(at 97% 96%, hsla(38, 75%, 64%, 0.08) 0px, transparent 50%);
+
   /* ── Colors ─ surface ─────────────────────────────────────────── */
-  --color-page-bg: #f8f9fa;
+  --color-page-bg: #F5F7FB;
   --color-surface: #ffffff;
-  --color-surface-subtle: #F7F8FA;
+  --color-surface-subtle: #F8FAFC;
   --color-surface-muted: #EEF1F4;
 
   /* ── Colors ─ text ────────────────────────────────────────────── */
-  --color-primary: #2563EB;        /* button bg, headings, brand mark */
-  --color-label: #52606D;         /* field labels, body text */
-  --color-muted: #7B8794;         /* timestamps, captions, muted links */
-  --color-success: #2b8a3e;
-  --color-error: #DC2626;
-  --color-disabled: #adb5bd;
+  --color-text: #0F172A;            /* slate-900 — primary text */
+  --color-text-soft: #334155;       /* slate-700 — body text */
+  --color-label: #64748B;           /* slate-500 — labels */
+  --color-muted: #94A3B8;           /* slate-400 — captions */
+  --color-success: #10B981;
+  --color-error: #EF4444;
+  --color-disabled: #CBD5E1;
 
   /* ── Colors ─ borders ─────────────────────────────────────────── */
-  --color-border: #E4E7EB;
-  --color-border-strong: #CBD2D9;
+  --color-border: #E2E8F0;
+  --color-border-strong: #CBD5E1;
+  --color-border-subtle: #F1F5F9;
 
   /* ── Colors ─ status pills (Ticket Detail + Kanban) ───────────── */
-  --status-open-bg: #E5EDFC;
-  --status-open-text: #2563EB;
-  --status-in-progress-bg: #FDF3E1;
-  --status-in-progress-text: #D97706;
-  --status-resolved-bg: #DFF5E8;
-  --status-resolved-text: #059669;
-  --status-closed-bg: #E4E7EB;
-  --status-closed-text: #6B7280;
+  --status-open-bg: #EEF2FF;
+  --status-open-text: #4F46E5;
+  --status-open-dot: #6366F1;
+  --status-in-progress-bg: #FEF3C7;
+  --status-in-progress-text: #B45309;
+  --status-in-progress-dot: #F59E0B;
+  --status-resolved-bg: #D1FAE5;
+  --status-resolved-text: #047857;
+  --status-resolved-dot: #10B981;
+  --status-closed-bg: #E2E8F0;
+  --status-closed-text: #475569;
+  --status-closed-dot: #94A3B8;
 
   /* ── Colors ─ priority pills ───────────────────────────────────── */
-  --priority-low-bg: #E4E7EB;
-  --priority-low-text: #6B7280;
-  --priority-medium-bg: #FDF3E1;
-  --priority-medium-text: #D97706;
-  --priority-high-bg: #FCE8E8;
-  --priority-high-text: #DC2626;
+  --priority-low-bg: #F1F5F9;
+  --priority-low-text: #475569;
+  --priority-low-dot: #94A3B8;
+  --priority-medium-bg: #FEF3C7;
+  --priority-medium-text: #B45309;
+  --priority-medium-dot: #F59E0B;
+  --priority-high-bg: #FEE2E2;
+  --priority-high-text: #B91C1C;
+  --priority-high-dot: #EF4444;
 
   /* ── Colors ─ role borders (Ticket Detail comments + Kanban) ──── */
-  --role-employee-border: #adb5bd;
-  --role-support-agent-border: #4263eb;
-  --role-support-agent-bg: #edf2ff;
+  --role-employee-border: #94A3B8;
+  --role-support-agent-border: #4F46E5;
+  --role-support-agent-bg: #EEF2FF;
 
   /* ── Colors ─ kanban-specific ─────────────────────────────────── */
-  --color-kanban-orphan-tint: rgba(255, 245, 214, 0.12);
-  --color-kanban-invalid-drop: #fff5f5;
+  --color-kanban-orphan-tint: rgba(254, 243, 199, 0.35);
+  --color-kanban-invalid-drop: #FEF2F2;
 
   /* ── Geometry ─ field / button sizes ──────────────────────────── */
   --field-height: 44px;
-  --field-radius: 4px;
-  --button-height: 48px;        /* legacy default for atom-button */
-  --button-md-height: 40px;     /* HD-007: header CTAs */
-  --button-lg-height: 48px;     /* HD-007: empty-state CTA */
-  --button-radius: 6px;
+  --field-radius: 10px;            /* modern softer radius */
+  --button-height: 48px;           /* legacy default for atom-button */
+  --button-md-height: 40px;        /* HD-007: header CTAs */
+  --button-lg-height: 48px;        /* HD-007: empty-state CTA */
+  --button-radius: 10px;           /* modern softer radius */
   --content-column-width: 1280px;
   --form-max-width: 480px;
 
   /* ── Geometry ─ chrome ────────────────────────────────────────── */
-  --chrome-height: 56px;
+  --chrome-height: 64px;
 
-  /* ── Shadows ──────────────────────────────────────────────────── */
-  --shadow-card-hover: 0 4px 8px rgba(33, 37, 41, 0.08);
-  --shadow-dropdown: 0 4px 12px rgba(33, 37, 41, 0.12);
+  /* ── Shadows (modern, multi-layered) ─────────────────────────── */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06), 0 2px 4px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 10px 25px rgba(15, 23, 42, 0.08), 0 4px 10px rgba(15, 23, 42, 0.04);
+  --shadow-xl: 0 20px 40px rgba(15, 23, 42, 0.10), 0 8px 16px rgba(15, 23, 42, 0.05);
+  --shadow-2xl: 0 25px 50px rgba(15, 23, 42, 0.15);
+  --shadow-card: var(--shadow-sm);
+  --shadow-card-hover: 0 8px 20px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.04);
+  --shadow-dropdown: 0 12px 28px rgba(15, 23, 42, 0.12), 0 4px 8px rgba(15, 23, 42, 0.04);
+  --shadow-button: 0 1px 2px rgba(79, 70, 229, 0.20), 0 2px 6px rgba(79, 70, 229, 0.12);
+  --shadow-button-hover: 0 4px 12px rgba(79, 70, 229, 0.30), 0 2px 4px rgba(79, 70, 229, 0.10);
 
   /* ── Focus ring ───────────────────────────────────────────────── */
-  --focus-ring-color: #4263eb;
+  --focus-ring-color: #4F46E5;
   --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
 
   /* ── Z-index scale ────────────────────────────────────────────── */
   --z-dropdown: 100;
@@ -90,10 +130,10 @@
   --z-toast: 2000;
 
   /* ── Scrim (modal overlay) ────────────────────────────────────── */
-  --color-scrim: rgba(33, 37, 41, 0.4);
+  --color-scrim: rgba(15, 23, 42, 0.55);
 
   /* ── Role colors — Admin (Employee + Support Agent defined above) */
-  --role-admin-border: #7a5c00;
+  --role-admin-border: #B45309;
 
   /* ── Geometry — chrome elements (HD-004) ──────────────────────── */
   --size-avatar-32: 32px;
@@ -102,6 +142,20 @@
   --size-modal-width: 360px;
   --space-modal-pad: 24px;
   --space-chrome-bottom-gap: 16px;
+
+  /* ── Motion / easings ─────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+
+  /* ── Glass / overlay tokens (HD-WDS-modern) ──────────────────── */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.40);
+  --glass-blur: saturate(180%) blur(18px);
+  --color-text-inverse: #ffffff;
 }
 
 /* ── Base resets + page chrome ───────────────────────────────────── */
@@ -116,10 +170,12 @@ html, body {
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
-  color: var(--color-label);
+  color: var(--color-text-soft);
   background: var(--color-page-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
 }
 
 /* ── D116: modern polish (smooth scroll, focus offset, transitions) ── */
@@ -131,31 +187,30 @@ html, body {
    inherits it for free. */
 html {
   scroll-behavior: smooth;
-}
-
-/* Consistent focus ring offset across atoms + page-level
-   elements. The base :focus-visible rule below uses 2px which
-   is the design-system spec; we add a slight bump on the
-   root for an extra-clear hit on text/anchor elements. */
-:root {
-  --focus-ring-offset: 2px;
+  scroll-padding-top: 80px;
 }
 
 /* Animated transitions for interactive surfaces (buttons, links,
-   cards). The duration is short (120ms) so the click feels
-   snappy, and the easing is a standard ease-out so the
-   transition reads as a "depress + release" rather than a
-   linear slide. The default browser transition is `none` on
-   most surfaces, so this rule explicitly enables it. */
+   cards). The duration is short so the click feels snappy, and
+   the easing is a modern ease-out so the transition reads as a
+   "depress + release" rather than a linear slide. The default
+   browser transition is `none` on most surfaces, so this rule
+   explicitly enables it. */
 button,
 a,
 [role="button"],
 .chrome-card,
 .kanban-card,
-.ticket-row .row {
-  transition: background-color 120ms ease-out, color 120ms ease-out,
-    border-color 120ms ease-out, box-shadow 120ms ease-out,
-    transform 120ms ease-out;
+.ticket-row .row,
+input,
+select,
+textarea {
+  transition: background-color var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out),
+    border-color var(--duration-base) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    opacity var(--duration-base) var(--ease-out);
 }
 
 /* Respect prefers-reduced-motion: disable the smooth scroll +
@@ -165,37 +220,97 @@ a,
   html {
     scroll-behavior: auto;
   }
-  button,
-  a,
-  [role="button"],
-  .chrome-card,
-  .kanban-card,
-  .ticket-row .row {
-    transition: none;
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
 h1, h2, h3, h4, h5, h6 {
-  color: var(--color-primary);
+  color: var(--color-text);
   margin: 0;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 h1 {
-  font-size: 24px;
+  font-size: 28px;
+  line-height: 1.2;
 }
 
 h2 {
-  font-size: 20px;
+  font-size: 22px;
+  line-height: 1.3;
 }
 
 a {
   color: var(--color-primary);
   text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
 a:hover {
-  text-decoration: underline;
+  color: var(--color-primary-deep);
+}
+
+/* ── Modern animation keyframes (HD-WDS-modern) ───────────────────── */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--color-primary-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Page-level entrance for routed pages. Add class `app-fade-in` on a
+   page root (or rely on the auto-applied class via router-outlet
+   below) to get a soft fade+rise. */
+.app-fade-in {
+  animation: fadeInUp var(--duration-slow) var(--ease-out) both;
 }
 
 /* ── Utility classes (used by placeholder pages; full set grows
@@ -239,7 +354,35 @@ a:hover {
 
 :focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: 2px;
+  outline-offset: var(--focus-ring-offset);
+  border-radius: 4px;
+}
+
+/* ── Modern scrollbar (Webkit) — HD-WDS-modern ────────────────────── */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 10px;
+  border: 2px solid var(--color-page-bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
 }
 
 /* ── Visually hidden (SR-only) — HD-005 ──────────────────────────── */
@@ -269,23 +412,24 @@ a:hover {
 
 .skip-link {
   position: absolute;
-  top: 0;
-  left: 0;
-  transform: translateY(-200%);
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-200%);
   background: var(--color-primary);
-  color: var(--color-surface);
-  padding: 12px 16px;
-  border-radius: 0 0 var(--button-radius) var(--button-radius);
+  color: var(--color-text-inverse);
+  padding: 12px 20px;
+  border-radius: var(--button-radius);
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
   z-index: var(--z-toast);
+  box-shadow: var(--shadow-button-hover);
 }
 
 .skip-link:focus,
 .skip-link:focus-visible {
-  transform: translateY(0);
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  transform: translateX(-50%) translateY(0);
+  outline: var(--focus-ring-width) solid #ffffff;
   outline-offset: 2px;
 }
 
@@ -314,48 +458,75 @@ a:hover {
 .board {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 20px;
   align-items: start;
 }
 .column {
-  background: var(--color-surface-subtle);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
+  background: linear-gradient(180deg, #FAFBFD 0%, #F1F5F9 100%);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
   min-height: 320px;
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+  transition: box-shadow var(--duration-base) var(--ease-out);
+}
+.column:hover {
+  box-shadow: var(--shadow-sm);
 }
 .column-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--color-border);
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-surface);
 }
 .column-title {
   margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
+.column-title::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--column-dot, var(--color-muted));
+  box-shadow: 0 0 0 4px var(--column-dot-glow, transparent);
+}
+.column-title[data-status="Open"]        { --column-dot: var(--status-open-dot);        --column-dot-glow: rgba(99, 102, 241, 0.18); }
+.column-title[data-status="In Progress"] { --column-dot: var(--status-in-progress-dot); --column-dot-glow: rgba(245, 158, 11, 0.18); }
+.column-title[data-status="Resolved"]    { --column-dot: var(--status-resolved-dot);    --column-dot-glow: rgba(16, 185, 129, 0.18); }
+.column-title[data-status="Closed"]      { --column-dot: var(--status-closed-dot);      --column-dot-glow: rgba(148, 163, 184, 0.18); }
+
 .column-count {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-muted);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 2px 8px;
-  min-width: 24px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-soft);
+  background: var(--color-page-bg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 999px;
+  padding: 2px 10px;
+  min-width: 28px;
   text-align: center;
+  letter-spacing: 0.02em;
 }
 .column-body {
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   min-height: 240px;
-  transition: background-color 120ms ease;
+  transition: background-color var(--duration-base) var(--ease-out);
 }
 .column-body.empty {
   justify-content: center;
@@ -365,9 +536,10 @@ a:hover {
   cursor: not-allowed;
 }
 .column-body[data-drag-over="true"] {
-  background: rgba(66, 99, 235, 0.08);
-  outline: 2px dashed #4263eb;
-  outline-offset: -4px;
+  background: rgba(99, 102, 241, 0.08);
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -6px;
+  border-radius: 8px;
 }
 .column-body[data-drag-invalid="true"] {
   background: var(--color-kanban-invalid-drop);
@@ -397,12 +569,20 @@ a:hover {
 .card-row > .card,
 .card-row > .card-skel {
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   width: 320px;
+  box-shadow: var(--shadow-card);
+  transition:
+    box-shadow var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+}
+.card-row > .card:hover:not(.muted) {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 .card-row > .card.muted {
   /* Closed card is muted everywhere; spec line: "Closed count is
@@ -410,8 +590,9 @@ a:hover {
   opacity: 0.78;
 }
 .card-row > .card > .card-top {
-  padding: 16px;
-  border-bottom: 1px solid var(--color-border);
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: linear-gradient(180deg, var(--color-surface) 0%, #FAFBFC 100%);
 }
 .card-row > .card > .card-body {
   flex: 1;
@@ -451,16 +632,18 @@ a:hover {
   padding: 0 12px;
   color: var(--color-label);
   text-decoration: none;
-  border-radius: 4px;
-  transition: background-color 120ms ease;
+  border-radius: 6px;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 a.admin-card-row:hover {
-  background: var(--color-surface-subtle);
+  background: var(--color-primary-soft-tint, rgba(99, 102, 241, 0.06));
   text-decoration: none;
 }
 a.admin-card-row:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: -2px;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
 }
 .admin-card-row.is-muted {
   color: var(--color-muted);
@@ -497,7 +680,7 @@ a.admin-card-row:focus-visible {
  * (pulsing). Geometry owned here so the page component budget
  * holds. */
 .card-row > .card-skel {
-  padding: 12px;
+  padding: 16px;
   min-height: 720px;
   box-sizing: border-box;
   display: flex;
@@ -505,9 +688,15 @@ a.admin-card-row:focus-visible {
   gap: 12px;
 }
 .card-row > .card-skel .bar {
-  background: var(--color-surface-muted);
-  border-radius: 4px;
-  animation: admin-skel-pulse 1200ms ease-in-out infinite;
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-muted) 0%,
+    #F8FAFC 50%,
+    var(--color-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: 6px;
+  animation: admin-skel-shimmer 1400ms ease-in-out infinite;
 }
 .card-row > .card-skel .bar-top {
   height: 22px;
@@ -520,9 +709,15 @@ a.admin-card-row:focus-visible {
 .card-row > .card-skel .bar-row.short {
   width: 60%;
 }
-@keyframes admin-skel-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
+@keyframes admin-skel-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-row > .card-skel .bar {
+    animation: none;
+    background: var(--color-surface-muted);
+  }
 }
 
 /* Admin Dashboard page chrome (HD-013). The page header, tab
@@ -542,33 +737,44 @@ a.admin-card-row:focus-visible {
 }
 .admin-header h1 {
   margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--color-primary);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.02em;
 }
 /* Tab switcher — design spec §2: 14px semibold #212529 active
    with a 2px underline at y=124; inactive 14px regular #868e96,
    no underline. No pill background. */
 .tabs {
   display: inline-flex;
-  gap: 0;
+  gap: 4px;
+  padding: 4px;
+  background: var(--color-page-bg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
 }
 .tab {
   position: relative;
-  padding: 6px 14px 8px;
+  padding: 8px 16px;
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--color-muted);
   text-decoration: none;
-  transition: color 120ms ease;
+  border-radius: 8px;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 .tab:hover {
-  color: var(--color-primary);
+  color: var(--color-text);
   text-decoration: none;
+  background: var(--color-surface);
 }
 .tab.active {
-  color: var(--color-primary);
+  color: var(--color-text);
   font-weight: 600;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
 }
 /* Active 2px underline beneath text (spec §2 "active underline
    at y=124 #212529 2px"). Positioned absolute so the underline
@@ -576,35 +782,39 @@ a.admin-card-row:focus-visible {
 .tab.active::after {
   content: '';
   position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: -2px;
+  left: 50%;
+  bottom: -8px;
+  transform: translateX(-50%);
+  width: 24px;
   height: 2px;
   background: var(--color-primary);
+  border-radius: 2px;
 }
 .tab:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: 2px;
-  border-radius: 2px;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
 }
 .admin-error-card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
-  padding: 16px;
+  gap: 14px;
+  padding: 20px 24px;
   background: var(--color-surface);
-  border: 1px solid var(--color-error);
-  border-radius: 8px;
+  border: 1px solid #FECACA;
+  border-left: 4px solid var(--color-error);
+  border-radius: 12px;
   margin-bottom: 16px;
+  box-shadow: var(--shadow-card);
 }
 .admin-error-card .error-message {
   margin: 0;
   color: var(--color-error);
   font-size: 14px;
+  font-weight: 500;
 }
 .empty-marker {
-  padding: 16px 12px;
+  padding: 24px 12px;
   color: var(--color-muted);
   font-size: 13px;
   text-align: center;
@@ -616,9 +826,10 @@ a.admin-card-row:focus-visible {
 }
 .admin-card-top .count {
   font-size: 28px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-primary);
   line-height: 1;
+  letter-spacing: -0.02em;
 }
 .admin-card-top .count.muted-count {
   color: var(--color-muted);
@@ -626,13 +837,15 @@ a.admin-card-row:focus-visible {
 .admin-card-body {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 4px 0;
 }
 .admin-card-footer {
-  padding: 8px 12px;
+  padding: 10px 14px;
   font-size: 12px;
   color: var(--color-muted);
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border-subtle);
+  background: var(--color-page-bg);
+  font-weight: 500;
 }
 
 /* Users Tab page chrome (HD-014). The page header, table chrome,
@@ -647,47 +860,53 @@ a.admin-card-row:focus-visible {
 }
 .users-header h1 {
   margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--color-primary);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.02em;
 }
 .users-count {
-  margin: 8px 0 0;
-  font-size: 12px;
+  margin: 6px 0 0;
+  font-size: 13px;
   color: var(--color-muted);
+  font-weight: 500;
 }
 .users-error-card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
-  padding: 16px;
+  gap: 14px;
+  padding: 20px 24px;
   background: var(--color-surface);
-  border: 1px solid var(--color-error);
-  border-radius: 8px;
+  border: 1px solid #FECACA;
+  border-left: 4px solid var(--color-error);
+  border-radius: 12px;
   margin-bottom: 16px;
+  box-shadow: var(--shadow-card);
 }
 .users-error-card .error-message {
   margin: 0;
   color: var(--color-error);
   font-size: 14px;
+  font-weight: 500;
 }
 .users-table-wrap {
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 14px;
   overflow: hidden;
+  box-shadow: var(--shadow-card);
 }
 .users-table-header {
   display: grid;
   grid-template-columns: 220px 280px 160px 120px 100px;
   gap: 16px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface-subtle);
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: linear-gradient(180deg, var(--color-surface) 0%, #FAFBFC 100%);
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--color-muted);
 }
@@ -709,23 +928,23 @@ a.admin-card-row:focus-visible {
   gap: 16px;
   align-items: center;
   height: 64px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--color-border);
-  transition: background-color 120ms ease;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
 .user-row:last-child {
   border-bottom: 0;
 }
 .user-row:hover {
-  background: var(--color-surface-subtle);
+  background: var(--color-primary-soft-tint, rgba(99, 102, 241, 0.04));
 }
 .user-row--self {
-  background: var(--color-surface-subtle);
+  background: rgba(99, 102, 241, 0.04);
   border-left: 3px solid var(--color-primary);
-  padding-left: 13px;
+  padding-left: 17px;
 }
 .user-row--self:hover {
-  background: var(--color-surface-subtle);
+  background: rgba(99, 102, 241, 0.06);
 }
 .user-row--updating {
   opacity: 0.6;

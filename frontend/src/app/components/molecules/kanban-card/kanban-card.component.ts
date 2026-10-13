@@ -65,36 +65,38 @@ import { ChromeAvatarComponent } from '../../atoms/chrome-avatar/chrome-avatar.c
     }
     .card {
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 6px;
-      padding: 12px;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: var(--shadow-xs);
       cursor: grab;
       box-sizing: border-box;
-      transition: box-shadow 120ms ease, transform 120ms ease, border-color 120ms ease;
     }
     .card:hover {
       border-color: var(--color-primary);
       box-shadow: var(--shadow-card-hover);
+      transform: translateY(-1px);
     }
     .card:focus-visible {
-      outline: var(--focus-ring-width) solid var(--focus-ring-color);
-      outline-offset: 2px;
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px var(--color-primary-ring), var(--shadow-card-hover);
     }
     .card:active {
       cursor: grabbing;
     }
     /* Orphan variant — the cream tint the design doc seeds in :root */
     .card.orphan {
-      background: var(--color-kanban-orphan-tint);
-      border-color: var(--color-kanban-orphan-tint);
+      background: linear-gradient(180deg, #FFFBEB 0%, #FEF3C7 100%);
+      border-color: #FDE68A;
     }
     .title {
-      margin: 0 0 8px;
+      margin: 0 0 10px;
       font-size: 14px;
       font-weight: 600;
-      line-height: 1.3;
-      color: var(--color-primary);
+      line-height: 1.35;
+      color: var(--color-text);
+      letter-spacing: -0.01em;
       /* 2-line clamp per the design doc; overflow:hidden keeps
          long titles from stretching the card height. */
       display: -webkit-box;
@@ -111,9 +113,13 @@ import { ChromeAvatarComponent } from '../../atoms/chrome-avatar/chrome-avatar.c
     }
     .number {
       font-family: var(--font-mono);
-      font-size: 12px;
+      font-size: 11px;
       color: var(--color-muted);
-      letter-spacing: 0.5px;
+      letter-spacing: 0.4px;
+      font-weight: 600;
+      padding: 2px 6px;
+      background: var(--color-page-bg);
+      border-radius: 4px;
     }
     .owner {
       display: inline-flex;
@@ -123,21 +129,23 @@ import { ChromeAvatarComponent } from '../../atoms/chrome-avatar/chrome-avatar.c
     }
     .owner-name {
       font-size: 12px;
-      color: var(--color-label);
+      color: var(--color-text-soft);
+      font-weight: 500;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .unassigned-badge {
       display: inline-block;
-      min-height: 18px;
+      min-height: 20px;
       padding: 0 8px;
-      border-radius: 9px;
-      background: var(--color-surface-subtle);
-      color: var(--color-muted);
+      border-radius: 999px;
+      background: #FEF3C7;
+      color: #B45309;
       font-size: 11px;
-      font-weight: 600;
-      line-height: 18px;
+      font-weight: 700;
+      line-height: 20px;
+      letter-spacing: 0.01em;
     }
   `],
 })

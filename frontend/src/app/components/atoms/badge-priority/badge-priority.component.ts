@@ -56,15 +56,16 @@ type PriorityVariant = 'low' | 'medium' | 'high';
     .badge {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      min-height: 20px;
+      gap: 5px;
+      min-height: 24px;
       padding: 0 10px;
-      border-radius: 4px;
+      border-radius: 999px;
       font-size: 11px;
-      font-weight: 600;
-      line-height: 20px;
+      font-weight: 700;
+      line-height: 24px;
       white-space: nowrap;
       box-sizing: border-box;
+      letter-spacing: 0.01em;
     }
     .priority-glyph {
       flex-shrink: 0;

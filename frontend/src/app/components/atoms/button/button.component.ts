@@ -65,6 +65,7 @@ type ButtonSize = 'md' | 'lg';
       display: contents;
     }
     button {
+      position: relative;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -79,8 +80,10 @@ type ButtonSize = 'md' | 'lg';
       font-weight: 600;
       line-height: 1;
       cursor: pointer;
-      transition: background-color 120ms ease, border-color 120ms ease;
       box-sizing: border-box;
+      letter-spacing: -0.005em;
+      white-space: nowrap;
+      user-select: none;
     }
     button:disabled {
       opacity: 0.5;
@@ -97,29 +100,41 @@ type ButtonSize = 'md' | 'lg';
       height: var(--button-height);
     }
     .primary {
-      background: var(--color-primary);
-      border-color: var(--color-primary);
+      background: var(--gradient-brand);
+      border-color: transparent;
       color: #ffffff;
+      box-shadow: var(--shadow-button);
     }
     .primary:hover:not(:disabled) {
-      background: #000000;
-      border-color: #000000;
+      box-shadow: var(--shadow-button-hover);
+      transform: translateY(-1px);
+    }
+    .primary:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: var(--shadow-xs);
     }
     .secondary {
       background: var(--color-surface);
       border-color: var(--color-border);
-      color: var(--color-label);
+      color: var(--color-text);
+      box-shadow: var(--shadow-xs);
     }
     .secondary:hover:not(:disabled) {
-      background: var(--color-surface-subtle);
+      background: var(--color-page-bg);
+      border-color: var(--color-border-strong);
     }
     .danger {
-      background: var(--color-error);
-      border-color: var(--color-error);
+      background: var(--gradient-danger);
+      border-color: transparent;
       color: #ffffff;
+      box-shadow: 0 1px 2px rgba(239, 68, 68, 0.20), 0 2px 6px rgba(239, 68, 68, 0.12);
     }
     .danger:hover:not(:disabled) {
-      filter: brightness(0.92);
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.30), 0 2px 4px rgba(239, 68, 68, 0.10);
+      transform: translateY(-1px);
+    }
+    .danger:active:not(:disabled) {
+      transform: translateY(0);
     }
     .spinner {
       display: inline-block;

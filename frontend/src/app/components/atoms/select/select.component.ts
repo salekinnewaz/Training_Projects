@@ -87,16 +87,17 @@ export interface SelectPlaceholderOption {
     select {
       width: 100%;
       height: var(--field-height);
-      padding: 0 32px 0 12px;
+      padding: 0 38px 0 14px;
       border: 1px solid var(--color-border);
       border-radius: var(--field-radius);
       background: var(--color-surface);
-      color: var(--color-primary);
+      color: var(--color-text);
       font-family: inherit;
       font-size: 14px;
+      font-weight: 500;
       line-height: 1.4;
       outline: none;
-      transition: border-color 120ms ease, box-shadow 120ms ease;
+      box-shadow: var(--shadow-xs);
       box-sizing: border-box;
       appearance: none;
       -webkit-appearance: none;
@@ -104,22 +105,27 @@ export interface SelectPlaceholderOption {
       cursor: pointer;
     }
     select:disabled {
-      background: var(--color-surface-subtle);
+      background: var(--color-page-bg);
       color: var(--color-disabled);
       cursor: not-allowed;
+      box-shadow: none;
     }
     select[aria-invalid="true"] {
       border-color: var(--color-error);
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
     }
     select:focus-visible {
-      outline: var(--focus-ring-width) solid var(--focus-ring-color);
-      outline-offset: 0;
-      border-color: var(--focus-ring-color);
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 4px var(--color-primary-ring);
+    }
+    select:hover:not(:disabled):not([aria-invalid="true"]) {
+      border-color: var(--color-border-strong);
     }
     .caret {
       position: absolute;
       top: 50%;
-      right: 12px;
+      right: 14px;
       transform: translateY(-50%);
       color: var(--color-label);
       pointer-events: none;

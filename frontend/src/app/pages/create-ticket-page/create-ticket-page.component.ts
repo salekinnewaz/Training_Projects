@@ -263,65 +263,69 @@ const PRIORITY_OPTIONS = [
       min-height: 100vh;
       display: grid;
       place-items: center;
-      padding: 24px;
+      padding: 32px 24px;
       box-sizing: border-box;
-      background: var(--color-page-bg);
+      background: var(--gradient-mesh), var(--color-page-bg);
     }
     .create-ticket-card {
       width: 100%;
-      max-width: 480px;
+      max-width: 520px;
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
-      box-shadow: var(--shadow-dropdown);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 16px;
+      box-shadow: var(--shadow-xl);
       box-sizing: border-box;
       overflow: hidden;
+      animation: scaleIn var(--duration-slow) var(--ease-out) both;
     }
     .card-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 20px 24px;
-      border-bottom: 1px solid var(--color-border);
+      padding: 24px 28px;
+      border-bottom: 1px solid var(--color-border-subtle);
+      background: var(--gradient-brand-soft);
     }
     .card-title {
       margin: 0;
-      font-size: 18px;
-      font-weight: 600;
+      font-size: 20px;
+      font-weight: 700;
       color: var(--color-text);
+      letter-spacing: -0.02em;
     }
     .close-btn {
       width: 32px;
       height: 32px;
       display: grid;
       place-items: center;
-      background: transparent;
-      border: none;
-      border-radius: 4px;
-      color: var(--color-muted);
-      font-size: 24px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 8px;
+      color: var(--color-label);
+      font-size: 20px;
       line-height: 1;
       cursor: pointer;
-      transition: background-color 120ms ease, color 120ms ease;
+      transition: background-color var(--duration-fast) var(--ease-out),
+        color var(--duration-fast) var(--ease-out);
     }
     .close-btn:hover {
-      background: var(--color-surface-subtle);
+      background: var(--color-page-bg);
       color: var(--color-text);
     }
     .close-btn:focus-visible {
       outline: var(--focus-ring-width) solid var(--focus-ring-color);
-      outline-offset: -2px;
+      outline-offset: 2px;
     }
     form {
       display: flex;
       flex-direction: column;
-      gap: 16px;
-      padding: 24px;
+      gap: 18px;
+      padding: 28px;
     }
     .form-fields {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 18px;
     }
     .form-row {
       display: grid;
@@ -349,11 +353,12 @@ const PRIORITY_OPTIONS = [
     .server-error {
       margin: 0;
       padding: 12px 16px;
-      border: 1px solid var(--color-error);
-      background: var(--color-surface);
+      border: 1px solid #FECACA;
+      background: #FEF2F2;
       color: var(--color-error);
       font-size: 14px;
-      border-radius: 6px;
+      border-radius: 10px;
+      font-weight: 500;
     }
     .card-actions {
       display: flex;
