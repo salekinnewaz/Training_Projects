@@ -1279,6 +1279,11 @@ describe('TicketDetailPageComponent (HD-010)', () => {
       '[data-testid="back-link"]',
     ) as HTMLAnchorElement | null;
     expect(link).not.toBeNull();
-    expect(link?.textContent?.trim()).toBe('← Back to tickets');
+    // Wireframe §"Cross-page" — "Back to <Dashboard>" link.
+    // For an Employee the destination is the Employee
+    // Dashboard whose heading is "My Tickets" — so the link
+    // label is "← Back to My Tickets". For an Agent/Admin the
+    // destination is the Queue.
+    expect(link?.textContent?.trim()).toBe('← Back to My Tickets');
   });
 });
