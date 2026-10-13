@@ -2,12 +2,14 @@
 
 ## TL;DR — chosen approach (all free)
 
-| Layer        | Host                | Cost  | Why                                                      |
-| ------------ | ------------------- | ----- | -------------------------------------------------------- |
-| Angular SPA  | **Vercel**          | $0    | Free static hosting, free TLS, global CDN, PR previews    |
-| Express API  | **Vercel Functions**| $0    | Rewrite as serverless functions — fits Vercel cleanly      |
-| Database     | **Vercel Postgres** | $0    | Vercel-native, 256 MB free, integrated auth               |
-| File uploads | **Vercel Blob**     | $0    | 500 MB free (or skip; backend attachments stay local)     |
+| Layer        | Host                | Cost  | Why                                                                              |
+| ------------ | ------------------- | ----- | -------------------------------------------------------------------------------- |
+| Angular SPA  | **Vercel**          | $0    | Free static hosting, free TLS, global CDN, PR previews                            |
+| Express API  | **Vercel Functions**| $0    | Rewrite as serverless functions — fits Vercel cleanly                             |
+| Database     | **Neon Postgres**   | $0    | **512 MB free** (largest free tier of any managed Postgres), scales to zero, branching, 190 compute hrs/mo, no expiry, no card |
+| File uploads | **Vercel Blob**     | $0    | 500 MB free (or skip; backend attachments stay local)                            |
+
+**Why Neon over Vercel Postgres:** Neon IS what powers Vercel Postgres under the hood — same engine, same technology. Going direct gives you **2× the storage (512 MB vs 256 MB)**, more compute, and a free dashboard for browsing your data. The integration with Vercel is one env var away.
 
 **Three things change from the current code:**
 
@@ -150,19 +152,22 @@ Three small changes:
 
 3. **Cookie security** — flip `secure: process.env.NODE_ENV === 'production'` (was already true in `.env.example` via the prod env). Vercel sets `NODE_ENV=production` automatically.
 
-### 4.3 Configure Vercel Postgres
+### 4.3 Provision Neon (free 512 MB Postgres) and wire it to Vercel
 
-In the Vercel dashboard:
+1. Go to [neon.tech](https://neon.tech) and sign up with GitHub (free, no card).
+2. **Create a project** — pick the free tier (0.5 GB storage, 191.9 compute hrs/month, autoscaling). Region: pick the one closest to your Vercel deployment region (default US East is fine for most demos).
+3. From the Neon dashboard → **Connection Details**, copy the **pooled connection string** (looks like `postgres://neondb_owner:...@ep-xxx-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require`).
+4. In the **Vercel project → Settings → Environment Variables**, add:
+   - `POSTGRES_URL` = (paste the pooled Neon connection string)
+   - `POSTGRES_URL_DIRECT` = (paste the non-pooled string, for migrations)
 
-1. **Storage → Create Database → Postgres** (free Neon-backed 256 MB instance)
-2. Vercel auto-injects these env vars into the project:
-   - `POSTGRES_URL`
-   - `POSTGRES_PRISMA_URL`
-   - `POSTGRES_URL_NON_POOLING`
-   - etc.
-3. Your `backend/src/config/database.ts` needs to read `POSTGRES_URL` and use it as the connection string:
+> **Why both pooled and non-pooled?** Neon free tier limits connections to ~100. Serverless functions each open a connection per request — without pooling you'll hit the limit fast. The pooled string goes through Neon's PgBouncer for connection reuse; the direct string is for one-off operations like migrations that need a long-lived connection.
+
+5. Your `backend/src/config/database.ts` reads `POSTGRES_URL` and uses it as the connection string:
 
    ```ts
+   import { Sequelize } from 'sequelize';
+
    const sequelize = new Sequelize(
      process.env.POSTGRES_URL!,
      {
@@ -171,20 +176,32 @@ In the Vercel dashboard:
        dialectOptions: {
          ssl: { require: true, rejectUnauthorized: false },
        },
+       pool: {
+         max: 5,           // serverless: keep this small
+         min: 0,
+         idle: 10000,
+         acquire: 30000,
+       },
      },
    );
    ```
 
+> **Note:** The existing `backend/src/config/database.ts` currently constructs Sequelize from individual `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME` vars. The change is to switch to a single `POSTGRES_URL` (or `DATABASE_URL`) — Sequelize supports both. Keep the old env-var path available for local dev, default to `POSTGRES_URL` in production.
+
 ### 4.4 One-time database setup (migrations + seed)
 
-Run once after creating the Postgres DB. The cleanest path:
+Run once after creating the Neon DB. The cleanest path:
 
 ```bash
-# Locally, with the Vercel env var pulled down
-vercel env pull .env.local
+# Set the prod env var locally for the one-time setup
+export POSTGRES_URL='postgres://neondb_owner:...@ep-xxx-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require'
+
+# Run migrations + seed against Neon
 npm run db:migrate --workspace backend
 npm run db:seed --workspace backend
 ```
+
+This writes the schema and seed data to your real Neon DB. Future deploys only run the app — the schema and seed data persist.
 
 The migrations live in `backend/src/migrations/` and the seeders in `backend/src/seeders/` — they run against whatever DB the connection string points at.
 
@@ -260,7 +277,7 @@ npm run dev
 # Deploy
 git push origin main
 # → Vercel auto-builds frontend + api/, provisions env, deploys
-# → Vercel Postgres holds the data
+# → Neon Postgres holds the data
 ```
 
 ---
@@ -271,7 +288,7 @@ git push origin main
 | ------------------ | -------------------------------------------- | -------------- |
 | Vercel (frontend)  | 100 GB bandwidth/mo                          | **$0**         |
 | Vercel Functions   | 100 GB-hrs/mo, 10s cold-start                | **$0**         |
-| Vercel Postgres    | 256 MB storage, 60h compute/mo               | **$0**         |
+| Neon Postgres      | 512 MB storage, 191.9h compute/mo, scales to zero | **$0**         |
 | Vercel Blob (opt.) | 500 MB storage, 1 GB egress/mo               | **$0**         |
 | **Total**          |                                              | **$0**         |
 
@@ -286,11 +303,13 @@ git push origin main
 - [ ] Add `api/index.ts` at repo root that re-exports the Express app
 - [ ] Guard `app.listen()` in `backend/src/server.ts` so it doesn't run in Vercel
 - [ ] Add `app.set('trust proxy', 1)` for the Vercel edge
-- [ ] Update `docker-compose.yml` to Postgres
+- [ ] Update `docker-compose.yml` to Postgres (for local dev)
 - [ ] Update `.env.example` with `POSTGRES_URL`
 - [ ] Create `vercel.json` at repo root
 - [ ] Push to `main` and import the repo into Vercel
-- [ ] In Vercel: create the Postgres DB, run migrations + seed locally against it
+- [ ] Sign up at [neon.tech](https://neon.tech), create a project, copy the **pooled** connection string
+- [ ] In Vercel project env vars, set `POSTGRES_URL` (pooled) and `POSTGRES_URL_DIRECT` (non-pooled, for migrations)
+- [ ] Run migrations + seed locally once against the Neon DB (so the schema and seed users exist)
 - [ ] Set `JWT_SECRET` and `FRONTEND_ORIGIN` env vars in the Vercel project
 - [ ] Smoke test: open the Vercel URL, log in with the seeded admin, create a ticket, drag on kanban
 
