@@ -60,10 +60,11 @@ export async function loginAs(page: Page, who: SeededUser): Promise<void> {
 }
 
 export async function logout(page: Page, who: SeededUser): Promise<void> {
-  // Click the user-name button (the live chrome trigger is
-  // the user's display name, not the wireframe "My Profile ▾"
-  // label), then "Logout" inside the panel, then confirm in
-  // the modal.
+  // Click the profile trigger (the live chrome uses the user's
+  // display name + caret, not the wireframe "My Profile ▾"
+  // label), then "Log out" inside the panel, then confirm in
+  // the modal per header-profile-logout.md §"Logout confirmation
+  // dialog".
   const names: Record<SeededUser, string> = {
     admin: 'Admin',
     sam: 'Sam Chen',
@@ -75,8 +76,19 @@ export async function logout(page: Page, who: SeededUser): Promise<void> {
   };
   await page.getByRole('button', { name: names[who] }).click();
   await page.getByRole('button', { name: /^log out$/i }).first().click();
-  // The wireframe spec'd a confirmation dialog before logout;
-  // the live impl just signs out on click.
+  // Wireframe §"Logout confirmation dialog": a dialog opens with
+  // "Log out of HelpDesk Lite?" headline + Cancel + Log out
+  // buttons. The live impl uses a dialog-modal with confirmLabel
+  // "Log out" — click it to confirm.
+  await expect(
+    page.getByText('Log out of HelpDesk Lite?', { exact: true }),
+  ).toBeVisible();
+  // The dialog has a Cancel + Log out button. The Log out button
+  // is a confirm button (data-testid="dialog-confirm").
+  await page
+    .getByRole('button', { name: /^log out$/i })
+    .last()
+    .click();
   await expect(page).toHaveURL(/\/login/);
 }
 
