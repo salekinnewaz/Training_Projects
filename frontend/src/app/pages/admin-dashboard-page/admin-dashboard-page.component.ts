@@ -141,7 +141,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the queue. Refresh to try again.";
                     <span
                       class="count"
                       [class.muted-count]="bucket.key === 'Closed'"
-                    >{{ bucket.rows.length }}</span>
+                    >{{ bucket.total }}</span>
                   </header>
                   <ul class="admin-card-body">
                     @if (bucket.rows.length === 0) {
