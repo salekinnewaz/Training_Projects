@@ -389,6 +389,28 @@ test.describe('Feature: Register / Forbidden', () => {
   });
 });
 
+test.describe('Feature: Users tab', () => {
+  test('admin sees the Users heading + active count summary + user table', async ({ page }) => {
+    // Wireframe §"Content & Actions" #2: "Users" heading
+    // (24px semibold) + active count summary "N users · N
+    // active · N inactive" muted below the heading.
+    await loginAs(page, 'admin');
+    await page.goto('/users');
+    await expect(page.getByRole('heading', { name: 'Users', level: 1 })).toBeVisible();
+    await expect(page.getByText(/\d+ users? · \d+ active · \d+ inactive/i)).toBeVisible();
+  });
+
+  test('admin self-row has the "You cannot change your own role" micro-label', async ({ page }) => {
+    // Wireframe §"Self-protection" — the Admin viewing the
+    // page has disabled role dropdown + active toggle on their
+    // own row + the micro-label "You cannot change your own
+    // role."
+    await loginAs(page, 'admin');
+    await page.goto('/users');
+    await expect(page.getByText(/you cannot change your own role/i)).toBeVisible();
+  });
+});
+
 test.describe('Feature: Forgot Password', () => {
   test('renders the /forgot-password page (placeholder is acceptable for MVP)', async ({ page }) => {
     // The wireframe §"Content & Actions" spec'd a real reset
