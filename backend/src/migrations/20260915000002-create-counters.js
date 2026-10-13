@@ -5,6 +5,9 @@
  * ('ticket_number', <next>) — used by nextTicketNumber() to generate
  * HD-1, HD-2, ... in a transactionally-safe way.
  *
+ * Postgres notes: BIGINT (not UNSIGNED) — Postgres has no UNSIGNED.
+ * No engine/charset/collate; Postgres uses UTF-8 cluster-wide.
+ *
  * Not surfaced via any API in MVP.
  */
 
@@ -14,26 +17,18 @@ const TABLE = 'counters';
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable(
-      TABLE,
-      {
-        name: {
-          type: Sequelize.STRING(64),
-          allowNull: false,
-          primaryKey: true,
-        },
-        value: {
-          type: Sequelize.BIGINT.UNSIGNED,
-          allowNull: false,
-          defaultValue: 0,
-        },
+    await queryInterface.createTable(TABLE, {
+      name: {
+        type: Sequelize.STRING(64),
+        allowNull: false,
+        primaryKey: true,
       },
-      {
-        engine: 'InnoDB',
-        charset: 'utf8mb4',
-        collate: 'utf8mb4_unicode_ci',
+      value: {
+        type: Sequelize.BIGINT,
+        allowNull: false,
+        defaultValue: 0,
       },
-    );
+    });
   },
 
   async down(queryInterface, _Sequelize) {

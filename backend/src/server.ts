@@ -35,6 +35,11 @@ const app: Application = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:4200';
 
+// On Vercel (or any reverse-proxied deploy) trust the first proxy
+// hop so express-rate-limit and req.ip see the real client IP, not
+// the edge. Safe in local dev too (no proxy is still no-op).
+app.set('trust proxy', 1);
+
 // ── Middleware ──────────────────────────────────────────────────────
 app.use(
   cors({
@@ -77,11 +82,16 @@ app.use((_req: Request, res: Response) => {
 app.use(errorHandler);
 
 // ── Listen ──────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(
-    `[helpdesk-lite-backend] Listening on http://localhost:${PORT} ` +
-      `(cors origin: ${FRONTEND_ORIGIN}, env: ${process.env.NODE_ENV ?? 'development'})`
-  );
-});
+// Vercel Functions invoke the export directly, not as a
+// port-listening server. Guard the listen() so we only bind in
+// local dev / traditional Node hosts.
+if (process.env.VERCEL !== '1' && process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(
+      `[helpdesk-lite-backend] Listening on http://localhost:${PORT} ` +
+        `(cors origin: ${FRONTEND_ORIGIN}, env: ${process.env.NODE_ENV ?? 'development'})`
+    );
+  });
+}
 
 export default app;

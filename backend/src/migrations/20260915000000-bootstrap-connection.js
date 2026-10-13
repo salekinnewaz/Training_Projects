@@ -1,7 +1,7 @@
 /**
  * Bootstrap migration — HD-001.
  *
- * Purpose: prove that sequelize-cli can talk to MySQL using the
+ * Purpose: prove that sequelize-cli can talk to Postgres using the
  * development credentials in backend/.env. No schema is created.
  *
  * This migration is tracked in SequelizeMeta so future runs skip past

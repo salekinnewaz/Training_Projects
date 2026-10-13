@@ -1,31 +1,28 @@
 services:
-  mysql:
-    image: mysql:8
-    container_name: helpdesk-lite-mysql
+  postgres:
+    image: postgres:16-alpine
+    container_name: helpdesk-lite-postgres
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root_pwd_change_me
-      MYSQL_DATABASE: helpdesk_lite
-      MYSQL_USER: helpdesk
-      MYSQL_PASSWORD: helpdesk_pwd
+      POSTGRES_DB: helpdesk_lite
+      POSTGRES_USER: helpdesk
+      POSTGRES_PASSWORD: helpdesk_pwd
     ports:
-      - "3306:3306"
+      - "5432:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
-      # D9: bootstrap the integration-test database (`helpdesk_lite_test`)
-      # and grant the dev `helpdesk` user access to it. Runs once on
-      # first container start (or after `docker compose down -v`).
-      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+      - postgres_data:/var/lib/postgresql/data
+      # D9: bootstrap the integration-test database
+      # (`helpdesk_lite_test`) and grant the dev `helpdesk` user
+      # access to it. Runs once on first container start (or after
+      # `docker compose down -v`).
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "helpdesk", "-phelpdesk_pwd"]
+      test: ["CMD-SHELL", "pg_isready -U helpdesk -d helpdesk_lite"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
+      start_period: 10s
 
 volumes:
-  mysql_data:
-    name: helpdesk-lite-mysql-data
+  postgres_data:
+    name: helpdesk-lite-postgres-data

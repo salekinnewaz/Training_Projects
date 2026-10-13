@@ -2,7 +2,7 @@
   "name": "helpdesk-lite-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "HelpDesk Lite backend — Express + TypeScript + Sequelize + MySQL.",
+  "description": "HelpDesk Lite backend — Express + TypeScript + Sequelize + Postgres.",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -28,7 +28,8 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^2.4.0",
-    "mysql2": "^3.11.4",
+    "pg": "^8.13.1",
+    "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.5"
   },
   "devDependencies": {

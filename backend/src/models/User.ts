@@ -2,7 +2,7 @@
  * User model — HD-002.
  *
  * Represents an authenticated human (Employee / Support Agent / Admin).
- * The `role` column uses a MySQL ENUM. The default scope strips
+ * The `role` column uses a Postgres ENUM. The default scope strips
  * `passwordHash` so callers don't accidentally ship hashes through
  * APIs; use the `withPassword` scope (or include attribute) when
  * the auth flow needs the hash (HD-003).
@@ -48,7 +48,7 @@ export class User
 User.init(
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
     },
