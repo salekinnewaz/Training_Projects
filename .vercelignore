@@ -1,0 +1,68 @@
+# .vercelignore — Vercel deployment exclusions
+# Same shape as .gitignore but a Vercel-specific mirror so the
+# upload filter is unambiguous. The Vercel CLI prefers .vercelignore
+# when present; without one it falls back to .gitignore, but explicit
+# is safer.
+
+# ── Dependencies (Vercel installs these from package.json) ─────
+node_modules/
+**/node_modules/
+**/node_modules/**
+
+# ── Build output (Vercel builds the frontend itself) ───────────
+dist/
+**/dist/
+build/
+out/
+**/build/
+**/out/
+frontend/dist/
+frontend/.angular/
+backend/dist/
+backend/coverage/
+
+# ── Test / coverage artifacts ──────────────────────────────────
+coverage/
+**/coverage/
+.nyc_output/
+*.lcov
+**/__tests__/
+**/*.spec.ts
+**/*.spec.ts.snap
+
+# ── Logs ───────────────────────────────────────────────────────
+logs/
+**/logs/
+*.log
+**/*.log
+
+# ── Local env / secrets ────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.vercel-neon.env
+.neon
+
+# ── Vercel / Puku CLI state ────────────────────────────────────
+.vercel/
+.puku-cli/
+
+# ── Design / process artifacts (project noise) ─────────────────
+design-process/
+_bmad/
+_bmad-output/
+_progress/
+progress/
+
+# ── OS / IDE noise ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── TypeScript build info ──────────────────────────────────────
+*.tsbuildinfo
+**/*.tsbuildinfo
