@@ -35,6 +35,7 @@
  */
 
 import swaggerJSDoc from 'swagger-jsdoc';
+import type { Request } from 'express';
 
 import packageJson from '../../package.json';
 
@@ -538,6 +539,14 @@ const sharedComponents = {
  * block in the matched files and assembles the full spec.
  * The result is cached at module load so every subsequent
  * `getOpenApiSpec()` call returns the same object.
+ *
+ * **Why no `servers` block here:** the server URL is request-
+ * dependent (local dev, Vercel preview, Vercel production are
+ * all different origins), so we synthesize it in
+ * `getOpenApiSpec(req)` based on the incoming request. The
+ * Swagger UI dropdown will then offer both the current host
+ * (auto-derived) and the dev URL as a fallback for users who
+ * want to point at a locally-running backend.
  */
 const swaggerOptions: swaggerJSDoc.Options = {
   definition: {
@@ -551,12 +560,6 @@ const swaggerOptions: swaggerJSDoc.Options = {
         'cookie (set by `POST /api/auth/login`). Click "Authorize" in ' +
         'the UI to attach the cookie to subsequent requests.',
     },
-    servers: [
-      {
-        url: 'http://localhost:3000/api',
-        description: 'Local development',
-      },
-    ],
     components: sharedComponents,
     tags: [
       { name: 'Health', description: 'Liveness / metadata.' },
@@ -576,10 +579,66 @@ const swaggerOptions: swaggerJSDoc.Options = {
 const cachedSpec = swaggerJSDoc(swaggerOptions);
 
 /**
+ * Build the `servers` array for a spec response.
+ *
+ * The first entry is the origin of the incoming request (e.g.
+ * `https://helpdesk-lite-tawny.vercel.app/api`), so "Try it out"
+ * calls from Swagger UI hit the same host the user loaded the
+ * page from — no cross-origin calls, no CORS, no surprises. The
+ * second entry is a stable local-dev fallback so engineers
+ * running the backend on `localhost:3000` can still use the
+ * deployed UI to test their local instance.
+ *
+ * The protocol is taken from `req.secure` first (which Express
+ * sets when the connection is TLS-terminated by Express itself)
+ * and falls back to `X-Forwarded-Proto` — the right behaviour
+ * behind Vercel's edge, which terminates TLS in front of the
+ * Function and forwards plain HTTP internally.
+ */
+function buildServers(req?: { secure?: boolean; headers: Record<string, string | string[] | undefined>; host?: string }): Array<{ url: string; description: string }> {
+  const hostHeader = req?.headers['host'];
+  const host = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
+  const fwdProto = req?.headers['x-forwarded-proto'];
+  const fwdProtoStr = Array.isArray(fwdProto) ? fwdProto[0] : fwdProto;
+  const proto = req?.secure ? 'https' : fwdProtoStr || 'http';
+
+  const servers: Array<{ url: string; description: string }> = [];
+
+  if (host) {
+    servers.push({
+      url: `${proto}://${host}/api`,
+      description: 'Current host (where this UI was loaded from)',
+    });
+  }
+  servers.push({
+    url: 'http://localhost:3000/api',
+    description: 'Local development',
+  });
+
+  return servers;
+}
+
+/**
  * Return the assembled OpenAPI document. Sync, cached at module
  * load. `swagger-ui-express` accepts the result directly; the
  * `/api/docs.json` route also serves it raw.
+ *
+ * When called with a `Request` (Express's request object), the
+ * `servers` array is regenerated so the first entry matches
+ * the host the spec was served from. This is what makes
+ * Swagger UI's "Try it out" button target the right origin on
+ * Vercel (production, preview, or PR-specific subdomains all
+ * work without a redeploy).
+ *
+ * The other top-level fields are shallow-copied so we don't
+ * mutate the cached `paths` / `components` object. Cached spec
+ * is module-scoped; concurrent requests would otherwise race
+ * on `Object.assign` if the runtime ever starts to mutate it.
  */
-export function getOpenApiSpec(): object {
-  return cachedSpec;
+export function getOpenApiSpec(req?: Request): object {
+  const spec = cachedSpec as Record<string, unknown>;
+  return {
+    ...spec,
+    servers: buildServers(req as { secure?: boolean; headers: Record<string, string | string[] | undefined>; host?: string }),
+  };
 }

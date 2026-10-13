@@ -141,4 +141,49 @@ describe('OpenAPI spec (HD-015)', () => {
       }
     }
   });
+
+  // ── Request-aware `servers` array ────────────────────────────
+  // The same `getOpenApiSpec()` call is used by /api/docs.json
+  // and by the inlined spec in swaggerUI.init.js. In both cases
+  // it must produce a `servers[0].url` that matches the host
+  // the request came in on — otherwise Swagger UI's "Try it
+  // out" button targets the dev origin and every call fails
+  // with a CORS / DNS error.
+  it('derives servers[0].url from the incoming request host', () => {
+    // No request → falls back to dev origin only.
+    const noReq = getOpenApiSpec() as { servers: Array<{ url: string; description: string }> };
+    expect(noReq.servers).toHaveLength(1);
+    expect(noReq.servers[0].url).toBe('http://localhost:3000/api');
+    expect(noReq.servers[0].description).toBe('Local development');
+
+    // HTTPS request with a host header → first entry matches
+    // the request origin, dev URL stays as a fallback.
+    const httpsReq = {
+      secure: true,
+      headers: { host: 'helpdesk-lite-tawny.vercel.app' },
+    } as unknown as import('express').Request;
+    const httpsSpec = getOpenApiSpec(httpsReq) as { servers: Array<{ url: string; description: string }> };
+    expect(httpsSpec.servers).toHaveLength(2);
+    expect(httpsSpec.servers[0].url).toBe('https://helpdesk-lite-tawny.vercel.app/api');
+    expect(httpsSpec.servers[1].url).toBe('http://localhost:3000/api');
+
+    // Behind Vercel's edge: connection is plain HTTP, the
+    // protocol is forwarded via `X-Forwarded-Proto`. We must
+    // surface https to Swagger UI, not http.
+    const proxiedReq = {
+      secure: false,
+      headers: {
+        host: 'helpdesk-lite-pr-42.vercel.app',
+        'x-forwarded-proto': 'https',
+      },
+    } as unknown as import('express').Request;
+    const proxiedSpec = getOpenApiSpec(proxiedReq) as { servers: Array<{ url: string; description: string }> };
+    expect(proxiedSpec.servers[0].url).toBe('https://helpdesk-lite-pr-42.vercel.app/api');
+
+    // Other top-level fields must be preserved (we shallow-
+    // copy the cached spec, not replace it).
+    const withReq = getOpenApiSpec(httpsReq) as { paths: unknown; components: unknown };
+    expect(withReq.paths).toBe((getOpenApiSpec() as { paths: unknown }).paths);
+    expect(withReq.components).toBe((getOpenApiSpec() as { components: unknown }).components);
+  });
 });

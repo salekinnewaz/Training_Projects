@@ -188,6 +188,11 @@ window.onload = function() {
       SwaggerUIBundle.plugins.DownloadUrl
     ],
     layout: "StandaloneLayout",
+    // Expand tags by default so the user sees the operations
+    // (and the "Try it out" button) without an extra click.
+    // Without this, every endpoint starts collapsed and the
+    // page looks empty on first load.
+    docExpansion: "list",
     spec: __SPEC__
   });
   window.ui = ui;
@@ -271,14 +276,14 @@ function swaggerUIPageHandler(_req: Request, res: Response): void {
  */
 function swaggerUIAssetHandler(
   assets: Map<string, StaticAsset>,
-  getSpec: () => object,
+  getSpec: (req: Request) => object,
 ) {
   return (req: Request, res: Response): void => {
     const name = req.params['assetName'];
 
     if (name === 'swagger-ui-init.js') {
       res.set('Content-Type', 'application/javascript; charset=utf-8');
-      res.send(renderInitJs(getSpec()));
+      res.send(renderInitJs(getSpec(req)));
       return;
     }
 
@@ -310,7 +315,7 @@ function swaggerUIAssetHandler(
 export function mountSwaggerUI(
   app: express.Application,
   basePath: string,
-  getSpec: () => object,
+  getSpec: (req: Request) => object,
 ): void {
   const assets = loadAssets();
 

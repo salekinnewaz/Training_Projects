@@ -60,14 +60,19 @@ app.use('/api', apiRouter);
 // ── API documentation (HD-015) ──────────────────────────────────────
 // Raw OpenAPI JSON for tooling (Postman import, codegen, curl).
 // Mounted under /api so it sits on the same origin as the rest of
-// the API — no CORS gymnastics needed.
-app.get('/api/docs.json', (_req: Request, res: Response) => {
-  res.json(getOpenApiSpec());
+// the API — no CORS gymnastics needed. Pass `req` so the spec's
+// `servers` array includes the host this request was served from
+// — Swagger UI uses it as the "Try it out" base URL, and tooling
+// (Postman, codegen) can pick the right host automatically.
+app.get('/api/docs.json', (req: Request, res: Response) => {
+  res.json(getOpenApiSpec(req));
 });
 // Swagger UI HTML. Browse to http://localhost:<port>/api/docs.
 // Uses the Vercel-friendly custom handler in ./docs/swaggerUI
 // instead of `swagger-ui-express` — see swaggerUI.ts for why.
-mountSwaggerUI(app, '/api/docs/', getOpenApiSpec);
+// The callback receives `req` so the inlined spec also gets the
+// right `servers[0].url` (the same one /api/docs.json returns).
+mountSwaggerUI(app, '/api/docs/', (req) => getOpenApiSpec(req));
 
 // ── 404 fallback (JSON, not HTML) ───────────────────────────────────
 app.use((_req: Request, res: Response) => {
