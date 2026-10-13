@@ -7,7 +7,7 @@
  *     Any subset of {status, priority, category, ownerId}; at least
  *     one must be present. Unknown keys are rejected with a
  *     `validation_error.fields._body` entry. Per-field enum
- *     membership is checked against the MySQL ENUMs declared in
+ *     membership is checked against the Postgres ENUMs declared in
  *     `models/Ticket.ts`.
  *   - `validateAddCommentBody` — `{ body: string }` with the
  *     trimmed-length floor (1) and cap (5000).

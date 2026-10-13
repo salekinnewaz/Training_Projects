@@ -30,7 +30,7 @@ Counter.init(
       primaryKey: true,
     },
     value: {
-      type: DataTypes.BIGINT.UNSIGNED,
+      type: DataTypes.BIGINT,
       allowNull: false,
       defaultValue: 0,
     },

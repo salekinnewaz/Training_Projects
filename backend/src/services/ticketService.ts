@@ -154,7 +154,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   // Two passes: one for the per-bucket top-N (rows), one for the
   // per-bucket totals. Sequelize doesn't expose a single
   // "fetch with total count" without a window function, and the
-  // two simple queries are cheap on the MySQL side (status is
+  // two simple queries are cheap on the Postgres side (status is
   // indexed; the where-filter is constant per query).
   //
   // We could parallelize via Promise.all, but the small query
@@ -761,7 +761,7 @@ export async function listActiveAgents(): Promise<User[]> {
 // ─── HD-014 — Admin Users tab helpers ──────────────────────────────
 
 /**
- * Allowed role values, kept in sync with the `User.role` MySQL ENUM.
+ * Allowed role values, kept in sync with the `User.role` Postgres ENUM.
  * Used by the controller's body validator for `PUT /:id/role` so
  * the controller can reject bad input before reaching the DB.
  */

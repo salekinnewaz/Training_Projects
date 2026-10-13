@@ -345,7 +345,7 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
  *   1. authMiddleware has already populated req.user.
  *   2. Parse the `:id` path param to a number. Number.isInteger
  *      rejects NaN, non-numeric strings, and fractional values
- *      (e.g. `/tickets/47.5/created`) — MySQL would otherwise
+ *      (e.g. `/tickets/47.5/created`) — Postgres would otherwise
  *      silently coerce 47.5 to int 47, fetching the wrong row.
  *   3. ticketService.getById eager-loads submitter/owner/attachment
  *      and returns null when the row doesn't exist (or is soft-

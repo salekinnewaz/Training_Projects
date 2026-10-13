@@ -7,7 +7,7 @@
  *   1. **Override the DB env vars** BEFORE the Sequelize
  *      instance from `src/config/database` is constructed, so
  *      the integration suite points at the `helpdesk_lite_test`
- *      database on the same MySQL container the dev app uses.
+ *      database on the same Postgres container the dev app uses.
  *      Static env mutation at module top + an early import of
  *      `src/models` cause the singleton to come up against the
  *      test DB once per Jest worker.
@@ -21,9 +21,9 @@
  *      state.
  *
  * The integration suite intentionally:
- *   - uses a sibling DB on the **same** MySQL container
+ *   - uses a sibling DB on the **same** Postgres container
  *     (docker-compose.yml) so the test path is byte-identical
- *     to production (InnoDB, FOR UPDATE, UNIQUE index on
+ *     to production (Postgres MVCC, FOR UPDATE, UNIQUE index on
  *     `tickets.number`).
  *   - does **not** import migrations or seeders — `sync({ force:
  *     true })` + a manual counter row cover everything
@@ -33,10 +33,10 @@
  *     the service layer: call a function, assert on the DB.
  *
  * Connectivity: the probe below runs once per worker. If the
- * MySQL container is not reachable, the test command fails
- * fast with a clear message ("start MySQL with `docker compose
- * up -d mysql`") instead of cascading connection errors
- * through every spec.
+ * Postgres container is not reachable, the test command fails
+ * fast with a clear message ("start Postgres with `docker
+ * compose up -d postgres`") instead of cascading connection
+ * errors through every spec.
  */
 
 import type { Sequelize } from 'sequelize';
@@ -44,7 +44,7 @@ import type { Sequelize } from 'sequelize';
 // ── 1. Env override (must come before any src import that
 //      causes `src/config/database` to run) ────────────────────
 process.env.DB_HOST = process.env.DB_HOST ?? 'localhost';
-process.env.DB_PORT = process.env.DB_PORT ?? '3306';
+process.env.DB_PORT = process.env.DB_PORT ?? '5432';
 process.env.DB_NAME = 'helpdesk_lite_test';
 process.env.DB_USER = process.env.DB_USER ?? 'helpdesk';
 process.env.DB_PASSWORD = process.env.DB_PASSWORD ?? 'helpdesk_pwd';
@@ -70,7 +70,7 @@ import {
 // ── 3. Connectivity probe — fail fast with a clear message ──
 let dbAvailable = false;
 
-// 30s gives the dev MySQL container warm-up time + the initial
+// 30s gives the dev Postgres container warm-up time + the initial
 // `sequelize.sync({ force: true })` + the 10× parallel race a
 // generous budget. Individual `it`s still complete in <1s.
 jest.setTimeout(30000);
@@ -85,9 +85,9 @@ beforeAll(async () => {
     // surfaces this verbatim.
     throw new Error(
       `Integration test DB is unreachable at ` +
-        `${process.env.DB_HOST ?? 'localhost'}:${process.env.DB_PORT ?? '3306'} ` +
+        `${process.env.DB_HOST ?? 'localhost'}:${process.env.DB_PORT ?? '5432'} ` +
         `as \`${process.env.DB_NAME}\`. ` +
-        `Start the dev MySQL container with \`docker compose up -d mysql\` ` +
+        `Start the dev Postgres container with \`docker compose up -d postgres\` ` +
         `and wait for the healthcheck to pass. ` +
         `Underlying error: ${reason}`,
     );
@@ -142,13 +142,12 @@ export async function resetTestDb(
  * when a spec only adds rows and doesn't change the schema
  * shape.
  *
- * Disables FK checks for the duration so the TRUNCATE
- * doesn't have to walk the FK graph.
+ * Postgres-specific approach: disable the session's
+ * `session_replication_role` to skip FK triggers, then
+ * TRUNCATE … RESTART IDENTITY CASCADE which handles the
+ * cascade graph natively.
  */
 export async function truncateAllTables(): Promise<void> {
-  // Tables in FK-safe truncation order (children before
-  // parents in spirit; with FK checks off the order doesn't
-  // matter, but the list mirrors the FK graph for clarity).
   const tables = [
     'comments',
     'activity_logs',
@@ -157,18 +156,15 @@ export async function truncateAllTables(): Promise<void> {
     'counters',
     'users',
   ];
-  // Use the sequelize instance's `.query` so we don't have
-  // to wrangle the `Transaction` type's missing `.query`
-  // member. Each statement opens and closes its own implicit
-  // tx; the SET FOREIGN_KEY_CHECKS is session-level so the
-  // DDL breaks through the FK constraint regardless.
-  await sequelize.query('SET FOREIGN_KEY_CHECKS = 0');
+  await sequelize.query("SET session_replication_role = 'replica'");
   try {
+    // TRUNCATE … RESTART IDENTITY CASCADE handles FKs natively
+    // in Postgres and resets any SERIAL/IDENTITY columns.
     for (const table of tables) {
-      await sequelize.query(`TRUNCATE TABLE \`${table}\``);
+      await sequelize.query(`TRUNCATE TABLE "${table}" RESTART IDENTITY CASCADE`);
     }
   } finally {
-    await sequelize.query('SET FOREIGN_KEY_CHECKS = 1');
+    await sequelize.query("SET session_replication_role = 'origin'");
   }
 }
 

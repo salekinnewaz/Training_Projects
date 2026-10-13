@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────
 # HelpDesk Lite — Monorepo .gitignore
 # Covers the root, frontend/ (Angular 17), backend/ (Express + TS),
-# and the MySQL Docker volume used for local development.
+# and the Postgres Docker volume used for local development.
 # ─────────────────────────────────────────────────────────────────
 
 # ── OS / IDE noise ────────────────────────────────────────────────
@@ -57,9 +57,9 @@ backend/uploads/*
 # ── TypeScript build info ─────────────────────────────────────────
 *.tsbuildinfo
 
-# ── Docker / MySQL ────────────────────────────────────────────────
+# ── Docker / Postgres ────────────────────────────────────────────
 .docker/
-mysql-data/
+postgres-data/
 
 # ── Puku CLI installer state ──────────────────────────────────────
 # Holds installed skills + per-story review scratch (commit-msg,

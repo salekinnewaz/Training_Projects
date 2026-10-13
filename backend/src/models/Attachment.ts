@@ -40,7 +40,7 @@ export class Attachment
 Attachment.init(
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
     },
@@ -49,7 +49,7 @@ Attachment.init(
       allowNull: false,
     },
     sizeBytes: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: false,
       field: 'size_bytes',
     },
@@ -63,7 +63,7 @@ Attachment.init(
       field: 'storage_path',
     },
     uploadedById: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: false,
       field: 'uploaded_by_id',
     },

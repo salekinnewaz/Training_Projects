@@ -3,7 +3,7 @@
  *
  * Core entity. Soft-delete via paranoid mode (deletedAt).
  * `number` is rendered as HD-<n> by nextTicketNumber() in
- * utils/ticketNumber.ts. status / priority / category are MySQL ENUMs.
+ * utils/ticketNumber.ts. status / priority / category are Postgres ENUMs.
  */
 
 import { DataTypes, Model, Optional } from 'sequelize';
@@ -63,7 +63,7 @@ export class Ticket
 Ticket.init(
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
     },
@@ -94,17 +94,17 @@ Ticket.init(
       defaultValue: 'Open',
     },
     submitterId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: false,
       field: 'submitter_id',
     },
     ownerId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: true,
       field: 'owner_id',
     },
     attachmentId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: true,
       field: 'attachment_id',
     },
