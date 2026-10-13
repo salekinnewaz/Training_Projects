@@ -18,8 +18,12 @@ test.describe('Smoke', () => {
     await page.goto('/login');
     // Brand mark: the wordmark is the spec's authoritative anchor.
     await expect(page.getByText('HelpDesk Lite', { exact: false })).toBeVisible();
-    await expect(page.getByLabel('Email')).toBeVisible();
-    await expect(page.getByLabel('Password')).toBeVisible();
+    // The atom-input renders a real <input> nested inside the
+    // <atom-input> host, and the host shares the same id. We
+    // target the inner <input> explicitly to avoid the duplicate
+    // id ambiguity and to be robust to label/host id collision.
+    await expect(page.locator('input#login-email')).toBeVisible();
+    await expect(page.locator('input#login-password')).toBeVisible();
     // Wireframe §"Content & Actions" #6 — CTA label is "Log in".
     await expect(page.getByRole('button', { name: 'Log in', exact: true })).toBeVisible();
   });
@@ -28,9 +32,9 @@ test.describe('Smoke', () => {
     await page.goto('/login');
     const button = page.getByRole('button', { name: 'Log in', exact: true });
     await expect(button).toBeDisabled();
-    await page.getByLabel('Email').fill('admin@company.com');
+    await page.locator('input#login-email').fill('admin@company.com');
     await expect(button).toBeDisabled();
-    await page.getByLabel('Password').fill('password123');
+    await page.locator('input#login-password').fill('password123');
     await expect(button).toBeEnabled();
   });
 

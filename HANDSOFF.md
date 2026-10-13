@@ -154,3 +154,101 @@ smoke tests; expand coverage to other pages.
 
 ---
 
+### Iteration 2 — login fix shipped (commit `8236f21`)
+
+**Action.** Removed the left hero panel + marketing copy + Remember
+me + Register link; renamed "Sign in" → "Log in" (and "Signing in…"
+→ "Logging in…"); re-centered the form in a 400px column at the
+720px mid-line; promoted the page H1 ("Sign in") to an
+`visually-hidden` landmark; updated the existing `login-page`
+spec to assert the wireframe-forbidden elements are NOT rendered
+(three net new negative assertions).
+
+**Smoke test updates.** Tightened the button-name regex to
+`exact: true` for "Log in"; added a new smoke test that asserts
+the live login page contains no "zero chaos" / "trello-style" /
+"remember me" / "don't have an account" copy. Switched all
+input selectors from `getByLabel(...)` to `locator('input#login-X')`
+because the `<form-field>` host element shares the same `id` as
+the inner `<input>`, and Playwright's `getByLabel` was matching
+the host (a non-form-control custom element) rather than the
+input. Same fix applied to `qa/tests/fixtures.ts`.
+
+**Result.** 7/7 smoke tests pass on the live deployment.
+Login page now shows the 6 wireframe-listed elements and
+nothing else.
+
+**Deploy verification.** Vercel picked up commit `8236f21`
+within 60s. Confirmed via the inspector script — body text on
+live `/login` is now exactly:
+
+```
+HL
+HelpDesk Lite
+Sign in
+Email *
+Password *
+Log in
+Forgot password?
+```
+
+---
+
+### Iteration 3 — feature tests + more wireframe gaps (2026-10-13)
+
+**Action.** Wrote `qa/tests/feature.spec.ts` covering: role-correct
+landing, Employee Dashboard structure, Agent Kanban structure,
+role-gate / 403 behavior, logged-out redirects, `/api/health`,
+`/api/auth/me`. Added wireframe-anchored tripwire assertions:
+
+- Employee Dashboard must NOT have a stat-strip
+  (`data-testid="stat-strip"`)
+- Agent Kanban must NOT have a Users tab
+- Logged-out `/dashboard` and `/queue` must redirect to
+  `/login?return_to=…`
+
+**Result.** 12/14 feature tests pass on first run; 2 fail:
+
+- `Employee Dashboard › has no stat strip` — **GAP**
+- `Agent Kanban › renders the Queue heading + filter strip + 4 columns`
+  — search input placeholder is `Search…` (live) vs. `Search queue…`
+  (wireframe §"Content & Actions" #3.1) — minor text gap.
+
+**Gap logged — Employee Dashboard has a wireframe-forbidden stat strip.**
+
+The live page renders a 4-card strip above the ticket list with
+the labels `OPEN / IN PROGRESS / RESOLVED / CLOSED` and a count
+under each. This violates wireframe §"Content & Actions" #6:
+
+> **No other content.** No welcome message. No "Did you know
+> you can also Slack us?" anti-pattern. **No summary stats
+> ("3 open, 1 closed") — those would imply team-wide
+> visibility.**
+
+It also violates wireframe §"User Context":
+
+> **No team-wide visibility, no other employees' tickets, no
+> Agent queue state, no admin data.** This is *Eli's* surface;
+> if she's curious about Sam's work she doesn't see it here.
+
+The stat strip also reads the COUNT of *all* statuses on
+*Eli's* tickets — but if Eli has zero "In Progress" tickets
+because she's a User and tickets move through the agent queue,
+the counts mislead her into thinking there's no work in motion.
+The counts are also a noise tax Eli's spec explicitly rules
+out: "the page reads in one glance" + "no noise" is the
+adoption-meter goal.
+
+**Fix (next iteration).** Remove the `stat-strip` from the
+template, drop the `STAT_CARDS` / `statusCounts` /
+`stat-strip`-related styles, and add a `data-testid="stat-strip"`
+negative assertion to the existing `employee-dashboard-page`
+spec.
+
+**Next.** Push the Employee Dashboard stat-strip removal; ship
+the other small text-alignment fixes; expand feature coverage
+to Ticket Detail, Create Ticket, Admin Dashboard, Users tab,
+Profile, Change Password, Register, Forgot Password, 404.
+
+---
+

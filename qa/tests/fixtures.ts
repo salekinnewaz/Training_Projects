@@ -53,9 +53,9 @@ const ROLE_HOME: Record<SeededUser, RegExp | string> = {
 
 export async function loginAs(page: Page, who: SeededUser): Promise<void> {
   await page.goto('/login');
-  await page.getByLabel('Email').fill(EMAILS[who]);
-  await page.getByLabel('Password').fill(PASSWORDS);
-  await page.getByRole('button', { name: /log in/i }).click();
+  await page.locator('input#login-email').fill(EMAILS[who]);
+  await page.locator('input#login-password').fill(PASSWORDS);
+  await page.getByRole('button', { name: 'Log in', exact: true }).click();
   await expect(page).toHaveURL(ROLE_HOME[who]);
 }
 

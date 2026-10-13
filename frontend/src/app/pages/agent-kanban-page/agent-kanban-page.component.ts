@@ -182,7 +182,7 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
             <atom-input
               id="filter-search"
               [value]="searchValue()"
-              placeholder="Search…"
+              placeholder="Search queue…"
               [disabled]="renderState() === 'loading'"
               (valueChange)="onSearchInput($event)"
             />
