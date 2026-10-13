@@ -81,34 +81,55 @@ import { ChromeAvatarComponent } from '../../atoms/chrome-avatar/chrome-avatar.c
       align-items: center;
       gap: 16px;
       height: 64px;
-      padding: 0 16px;
+      padding: 0 20px;
       background: var(--color-surface);
-      border-bottom: 1px solid var(--color-border);
-      color: var(--color-label);
+      border-bottom: 1px solid var(--color-border-subtle);
+      color: var(--color-text-soft);
       text-decoration: none;
       cursor: pointer;
       box-sizing: border-box;
-      transition: background-color 120ms ease;
+      position: relative;
+    }
+    .row::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--color-primary);
+      transform: scaleX(0);
+      transform-origin: left;
     }
     .row:hover {
-      background: var(--color-surface-subtle);
+      background: var(--color-page-bg);
       text-decoration: none;
     }
+    .row:hover::before {
+      transform: scaleX(1);
+    }
     .row:focus-visible {
-      outline: var(--focus-ring-width) solid var(--focus-ring-color);
-      outline-offset: -2px;
-      background: var(--color-surface-subtle);
+      outline: none;
+      background: var(--color-primary-tint);
+    }
+    .row:focus-visible::before {
+      transform: scaleX(1);
+      background: var(--color-primary);
+    }
+    .row-wrap:last-child .row {
+      border-bottom: none;
     }
     .number {
       font-family: var(--font-mono);
       font-size: 13px;
       color: var(--color-muted);
-      letter-spacing: 0.5px;
+      letter-spacing: 0.4px;
+      font-weight: 600;
     }
     .title {
       font-size: 14px;
       font-weight: 600;
-      color: var(--color-label);
+      color: var(--color-text);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -121,9 +142,10 @@ import { ChromeAvatarComponent } from '../../atoms/chrome-avatar/chrome-avatar.c
     .assignee {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       font-size: 13px;
-      color: var(--color-label);
+      color: var(--color-text-soft);
+      font-weight: 500;
       min-width: 0;
     }
     .assignee-name {
@@ -134,11 +156,13 @@ import { ChromeAvatarComponent } from '../../atoms/chrome-avatar/chrome-avatar.c
     .unassigned {
       color: var(--color-muted);
       font-style: italic;
+      font-weight: 400;
     }
     .timestamp {
       font-size: 13px;
       color: var(--color-muted);
       justify-self: end;
+      font-weight: 500;
     }
   `],
 })

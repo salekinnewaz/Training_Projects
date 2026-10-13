@@ -53,13 +53,20 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
       margin-bottom: 24px;
     }
     .bar {
-      background: var(--color-surface-muted);
-      border-radius: 4px;
-      animation: skel-pulse 1200ms ease-in-out infinite;
+      background:
+        linear-gradient(
+          90deg,
+          var(--color-surface-muted) 0%,
+          #F8FAFC 50%,
+          var(--color-surface-muted) 100%
+        );
+      background-size: 200% 100%;
+      border-radius: 6px;
+      animation: skel-shimmer 1400ms ease-in-out infinite;
     }
     .bar-heading {
-      width: 160px;
-      height: 28px;
+      width: 200px;
+      height: 32px;
     }
     .bar-button {
       width: 160px;
@@ -71,18 +78,19 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
       margin: 0;
       padding: 0;
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 14px;
       overflow: hidden;
+      box-shadow: var(--shadow-card);
     }
     .row {
       display: grid;
       grid-template-columns: 80px 1fr auto auto 100px;
       align-items: center;
       gap: 16px;
-      padding: 0 16px;
+      padding: 0 20px;
       height: 64px;
-      border-bottom: 1px solid var(--color-border);
+      border-bottom: 1px solid var(--color-border-subtle);
     }
     .row:last-child {
       border-bottom: none;
@@ -98,8 +106,8 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
     }
     .bar-badge {
       width: 64px;
-      height: 22px;
-      border-radius: 11px;
+      height: 24px;
+      border-radius: 12px;
     }
     .bar-badge.short {
       width: 48px;
@@ -109,9 +117,15 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
       height: 12px;
       justify-self: end;
     }
-    @keyframes skel-pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.55; }
+    @keyframes skel-shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .bar {
+        animation: none;
+        background: var(--color-surface-muted);
+      }
     }
   `],
 })

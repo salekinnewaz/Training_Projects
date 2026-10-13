@@ -8,6 +8,11 @@
  *
  * No Angular CDK dependency — we only need a single menu for the
  * MVP. If a second anchored menu appears, swap to CDK Overlay.
+ *
+ * Modern treatment (D8 pass): glassmorphism surface (backdrop-blur
+ * over the chrome's translucent background), 12px radius, deep
+ * shadow-2xl for proper elevation above the header, and a
+ * scaleIn-from-trigger animation that respects prefers-reduced-motion.
  */
 
 import {
@@ -42,12 +47,31 @@ import {
   styles: [`
     .panel {
       position: absolute;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 6px;
-      box-shadow: var(--shadow-dropdown);
-      padding: 12px 0;
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 12px;
+      box-shadow: var(--shadow-2xl);
+      padding: 8px 0;
       z-index: var(--z-dropdown);
+      transform-origin: top right;
+      animation: dropdown-scale-in var(--duration-fast) var(--ease-out) both;
+    }
+    @keyframes dropdown-scale-in {
+      from {
+        opacity: 0;
+        transform: scale(0.96) translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .panel {
+        animation: none;
+      }
     }
   `],
 })

@@ -223,7 +223,7 @@ const GENERIC_ERROR = "Couldn't change your password. Please try again.";
       min-height: calc(100vh - var(--chrome-height));
       display: grid;
       place-items: start center;
-      padding: 32px 24px;
+      padding: 40px 24px;
       background: var(--color-page-bg);
       box-sizing: border-box;
     }
@@ -231,39 +231,47 @@ const GENERIC_ERROR = "Couldn't change your password. Please try again.";
       width: 100%;
       max-width: 480px;
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
-      padding: 32px;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 16px;
+      padding: 36px 32px;
+      box-shadow: var(--shadow-card);
+      animation: fadeInUp var(--duration-slow) var(--ease-out) both;
     }
-    .page-head { margin-bottom: 24px; }
+    .page-head { margin-bottom: 28px; }
     .page-title {
-      margin: 0 0 4px;
-      font-size: 20px;
-      font-weight: 600;
-      color: var(--color-primary);
+      margin: 0 0 6px;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--color-text);
+      letter-spacing: -0.02em;
     }
     .page-sub {
       margin: 0;
       font-size: 14px;
-      color: var(--color-label-muted, #6b7280);
+      color: var(--color-muted);
+      line-height: 1.5;
     }
     .banner {
-      padding: 12px 14px;
-      border-radius: 6px;
+      padding: 12px 16px;
+      border-radius: 10px;
       font-size: 14px;
-      margin-bottom: 16px;
+      font-weight: 500;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
     .banner-err {
-      background: #fdecea;
-      color: #b3261e;
-      border: 1px solid #f5c2c0;
+      background: #FEF2F2;
+      color: var(--color-error);
+      border: 1px solid #FECACA;
     }
     .banner-ok {
-      background: #e6f4ea;
-      color: #1e7e34;
-      border: 1px solid #b7e1c1;
+      background: #ECFDF5;
+      color: #047857;
+      border: 1px solid #A7F3D0;
     }
-    .fields { display: flex; flex-direction: column; gap: 16px; }
+    .fields { display: flex; flex-direction: column; gap: 18px; }
     .password-wrap { position: relative; }
     .password-wrap atom-input { padding-right: 40px; }
     .password-wrap atom-show-password-toggle {
@@ -273,7 +281,7 @@ const GENERIC_ERROR = "Couldn't change your password. Please try again.";
       transform: translateY(-50%);
     }
     .actions {
-      margin-top: 24px;
+      margin-top: 28px;
       display: flex;
       align-items: center;
       gap: 16px;

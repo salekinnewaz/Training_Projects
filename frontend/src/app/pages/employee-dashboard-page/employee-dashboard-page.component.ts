@@ -135,19 +135,21 @@ const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
     }
     .dashboard-page {
       width: 100%;
+      animation: fadeInUp var(--duration-slow) var(--ease-out) both;
     }
     .dashboard-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 24px;
-      margin-bottom: 24px;
+      margin-bottom: 28px;
     }
     .dashboard-header h1 {
       margin: 0;
-      font-size: 24px;
-      font-weight: 600;
-      color: var(--color-primary);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--color-text);
+      letter-spacing: -0.02em;
     }
     .dashboard-header atom-button {
       width: auto;
@@ -155,21 +157,23 @@ const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
     }
     .error-message {
       margin: 0;
-      padding: 16px;
-      border: 1px solid var(--color-error);
-      background: var(--color-surface);
+      padding: 16px 18px;
+      border: 1px solid #FECACA;
+      background: #FEF2F2;
       color: var(--color-error);
       font-size: 14px;
-      border-radius: 6px;
+      border-radius: 12px;
+      font-weight: 500;
     }
     .ticket-list {
       list-style: none;
       margin: 0;
       padding: 0;
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 14px;
       overflow: hidden;
+      box-shadow: var(--shadow-card);
     }
     .ticket-list > * {
       display: block;
@@ -177,8 +181,8 @@ const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
     .stat-strip {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-bottom: 16px;
+      gap: 16px;
+      margin-bottom: 24px;
     }
     @media (max-width: 720px) {
       .stat-strip {
@@ -186,26 +190,62 @@ const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
       }
     }
     .stat-card {
+      position: relative;
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 6px;
-      padding: 12px 16px;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 14px;
+      padding: 18px 20px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
+      transition: transform var(--duration-base) var(--ease-out),
+        box-shadow var(--duration-base) var(--ease-out);
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--stat-accent, var(--color-primary));
+      opacity: 0.9;
+    }
+    .stat-card[data-status="Open"] {
+      --stat-accent: var(--status-open-dot);
+      background: linear-gradient(180deg, var(--status-open-bg) 0%, var(--color-surface) 60%);
+    }
+    .stat-card[data-status="In Progress"] {
+      --stat-accent: var(--status-in-progress-dot);
+      background: linear-gradient(180deg, var(--status-in-progress-bg) 0%, var(--color-surface) 60%);
+    }
+    .stat-card[data-status="Resolved"] {
+      --stat-accent: var(--status-resolved-dot);
+      background: linear-gradient(180deg, var(--status-resolved-bg) 0%, var(--color-surface) 60%);
+    }
+    .stat-card[data-status="Closed"] {
+      --stat-accent: var(--status-closed-dot);
+      background: linear-gradient(180deg, var(--status-closed-bg) 0%, var(--color-surface) 60%);
+    }
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-card-hover);
     }
     .stat-label {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--color-muted);
-      letter-spacing: 0.5px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--color-label);
+      letter-spacing: 0.06em;
       text-transform: uppercase;
     }
     .stat-count {
-      font-size: 28px;
-      font-weight: 600;
+      font-size: 32px;
+      font-weight: 700;
       color: var(--color-text);
-      line-height: 1.2;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
     }
   `],
 })

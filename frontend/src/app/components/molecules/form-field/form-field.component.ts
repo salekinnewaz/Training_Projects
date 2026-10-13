@@ -47,10 +47,11 @@ import {
     }
     label {
       display: block;
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--color-label);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text-soft);
       margin-bottom: 8px;
+      letter-spacing: -0.005em;
     }
     .req {
       color: var(--color-error);
@@ -61,10 +62,24 @@ import {
       display: block;
     }
     .form-field-error {
-      margin: 6px 0 0;
+      margin: 8px 0 0;
       color: var(--color-error);
       font-size: 13px;
       line-height: 1.4;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .form-field-error::before {
+      content: '';
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23EF4444'><path d='M8 1a7 7 0 100 14A7 7 0 008 1zm0 3a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 018 4zm0 8a1 1 0 100-2 1 1 0 000 2z'/></svg>");
+      background-size: contain;
+      background-repeat: no-repeat;
+      flex-shrink: 0;
     }
   `],
 })

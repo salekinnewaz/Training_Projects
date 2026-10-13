@@ -37,6 +37,23 @@ import { ButtonComponent } from '../../atoms/button/button.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="empty-state" role="region" aria-labelledby="empty-headline">
+      <div class="empty-icon" aria-hidden="true">
+        <svg viewBox="0 0 64 64" width="64" height="64" focusable="false">
+          <defs>
+            <linearGradient id="empty-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#6366F1" stop-opacity="0.18" />
+              <stop offset="100%" stop-color="#7C3AED" stop-opacity="0.10" />
+            </linearGradient>
+          </defs>
+          <rect x="6" y="14" width="52" height="40" rx="8" fill="url(#empty-grad)" />
+          <rect x="6" y="14" width="52" height="40" rx="8" stroke="#C7D2FE" stroke-width="1.5" fill="none" />
+          <rect x="14" y="24" width="22" height="3" rx="1.5" fill="#A5B4FC" />
+          <rect x="14" y="32" width="32" height="3" rx="1.5" fill="#C7D2FE" />
+          <rect x="14" y="40" width="18" height="3" rx="1.5" fill="#C7D2FE" />
+          <circle cx="48" cy="46" r="10" fill="#4F46E5" />
+          <path d="M48 42v8M44 46h8" stroke="#fff" stroke-width="2" stroke-linecap="round" />
+        </svg>
+      </div>
       <h2 id="empty-headline">{{ headline() }}</h2>
       <p class="caption">{{ caption() }}</p>
       <atom-button
@@ -60,32 +77,39 @@ import { ButtonComponent } from '../../atoms/button/button.component';
       max-width: 100%;
       margin: 0 auto;
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
-      padding: 48px 32px;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 16px;
+      padding: 56px 40px 48px;
       box-sizing: border-box;
       text-align: center;
-      box-shadow: var(--shadow-card-hover);
+      box-shadow: var(--shadow-card);
+    }
+    .empty-icon {
+      display: inline-flex;
+      margin-bottom: 24px;
+      animation: float 6s ease-in-out infinite;
     }
     h2 {
       margin: 0;
-      font-size: 20px;
-      font-weight: 600;
-      color: var(--color-primary);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--color-text);
+      letter-spacing: -0.02em;
     }
     .caption {
-      margin: 8px 0 0;
-      font-size: 14px;
+      margin: 10px 0 0;
+      font-size: 15px;
       color: var(--color-label);
+      line-height: 1.5;
     }
     atom-button {
       display: block;
       width: 240px;
       max-width: 100%;
-      margin: 32px auto 0;
+      margin: 28px auto 0;
     }
     .supporting {
-      margin-top: 16px;
+      margin-top: 18px;
       font-size: 13px;
       color: var(--color-muted);
     }

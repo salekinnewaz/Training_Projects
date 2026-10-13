@@ -59,15 +59,17 @@ type StatusVariant = 'open' | 'in-progress' | 'resolved' | 'closed';
     .status-dot {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      min-height: 22px;
+      gap: 5px;
+      min-height: 24px;
       padding: 0 10px;
-      border-radius: 11px;
+      border-radius: 999px;
       font-size: 11px;
-      font-weight: 600;
-      line-height: 22px;
+      font-weight: 700;
+      line-height: 24px;
       white-space: nowrap;
       box-sizing: border-box;
+      letter-spacing: 0.01em;
+      transition: transform var(--duration-fast) var(--ease-out);
     }
     .status-glyph {
       flex-shrink: 0;

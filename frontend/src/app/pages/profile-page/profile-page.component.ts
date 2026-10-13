@@ -146,7 +146,7 @@ import { LinkComponent } from '../../components/atoms/link/link.component';
     .profile-page {
       min-height: 100%;
       background: var(--color-page-bg);
-      padding: 32px 24px;
+      padding: 40px 24px;
       box-sizing: border-box;
     }
     .page-grid {
@@ -154,31 +154,33 @@ import { LinkComponent } from '../../components/atoms/link/link.component';
       margin: 0 auto;
       display: flex;
       flex-direction: column;
-      gap: 24px;
+      gap: 20px;
     }
     .card {
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 8px;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 16px;
       box-shadow: var(--shadow-card);
       padding: 32px;
       box-sizing: border-box;
+      animation: fadeInUp var(--duration-slow) var(--ease-out) both;
     }
     .account-head {
       display: flex;
       align-items: center;
       gap: 20px;
       padding-bottom: 24px;
-      border-bottom: 1px solid var(--color-border);
+      border-bottom: 1px solid var(--color-border-subtle);
     }
     .account-name {
       min-width: 0;
     }
     .display-name {
       margin: 0 0 4px;
-      font-size: 24px;
-      font-weight: 600;
+      font-size: 26px;
+      font-weight: 700;
       color: var(--color-text);
+      letter-spacing: -0.02em;
     }
     .email {
       margin: 0;
@@ -189,30 +191,45 @@ import { LinkComponent } from '../../components/atoms/link/link.component';
       margin: 24px 0 0;
       display: grid;
       grid-template-columns: 1fr;
-      gap: 12px;
+      gap: 14px;
     }
     .meta-row {
       display: grid;
       grid-template-columns: 140px 1fr;
       align-items: center;
       gap: 16px;
+      padding: 10px 14px;
+      background: var(--color-page-bg);
+      border-radius: 10px;
     }
     .meta-row dt {
       color: var(--color-muted);
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
     .meta-row dd {
       margin: 0;
       color: var(--color-text);
       font-size: 14px;
+      font-weight: 500;
     }
     .status-pill {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 999px;
       font-size: 12px;
-      font-weight: 500;
+      font-weight: 600;
+    }
+    .status-pill::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
     }
     .status-active {
       background: rgba(43, 138, 62, 0.1);
@@ -223,27 +240,31 @@ import { LinkComponent } from '../../components/atoms/link/link.component';
       color: var(--color-error);
     }
     .card-title {
-      margin: 0 0 16px;
-      font-size: 16px;
-      font-weight: 600;
+      margin: 0 0 20px;
+      font-size: 18px;
+      font-weight: 700;
       color: var(--color-text);
+      letter-spacing: -0.01em;
     }
     .action-list {
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 0;
     }
     .action-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 24px;
-      padding: 16px 0;
-      border-bottom: 1px solid var(--color-border);
+      padding: 18px 0;
+      border-bottom: 1px solid var(--color-border-subtle);
     }
     .action-row:last-child {
       border-bottom: none;
       padding-bottom: 0;
+    }
+    .action-row:first-child {
+      padding-top: 0;
     }
     .action-name {
       margin: 0 0 4px;

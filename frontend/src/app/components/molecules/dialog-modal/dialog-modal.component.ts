@@ -82,7 +82,10 @@ import { ButtonComponent } from '../../atoms/button/button.component';
       position: fixed;
       inset: 0;
       background: var(--color-scrim);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
       z-index: var(--z-modal-scrim);
+      animation: scrim-fade-in var(--duration-base) var(--ease-out) both;
     }
     .modal {
       position: fixed;
@@ -90,29 +93,56 @@ import { ButtonComponent } from '../../atoms/button/button.component';
       left: 50%;
       transform: translate(-50%, -50%);
       background: var(--color-surface);
-      border-radius: 8px;
-      padding: var(--space-modal-pad);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 16px;
+      padding: 28px;
       width: var(--size-modal-width);
       max-width: calc(100vw - 32px);
       z-index: var(--z-modal);
-      box-shadow: 0 8px 24px rgba(33, 37, 41, 0.2);
+      box-shadow: var(--shadow-2xl);
+      animation: modal-scale-in var(--duration-slow) var(--ease-bounce) both;
     }
     .modal-headline {
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--color-primary);
-      margin: 0 0 16px;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--color-text);
+      margin: 0 0 12px;
+      letter-spacing: -0.02em;
     }
     .modal-error {
       color: var(--color-error);
       font-size: 14px;
-      margin: 0 0 12px;
+      margin: 12px 0 0;
+      padding: 10px 14px;
+      background: #FEF2F2;
+      border: 1px solid #FECACA;
+      border-radius: 10px;
+      font-weight: 500;
     }
     .modal-actions {
       display: flex;
       justify-content: flex-end;
-      gap: 12px;
-      margin-top: 20px;
+      gap: 10px;
+      margin-top: 24px;
+    }
+    @keyframes scrim-fade-in {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes modal-scale-in {
+      from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.92);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .scrim, .modal {
+        animation: none;
+      }
     }
   `],
 })
