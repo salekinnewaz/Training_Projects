@@ -24,9 +24,9 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import swaggerUi from 'swagger-ui-express';
 import apiRouter from './routes';
 import { getOpenApiSpec } from './docs/openapi';
+import { mountSwaggerUI } from './docs/swaggerUI';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
@@ -65,13 +65,9 @@ app.get('/api/docs.json', (_req: Request, res: Response) => {
   res.json(getOpenApiSpec());
 });
 // Swagger UI HTML. Browse to http://localhost:<port>/api/docs.
-app.use(
-  '/api/docs',
-  swaggerUi.serve,
-  swaggerUi.setup(getOpenApiSpec(), {
-    customSiteTitle: 'HelpDesk Lite API',
-  }),
-);
+// Uses the Vercel-friendly custom handler in ./docs/swaggerUI
+// instead of `swagger-ui-express` — see swaggerUI.ts for why.
+mountSwaggerUI(app, '/api/docs/', getOpenApiSpec);
 
 // ── 404 fallback (JSON, not HTML) ───────────────────────────────────
 app.use((_req: Request, res: Response) => {
