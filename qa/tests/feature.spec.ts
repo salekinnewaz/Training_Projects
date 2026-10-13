@@ -136,22 +136,65 @@ test.describe('Feature: Create Ticket', () => {
 
   test('renders the form with the wireframe-listed fields', async ({ page }) => {
     await page.goto('/tickets/new');
-    // The live page renders the form in a modal-style dialog
-    // (visible from the page snapshot — banner "Create Ticket"
-    // + × close button + Title/Description fields). The form
-    // has the wireframe-listed inputs.
+    // Wireframe §"Content & Actions" — the page renders:
+    //   - H1 "New ticket" (was "Create Ticket" pre-fix)
+    //   - "← Back to My Tickets" link at top-left
+    //   - "Submit ticket" button (was "Create Ticket" pre-fix)
+    //   - "Cancel" button + "Cancel — return to My Tickets" link
+    //   - Title / Description / Category / Priority / Attachment
+    await expect(
+      page.getByRole('heading', { name: 'New ticket', level: 1 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: /back to my tickets/i }),
+    ).toBeVisible();
     await expect(page.locator('input#title')).toBeVisible();
     await expect(page.locator('textarea#description')).toBeVisible();
     await expect(page.locator('select#category')).toBeVisible();
     await expect(page.locator('select#priority')).toBeVisible();
     await expect(page.locator('input[type="file"]')).toBeVisible();
-    await expect(page.getByRole('button', { name: /create ticket/i })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /submit ticket/i }),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: /^cancel$/i })).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: /cancel.*return to my tickets/i }),
+    ).toBeVisible();
+  });
+
+  test('uses the wireframe-correct placeholders for Title and Description', async ({ page }) => {
+    await page.goto('/tickets/new');
+    // Wireframe §"Content & Actions" #4: Title placeholder
+    // "Short summary of the issue" (was "Briefly describe the
+    // issue" pre-fix).
+    await expect(page.locator('input#title')).toHaveAttribute(
+      'placeholder',
+      /short summary of the issue/i,
+    );
+    // Wireframe §"Content & Actions" #5: Description placeholder
+    // starts with "Describe what's happening".
+    await expect(page.locator('textarea#description')).toHaveAttribute(
+      'placeholder',
+      /describe what.?s happening/i,
+    );
+  });
+
+  test('does NOT use the pre-fix button or heading labels (wireframe tripwire)', async ({ page }) => {
+    await page.goto('/tickets/new');
+    // Wireframe §"Content & Actions" forbids the old "Create Ticket"
+    // button label and "Create Ticket" heading — Submit must be
+    // "Submit ticket" and H1 must be "New ticket".
+    await expect(
+      page.getByRole('button', { name: /^create ticket$/i }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('heading', { name: /^create ticket$/i, level: 1 }),
+    ).toHaveCount(0);
   });
 
   test('disables Submit until Title and Description are filled', async ({ page }) => {
     await page.goto('/tickets/new');
-    const submit = page.getByRole('button', { name: /create ticket/i });
+    const submit = page.getByRole('button', { name: /submit ticket/i });
     await expect(submit).toBeDisabled();
     await page.locator('input#title').fill('My keyboard shortcut is broken');
     await expect(submit).toBeDisabled();
@@ -165,12 +208,18 @@ test.describe('Feature: Create Ticket', () => {
     await expect(page).toHaveURL(/\/dashboard/);
   });
 
+  test('"← Back to My Tickets" link returns to /dashboard', async ({ page }) => {
+    await page.goto('/tickets/new');
+    await page.getByRole('link', { name: /back to my tickets/i }).click();
+    await expect(page).toHaveURL(/\/dashboard/);
+  });
+
   test('submitting a valid form lands on the created page', async ({ page }) => {
     await page.goto('/tickets/new');
     const unique = `qa-auto-${Date.now()}`;
     await page.locator('input#title').fill(unique);
     await page.locator('textarea#description').fill('Created by the QA loop.');
-    await page.getByRole('button', { name: /create ticket/i }).click();
+    await page.getByRole('button', { name: /submit ticket/i }).click();
     await page.waitForURL(/\/tickets\/.+\/created/, { timeout: 10_000 });
     expect(page.url()).toMatch(/\/tickets\/.+\/created/);
   });
@@ -183,7 +232,7 @@ test.describe('Feature: Submission Confirmation', () => {
     const unique = `qa-confirm-${Date.now()}`;
     await page.locator('input#title').fill(unique);
     await page.locator('textarea#description').fill('Created by the QA loop for confirmation coverage.');
-    await page.getByRole('button', { name: /create ticket/i }).click();
+    await page.getByRole('button', { name: /submit ticket/i }).click();
     await page.waitForURL(/\/tickets\/.+\/created/, { timeout: 10_000 });
 
     // Wireframe §"Content & Actions" — the page renders:

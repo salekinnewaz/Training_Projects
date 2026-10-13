@@ -452,9 +452,11 @@ describe('CreateTicketPageComponent', () => {
       '.create-ticket-card[role="dialog"]',
     ) as HTMLElement;
     expect(card).not.toBeNull();
+    // Wireframe §"Content & Actions" #3: heading text is "New ticket"
+    // (not "Create Ticket"). One H1 landmark for screen readers.
     expect(
       card.querySelector('.card-header .card-title')?.textContent?.trim(),
-    ).toBe('Create Ticket');
+    ).toBe('New ticket');
 
     const close = card.querySelector(
       'button.close-btn[aria-label="Close"]',
@@ -462,7 +464,7 @@ describe('CreateTicketPageComponent', () => {
     expect(close).not.toBeNull();
   });
 
-  it('places the Cancel + Create Ticket buttons in a card-actions footer', () => {
+  it('places the Cancel + Submit ticket buttons in a card-actions footer', () => {
     const fixture = TestBed.createComponent(CreateTicketPageComponent);
     fixture.detectChanges();
 
@@ -471,10 +473,37 @@ describe('CreateTicketPageComponent', () => {
     ) as HTMLElement;
     expect(actions).not.toBeNull();
 
+    // Wireframe §"Content & Actions" #9: Submit button label is
+    // "Submit ticket" (not "Create Ticket"). The footer also has
+    // a Cancel secondary button to bail without submitting.
     const buttons = actions.querySelectorAll('atom-button');
     expect(buttons.length).toBe(2);
     expect(buttons[0]?.textContent?.trim()).toBe('Cancel');
-    expect(buttons[1]?.textContent?.trim()).toBe('Create Ticket');
+    expect(buttons[1]?.textContent?.trim()).toBe('Submit ticket');
+  });
+
+  it('renders the wireframe-required "← Back to My Tickets" link and "Cancel — return to My Tickets" link', () => {
+    // Wireframe §"Content & Actions" #2: "← Back to My Tickets"
+    // link at top-left of page content (above the form card).
+    // Wireframe §"Content & Actions" #10: "Cancel — return to
+    // My Tickets" 14px muted text link below the Submit button.
+    const fixture = TestBed.createComponent(CreateTicketPageComponent);
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const back = root.querySelector(
+      '[data-testid="back-to-my-tickets"]',
+    ) as HTMLAnchorElement | null;
+    expect(back).not.toBeNull();
+    expect(back?.textContent?.trim()).toBe('← Back to My Tickets');
+    expect(back?.getAttribute('href')).toBe('/dashboard');
+
+    const cancel = root.querySelector(
+      '[data-testid="cancel-return-link"]',
+    ) as HTMLAnchorElement | null;
+    expect(cancel).not.toBeNull();
+    expect(cancel?.textContent?.trim()).toBe('Cancel — return to My Tickets');
+    expect(cancel?.getAttribute('href')).toBe('/dashboard');
   });
 
   it('the close button is type=button (does not submit the form)', () => {

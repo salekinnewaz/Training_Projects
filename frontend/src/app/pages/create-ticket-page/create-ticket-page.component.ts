@@ -5,12 +5,26 @@
  * "Create Ticket" button. Five fields (Title / Description /
  * Category / Priority / Attachment) + Submit.
  *
+ * Wireframe §"Content & Actions" lists, in order:
+ *   1. App-header chrome strip
+ *   2. "← Back to My Tickets" link
+ *   3. "New ticket" section heading
+ *   4. Title field
+ *   5. Description field
+ *   6. Category field
+ *   7. Priority field
+ *   8. Attachment field
+ *   9. Submit button (label: "Submit ticket")
+ *  10. "Cancel — return to My Tickets" link below the button
+ *
  * WDS-2026: Per EXPERIENCE.md line 220 ("Default to modal, deep-
  * linkable via `/tickets/new`"), this page renders as a centered
- * card on a tinted overlay (max-width 480px, elevation.overlay) —
- * modal-like in feel, but actually a real routed page so the URL
- * `/tickets/new` is deep-linkable. No `<app-chrome>` wrapper; the
- * modal-style card has its own header + close × button.
+ * card on a tinted overlay — modal-like in feel, but actually a
+ * real routed page so the URL `/tickets/new` is deep-linkable. No
+ * `<app-chrome>` wrapper; the modal-style card has its own header
+ * + close × button. The page also renders the wireframe-required
+ * "← Back to My Tickets" link at top-left and the "Cancel" link
+ * below the Submit button.
  *
  * Render states:
  *   idle      → form enabled, all fields empty / default
@@ -124,9 +138,15 @@ const PRIORITY_OPTIONS = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="create-ticket-page" id="main-content">
+      <a
+        class="back-link"
+        href="/dashboard"
+        (click)="onCancel($event)"
+        data-testid="back-to-my-tickets"
+      >← Back to My Tickets</a>
       <div class="create-ticket-card" role="dialog" aria-labelledby="create-ticket-title">
         <header class="card-header">
-          <h1 id="create-ticket-title" class="card-title">Create Ticket</h1>
+          <h1 id="create-ticket-title" class="card-title">New ticket</h1>
           <button
             type="button"
             class="close-btn"
@@ -150,7 +170,7 @@ const PRIORITY_OPTIONS = [
                 [invalid]="titleError() !== null"
                 [required]="true"
                 [disabled]="submitting()"
-                placeholder="Briefly describe the issue"
+                placeholder="Short summary of the issue"
                 (valueChange)="onTitleChange($event)"
               />
             </form-field>
@@ -168,7 +188,7 @@ const PRIORITY_OPTIONS = [
                 [required]="true"
                 [disabled]="submitting()"
                 [rows]="5"
-                placeholder="What happened? When did it start? Any error messages?"
+                placeholder="Describe what's happening — what you expected, what's actually happening, and anything you've already tried."
                 (valueChange)="onDescriptionChange($event)"
               />
             </form-field>
@@ -249,9 +269,16 @@ const PRIORITY_OPTIONS = [
               type="submit"
               [loading]="submitting()"
               [disabled]="!canSubmit()"
-            >Create Ticket</atom-button>
+            >Submit ticket</atom-button>
           </div>
         </form>
+
+        <a
+          class="cancel-link"
+          href="/dashboard"
+          (click)="onCancel($event)"
+          data-testid="cancel-return-link"
+        >Cancel — return to My Tickets</a>
       </div>
     </div>
   `,
@@ -266,6 +293,7 @@ const PRIORITY_OPTIONS = [
       padding: 32px 24px;
       box-sizing: border-box;
       background: var(--gradient-mesh), var(--color-page-bg);
+      position: relative;
     }
     .create-ticket-card {
       width: 100%;
@@ -367,6 +395,45 @@ const PRIORITY_OPTIONS = [
       padding: 16px 24px;
       border-top: 1px solid var(--color-border);
       background: var(--color-surface-subtle);
+    }
+    /* Wireframe §"Content & Actions" #2: "← Back to My Tickets"
+     * link at top-left of page content (above the form card),
+     * 14px muted. */
+    .back-link {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      font-size: 14px;
+      color: #868e96;
+      text-decoration: none;
+    }
+    .back-link:hover {
+      color: #212529;
+      text-decoration: underline;
+    }
+    .back-link:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    /* Wireframe §"Content & Actions" #10: "Cancel — return to My
+     * Tickets" 14px muted text link below the Submit button. */
+    .cancel-link {
+      display: block;
+      padding: 12px 28px 24px;
+      font-size: 14px;
+      color: #868e96;
+      text-align: left;
+      text-decoration: none;
+    }
+    .cancel-link:hover {
+      color: #212529;
+      text-decoration: underline;
+    }
+    .cancel-link:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: 2px;
+      border-radius: 2px;
     }
   `],
 })
