@@ -175,7 +175,7 @@ const COMMENT_MAX = 5000;
                   class="back-link"
                   [href]="backHref()"
                   data-testid="back-link"
-                >← Back to tickets</a>
+                >← Back to {{ backLabel() }}</a>
                 <h1 class="title-text">{{ t.title }}</h1>
                 <span class="ticket-number">#{{ t.number }}</span>
               </header>
@@ -256,7 +256,7 @@ const COMMENT_MAX = 5000;
                       size="md"
                       data-testid="confirm-close-btn"
                       (pressed)="onConfirmClose()"
-                    >Confirm and close</atom-button>
+                    >Confirm (close)</atom-button>
                   }
                 </section>
               }
@@ -328,7 +328,7 @@ const COMMENT_MAX = 5000;
                       [value]="composerValue()"
                       [rows]="3"
                       [disabled]="postingComment()"
-                      placeholder="Add a comment…"
+                      placeholder="Type a comment…"
                       (valueChange)="onComposerInput($event)"
                     />
                     @if (commentSubmitError(); as msg) {
@@ -379,13 +379,13 @@ const COMMENT_MAX = 5000;
 
             @if (reopenModalOpen()) {
               <dialog-modal
-                headline="Reopen ticket"
+                headline="Reopen this ticket?"
                 cancelLabel="Cancel"
                 confirmLabel="Reopen"
                 (cancel)="closeReopenModal()"
                 (confirm)="onReopenConfirmed()"
               >
-                <p>This will reopen the ticket. Previous conversation and history will be kept.</p>
+                <p>Sam will be notified and the ticket will return to Open with full history preserved.</p>
               </dialog-modal>
             }
           }
@@ -832,6 +832,18 @@ export class TicketDetailPageComponent implements OnInit, OnDestroy {
    * back to /dashboard.
    */
   readonly backHref = computed<string>(() => this.authService.roleHomePath());
+
+  // Wireframe §"Cross-page" — "Back to <Dashboard>" link.
+  // User → "Dashboard" (Employee Dashboard); Agent/Admin →
+  // "Queue" (Agent Kanban). The destination is shared via
+  // backHref, but the label reflects what the user sees on
+  // that page.
+  readonly backLabel = computed<string>(() => {
+    const u = this.currentUser();
+    if (!u) return 'Dashboard';
+    if (u.role === 'User') return 'My Tickets';
+    return 'Queue';
+  });
 
   readonly isSubmitter = computed<boolean>(() => {
     const u = this.currentUser();

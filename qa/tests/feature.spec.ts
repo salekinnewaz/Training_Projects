@@ -262,8 +262,13 @@ test.describe('Feature: Ticket Detail', () => {
     // The live URL pattern is /tickets/<id> (numeric) — accept either
     // /tickets/42 or /tickets/HD-42.
     await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
-    // Should show the back link to the dashboard.
-    await expect(page.getByRole('link', { name: /back to/i })).toBeVisible();
+    // Wireframe §"Cross-page" — "Back to <Dashboard>" link.
+    // For an Employee, the destination is the Employee Dashboard
+    // whose heading is "My Tickets" — so the link label is
+    // "← Back to My Tickets".
+    await expect(
+      page.getByRole('link', { name: /back to my tickets/i }),
+    ).toBeVisible();
   });
 
   test('employee on an Open ticket: only comment composer is interactive (wireframe action matrix)', async ({ page }) => {
