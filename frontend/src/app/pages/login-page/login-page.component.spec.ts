@@ -24,9 +24,8 @@
  *   (j) The "Forgot password?" link points to /forgot-password
  *   (k) D4: 429 with `rate_limited` → password field shows
  *       "Too many attempts. Please wait a moment."
- *   (l) The Remember me checkbox is unchecked by default and
- *       toggles via native change events
- *   (m) The Register link points to /register
+ *   (l) The wireframe-forbidden "Remember me" checkbox and
+ *       "Register" link are NOT rendered
  *
  * Mirrors the existing create-ticket-page spec pattern: TestBed +
  * AuthService stub (BehaviorSubject-based) + Router stub +
@@ -115,7 +114,9 @@ describe('LoginPageComponent (D2)', () => {
 
     const root = fixture.nativeElement as HTMLElement;
     const labels = root.querySelectorAll('label');
-    expect(labels.length).toBe(3);
+    // Wireframe §"Content & Actions" — only Email and Password
+    // labels. Remember me is forbidden.
+    expect(labels.length).toBe(2);
     expect(labels[0]?.textContent).toContain('Email');
     expect(labels[1]?.textContent).toContain('Password');
     // Required indicator (*)
@@ -484,44 +485,19 @@ describe('LoginPageComponent (D2)', () => {
     expect(link).not.toBeNull();
   });
 
-  it('renders the Remember me checkbox unchecked by default', () => {
+  it('does NOT render a Remember me checkbox (wireframe-forbidden)', () => {
     const fixture = TestBed.createComponent(LoginPageComponent);
     fixture.detectChanges();
 
-    const checkbox = fixture.nativeElement.querySelector(
-      'input#remember-me',
-    ) as HTMLInputElement;
-    expect(checkbox).not.toBeNull();
-    expect(checkbox.checked).toBeFalse();
+    const checkbox = fixture.nativeElement.querySelector('input#remember-me');
+    expect(checkbox).toBeNull();
   });
 
-  it('toggles the Remember me checkbox via native change events', () => {
+  it('does NOT render a Register link (wireframe-forbidden)', () => {
     const fixture = TestBed.createComponent(LoginPageComponent);
     fixture.detectChanges();
 
-    const checkbox = fixture.nativeElement.querySelector(
-      'input#remember-me',
-    ) as HTMLInputElement;
-
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-    fixture.detectChanges();
-    expect(fixture.componentInstance.rememberMe()).toBeTrue();
-
-    checkbox.checked = false;
-    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-    fixture.detectChanges();
-    expect(fixture.componentInstance.rememberMe()).toBeFalse();
-  });
-
-  it('renders the Register link pointing to /register', () => {
-    const fixture = TestBed.createComponent(LoginPageComponent);
-    fixture.detectChanges();
-
-    const link = fixture.nativeElement.querySelector(
-      'a[href="/register"]',
-    ) as HTMLAnchorElement;
-    expect(link).not.toBeNull();
-    expect(link.textContent?.trim()).toBe('Register');
+    const link = fixture.nativeElement.querySelector('a[href="/register"]');
+    expect(link).toBeNull();
   });
 });
