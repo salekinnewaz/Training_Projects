@@ -802,7 +802,13 @@ describe('AgentKanbanPageComponent (HD-012)', () => {
     expect(slots.length).toBe(1);
   });
 
-  it('renders a "View list" link in the Closed column footer when Closed is unfiltered and non-empty', async () => {
+  // Wireframe §"Behavior" — Closed column is read-only history.
+  // No "View list" link, no drag, no actions. The live page used
+  // to render a "View list →" link to /tickets?status=Closed in
+  // the Closed column footer; removed in iteration 5 because the
+  // wireframe does not list any footer content for the Closed
+  // column.
+  it('does NOT render a "View list" link in the Closed column (wireframe-forbidden)', async () => {
     const { ticketService, userService } = await bootstrap();
     ticketService.listForQueue.and.resolveTo([
       makeTicket({ id: 1, status: 'Closed' }),
@@ -812,34 +818,16 @@ describe('AgentKanbanPageComponent (HD-012)', () => {
     const fixture = makeFixture();
     fixture.detectChanges();
     await fixture.whenStable();
-    fixture.detectChanges();
-
-    const link = fixture.nativeElement.querySelector(
-      '[data-testid="closed-view-list-link"]',
-    ) as HTMLAnchorElement | null;
-    expect(link).not.toBeNull();
-    expect(link?.getAttribute('href')).toBe('/tickets?status=Closed');
-  });
-
-  it('hides the "View list" link when the status filter is set to Closed', async () => {
-    const { ticketService, userService } = await bootstrap();
-    ticketService.listForQueue.and.resolveTo([
-      makeTicket({ id: 1, status: 'Closed' }),
-    ]);
-    userService.listAgents.and.resolveTo([]);
-
-    const fixture = makeFixture();
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    fixture.componentInstance.onStatusChange('Closed');
-    await new Promise((resolve) => setTimeout(resolve, 0));
     fixture.detectChanges();
 
     const link = fixture.nativeElement.querySelector(
       '[data-testid="closed-view-list-link"]',
     );
     expect(link).toBeNull();
+    // And no inline "View list" anchor anywhere on the page.
+    const viewList = fixture.nativeElement.querySelectorAll(
+      'a.view-list-link',
+    );
+    expect(viewList.length).toBe(0);
   });
 });

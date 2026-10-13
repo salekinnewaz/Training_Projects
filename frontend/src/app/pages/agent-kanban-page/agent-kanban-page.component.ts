@@ -321,13 +321,10 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
                     }
                   </div>
                   @if (status === 'Closed' && columnsByStatus()[status].length > 0 && statusFilter() === 'all') {
-                    <footer class="column-footer" data-testid="closed-view-list">
-                      <a
-                        class="view-list-link"
-                        href="/tickets?status=Closed"
-                        data-testid="closed-view-list-link"
-                      >View list →</a>
-                    </footer>
+                    <!-- Wireframe §"Behavior" — Closed column is
+                         read-only history. No "View list" link,
+                         no drag, no actions. Removed in
+                         iteration 5. -->
                   }
                 </section>
               }
@@ -518,26 +515,6 @@ const GENERIC_MOVE_ERROR = "Couldn't move the ticket. Try again.";
     .card-slot {
       cursor: pointer;
       border-radius: 12px;
-    }
-    .column-footer {
-      padding: 10px 12px;
-      border-top: 1px solid var(--color-border-subtle);
-      text-align: center;
-    }
-    .view-list-link {
-      color: var(--color-primary);
-      font-size: 12px;
-      text-decoration: none;
-      font-weight: 600;
-      transition: color var(--duration-fast) var(--ease-out);
-    }
-    .view-list-link:hover {
-      color: var(--color-primary-deep);
-    }
-    .view-list-link:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--color-primary-ring);
-      border-radius: 4px;
     }
     /* Keyboard move-mode — give the focused/active card a subtle
        outline + crosshair so it's visible which card the keys
