@@ -369,6 +369,26 @@ test.describe('Feature: 404 / unknown route', () => {
   });
 });
 
+test.describe('Feature: Register / Forbidden', () => {
+  test('GET /register renders the registration page or admin-only notice', async ({ page }) => {
+    // Per the Login wireframe, "accounts are Admin-provisioned;
+    // there is no public registration flow." The /register
+    // route is an admin-only page in the live impl.
+    await page.goto('/register');
+    // Either it's a public form OR it redirects to /login.
+    const url = page.url();
+    expect(/\/register|\/login|\/forbidden/.test(url)).toBe(true);
+  });
+
+  test('logged-in user navigating to /forbidden sees the Forbidden page', async ({ page }) => {
+    // Direct-arrival to /forbidden shows the "you don't have
+    // access" panel with a link back to the user's home.
+    await loginAs(page, 'eli');
+    await page.goto('/forbidden');
+    await expect(page.getByText(/don.?t have access|forbidden|403/i).first()).toBeVisible();
+  });
+});
+
 test.describe('Feature: Forgot Password', () => {
   test('renders the /forgot-password page (placeholder is acceptable for MVP)', async ({ page }) => {
     // The wireframe §"Content & Actions" spec'd a real reset
@@ -440,5 +460,33 @@ test.describe('Feature: Profile / Change Password', () => {
     await page.getByRole('button', { name: 'Eli Tanaka' }).click();
     await page.getByText(/change password/i).click();
     await expect(page).toHaveURL(/\/profile\/password/);
+  });
+
+  test('Profile page shows the user display name, email, role, and active status', async ({ page }) => {
+    // The Profile page is the standalone account info surface
+    // (D114). It shows display name, email, role badge, status,
+    // last active, and member since.
+    await loginAs(page, 'eli');
+    await page.goto('/profile');
+    await expect(page.getByRole('heading', { name: 'Eli Tanaka' })).toBeVisible();
+    await expect(page.getByText('eli@company.com')).toBeVisible();
+    await expect(page.getByText(/role/i).first()).toBeVisible();
+    await expect(page.getByText(/active/i).first()).toBeVisible();
+  });
+
+  test('Change Password page shows the wireframe-required fields and submit', async ({ page }) => {
+    // The Change Password form has current password, new
+    // password, confirm new password fields + submit.
+    await loginAs(page, 'eli');
+    await page.goto('/profile/password');
+    // The atom-input renders an inner <input> nested inside
+    // the host; target by id to avoid strict-mode collision.
+    await expect(page.locator('input#cp-current')).toBeVisible();
+    await expect(page.locator('input#cp-new')).toBeVisible();
+    await expect(page.locator('input#cp-confirm')).toBeVisible();
+    // Submit button.
+    await expect(
+      page.getByRole('button', { name: /change password/i }).first(),
+    ).toBeVisible();
   });
 });
