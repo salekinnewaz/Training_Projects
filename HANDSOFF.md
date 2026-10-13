@@ -429,3 +429,105 @@ after Cancel; the URL does not change to `/login`).
 
 ---
 
+### Iteration 9 — ticket-detail page fixes (commit `f6512fa`)
+
+**Action.** Audited the live ticket detail page against
+`design-process/D-UX-Design/ticket-detail.md` §"Content &
+Actions" + §"Cross-page" and found 4 wireframe divergences:
+
+| # | Element             | Wireframe                    | Live (pre-fix)          |
+|---|---------------------|------------------------------|-------------------------|
+| 1 | Back link label     | "Back to <Dashboard>"        | "← Back to tickets"     |
+| 2 | Confirm-close button | "Confirm (close)"            | "Confirm and close"     |
+| 3 | Composer placeholder | "Type a comment…"            | "Add a comment…"        |
+| 4 | Reopen dialog       | "Reopen this ticket?" + "Sam will be notified and the ticket will return to Open with full history preserved." | "Reopen ticket" + "This will reopen the ticket. Previous conversation and history will be kept." |
+
+For the back link, made the label role-aware: "← Back to My
+Tickets" for Employees (whose dashboard heading is "My
+Tickets") and "← Back to Queue" for Agent/Admin (whose queue
+heading is "Queue"). The destination href was already
+role-aware via `backHref = computed(() =>
+this.authService.roleHomePath())`.
+
+Made the following template changes in
+`frontend/src/app/pages/ticket-detail-page/ticket-detail-page.component.ts`:
+
+- Back link: `← Back to tickets` → `← Back to {{ backLabel() }}`
+- Confirm-close button: `Confirm and close` → `Confirm (close)`
+- Composer placeholder: `Add a comment…` → `Type a comment…`
+- Reopen dialog headline: `Reopen ticket` → `Reopen this ticket?`
+- Reopen dialog body: `This will reopen the ticket. Previous
+  conversation and history will be kept.` → `Sam will be
+  notified and the ticket will return to Open with full
+  history preserved.`
+
+Added a `backLabel` computed signal that returns
+`My Tickets` for User and `Queue` for Support Agent / Admin.
+
+Updated the pre-existing unit test that asserted the old
+`Back to tickets` label.
+
+Updated the E2E test that asserted `/back to/i` to
+specifically assert `/back to my tickets/i` so a future
+regression on the role-aware label is caught.
+
+**Result.** 36/36 ticket-detail unit tests pass. 43/43 E2E
+tests pass on the live deployment.
+
+---
+
+### Iteration 10 — additional feature coverage (commits `1519906`, `58d578d`)
+
+**Action.** Added 4 more wireframe-anchored E2E tests:
+
+- **Profile page** — shows the user's display name (H1),
+  email, role, and active status (D114).
+- **Change Password page** — three password fields
+  (`cp-current`, `cp-new`, `cp-confirm`) + submit button
+  with the wireframe-required labels.
+- **Register page** — direct-arrival to `/register` either
+  renders a form or redirects to a login/forbidden page
+  (the live impl redirects since the Login wireframe
+  forbids public registration).
+- **Forbidden page** — direct-arrival to `/forbidden`
+  shows the "you don't have access" panel.
+- **Users tab — active count summary** (users-tab.md
+  §"Content & Actions" #2) — shows "N users · N active · N
+  inactive" muted below the heading.
+- **Users tab — self-row micro-label** (users-tab.md
+  §"Self-protection") — the Admin viewing the page sees
+  the "You cannot change your own role." micro-label on
+  their own row.
+
+**Result.** 49/49 E2E tests pass on the live deployment.
+
+---
+
+## 4. Test Inventory
+
+- **Smoke (7 tests)** — wireframe-anchored tripwires for the
+  Login page + health/openapi smoke.
+- **Feature (42 tests)** — coverage for every primary page
+  with at least one wireframe-anchored test:
+  - Login (3 roles)
+  - Employee Dashboard (3)
+  - Agent Kanban (3)
+  - Forbidden / role-gate (4)
+  - Health / API smoke (2)
+  - Create Ticket (6 — fields, placeholders, tripwire, disabled
+    state, cancel, back-link, valid submit)
+  - Submission Confirmation (1)
+  - Ticket Detail (3 — open, action matrix × 2)
+  - Admin Dashboard (3 — landing, users tab, 4 status cards)
+  - Users tab (2 — active count, self-row)
+  - 404 (1)
+  - Forgot Password (1)
+  - Auth chrome (3 — trigger, logout dialog, dropdown contents)
+  - Profile / Change Password (4 — view profile, change password,
+    profile fields, change-password fields)
+  - Register / Forbidden (2)
+
+**Total: 49 E2E tests + 7 smoke = 56 tests.**
+
+---
+
