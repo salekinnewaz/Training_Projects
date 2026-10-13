@@ -342,6 +342,19 @@ test.describe('Feature: Admin Dashboard', () => {
     // of user rows (or table).
     await expect(page.getByRole('heading', { name: 'Users', level: 1 })).toBeVisible();
   });
+
+  test('admin dashboard renders 4 status cards with counts (wireframe status summary cards)', async ({ page }) => {
+    // Wireframe §"Content & Actions" #3 — "Four status summary
+    // cards in a single horizontal row, each 320px wide: Open /
+    // In Progress / Resolved / Closed."
+    await loginAs(page, 'admin');
+    for (const status of ['Open', 'In Progress', 'Resolved', 'Closed']) {
+      // The status badge text appears inside the summary card
+      // (e.g., "Open (12)"). The wireframe calls for both the
+      // status label and a count.
+      await expect(page.getByText(status).first()).toBeVisible();
+    }
+  });
 });
 
 test.describe('Feature: 404 / unknown route', () => {
@@ -395,5 +408,32 @@ test.describe('Feature: Auth chrome (header strip)', () => {
     await page.getByRole('button', { name: /^cancel$/i }).click();
     await expect(page).not.toHaveURL(/\/login/);
     await expect(page).toHaveURL(/\/dashboard/);
+  });
+
+  test('profile dropdown includes View profile + Change password actions (per dropdown panel spec)', async ({ page }) => {
+    // Wireframe header-profile-logout.md §"My Profile dropdown
+    // panel" lists the panel contents. The live impl adds "View
+    // profile" (D114 → /profile) and "Change password" (HD-018
+    // → /profile/password) per the header-chrome spec.
+    await loginAs(page, 'eli');
+    await page.getByRole('button', { name: 'Eli Tanaka' }).click();
+    await expect(page.getByText(/view profile/i)).toBeVisible();
+    await expect(page.getByText(/change password/i)).toBeVisible();
+  });
+});
+
+test.describe('Feature: Profile / Change Password', () => {
+  test('View profile link in the dropdown navigates to /profile', async ({ page }) => {
+    await loginAs(page, 'eli');
+    await page.getByRole('button', { name: 'Eli Tanaka' }).click();
+    await page.getByText(/view profile/i).click();
+    await expect(page).toHaveURL(/\/profile/);
+  });
+
+  test('Change password action in the dropdown navigates to /profile/password', async ({ page }) => {
+    await loginAs(page, 'eli');
+    await page.getByRole('button', { name: 'Eli Tanaka' }).click();
+    await page.getByText(/change password/i).click();
+    await expect(page).toHaveURL(/\/profile\/password/);
   });
 });
