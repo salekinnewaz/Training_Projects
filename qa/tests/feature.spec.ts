@@ -323,7 +323,122 @@ test.describe('Feature: Ticket Detail', () => {
     await loginAs(page, 'sam');
     await expect(page.getByRole('link', { name: /view list/i })).toHaveCount(0);
   });
+
+  // ── Wireframe gap regression tests (iteration 11) ─────────────
+  // Per ticket-detail.md §"Cross-page": "The page title's H1
+  // landmark reads 'Ticket #HD-47' for screen readers; visually,
+  // the ticket number is the prominent signal at top of the
+  // header." The H1 was previously the ticket TITLE — that was
+  // a real wireframe gap caught by the live audit.
+  test('H1 reads "Ticket #HD-N", not the title', async ({ page }) => {
+    await loginAs(page, 'eli');
+    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
+    await page.locator('ticket-row a.row').first().click();
+    await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
+    const h1 = page.getByRole('heading', { level: 1 });
+    await expect(h1).toContainText(/Ticket #HD-\d+/);
+  });
+
+  test('meta-grid shows Owner (not Assignee), Submitter, and Created rows', async ({ page }) => {
+    // Wireframe ticket-detail.md §"Header block" — left side has
+    // Owner, Submitter (with Employee role badge), Created-at
+    // timestamp ("Created Sep 14, 2026 · 09:14"). The live impl
+    // used to label the field "Assignee" and was missing both
+    // Submitter and Created.
+    await loginAs(page, 'eli');
+    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
+    await page.locator('ticket-row a.row').first().click();
+    await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
+
+    await expect(page.getByText('Owner', { exact: true })).toBeVisible();
+    await expect(page.getByText('Assignee', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Submitter', { exact: true })).toBeVisible();
+    await expect(page.getByText('Created', { exact: true })).toBeVisible();
+  });
+
+  test('action zone renders "+ Comment" for an Employee on an Open ticket', async ({ page }) => {
+    // Wireframe ticket-detail.md §"Header actions": "+ Comment"
+    // is always available when can comment (i.e. not Closed).
+    // The button focuses the composer at the bottom of the
+    // Comments section. The action zone used to be entirely
+    // missing — Sam and Eli had to scroll to find the composer
+    // with no in-place shortcut.
+    await loginAs(page, 'eli');
+    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
+    const rows = page.locator('ticket-row');
+    const count = await rows.count();
+    for (let i = 0; i < count; i++) {
+      const text = (await rows.nth(i).innerText()) ?? '';
+      if (/Open/i.test(text)) {
+        await rows.nth(i).locator('a.row').click();
+        break;
+      }
+    }
+    await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
+    await expect(page.getByTestId('add-comment-btn')).toBeVisible();
+  });
+
+  test('action zone shows "Closed · read-only" on a Closed ticket', async ({ page }) => {
+    // Wireframe §"Header block" — Closed: "action zone collapses
+    // to a single subdued 'Closed · read-only' indicator."
+    await loginAs(page, 'eli');
+    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
+    // Find any Closed ticket in Eli's view (Eli can see her own
+    // closed tickets on the dashboard list).
+    const rows = page.locator('ticket-row');
+    const count = await rows.count();
+    let opened = false;
+    for (let i = 0; i < count; i++) {
+      const text = (await rows.nth(i).innerText()) ?? '';
+      if (/Closed/i.test(text)) {
+        await rows.nth(i).locator('a.row').click();
+        opened = true;
+        break;
+      }
+    }
+    if (!opened) {
+      test.skip(true, 'Eli has no Closed tickets in the seeded data');
+    }
+    await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
+    await expect(page.getByTestId('closed-readonly')).toBeVisible();
+  });
+
+  test('section header is "Activity log", not just "Activity"', async ({ page }) => {
+    // Wireframe §"Activity log" — section name is the full
+    // "Activity log", not a truncation.
+    await loginAs(page, 'eli');
+    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
+    await page.locator('ticket-row a.row').first().click();
+    await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
+    await expect(
+      page.getByRole('heading', { name: /^activity log/i, level: 2 }),
+    ).toBeVisible();
+  });
 });
+
+test.describe('Feature: Admin Dashboard count badge = bucket total', () => {
+  test('admin card count shows the bucket total (not the visible row count)', async ({ page }) => {
+    // Wireframe admin-dashboard.md §"Card top zone": count is
+    // "the total tickets in that bucket (e.g. '57' for Open)",
+    // not the count of rows visible in the card body. The
+    // Open card displays "Showing 14 of 57" in the footer when
+    // total > 14 — the count badge must match the footer M, not
+    // the visible N.
+    await loginAs(page, 'admin');
+    await page.waitForSelector('article.card', { timeout: 10_000 });
+
+    // Pull the Open card's count and "Showing N of M" footer.
+    const openCard = page.locator('article.card').first();
+    const countText = (await openCard.locator('span.count').textContent())?.trim();
+    const footerText = await openCard.locator('.admin-card-footer').textContent().catch(() => '');
+    const expectedTotal = (footerText?.match(/of (\d+)/)?.[1]) ?? null;
+    if (!expectedTotal) {
+      // No footer means total ≤ 14 rows; just assert count is a number.
+      expect(countText).toMatch(/^\d+$/);
+    } else {
+      expect(countText).toBe(expectedTotal);
+    }
+  });
 
 test.describe('Feature: Admin Dashboard', () => {
   test('admin lands on /admin and sees the Dashboard tab', async ({ page }) => {
