@@ -656,6 +656,38 @@ GET  /api/tickets/queue (admin)   → 403, role gate enforced (Support Agent onl
   that prefers `POSTGRES_URL_DIRECT` (non-pooled) so migrations
   keep one long-lived connection.
 
+### Swagger UI on Vercel — fixed 2026-10-13
+
+`swagger-ui-express` ships its static assets (CSS + 2 JS bundles)
+via `express.static(absolutePath)`. On Vercel Functions that path
+points into `node_modules/swagger-ui-dist/`, but Vercel's
+`@vercel/nft` bundler doesn't include static files inside npm
+packages in the Function payload — only the import graph. Result:
+4 of 4 asset URLs returned the HTML page (3113 bytes) and the UI
+never mounted.
+
+The Vercel-documented fix (`vercel.json#functions.includeFiles`)
+caused an opaque build error on this account, so the fix is to
+inline the assets at build time:
+
+- `backend/scripts/inline-swagger-assets.js` — codegen script
+  that reads the 3 assets from `swagger-ui-dist/` and writes them
+  to `backend/src/docs/swaggerUI.assets.ts` as base64 strings.
+- `backend/src/docs/swaggerUI.ts` — custom HTTP handler that
+  decodes the base64 at module load into in-memory `Buffer`s
+  and serves them with the correct content type and
+  `Cache-Control: public, max-age=300`. The HTML template
+  references the assets with absolute paths
+  (`/api/docs/swagger-ui-bundle.js`) so they work whether the
+  request hits with or without a trailing slash.
+- `backend/package.json` — `prebuild` runs the codegen before
+  every `tsc` so the generated file is always in sync with the
+  installed `swagger-ui-dist` version.
+
+The generated `swaggerUI.assets.ts` (1992.1 KB of base64) is
+checked in so the build is hermetic and reviewers can see the
+data — the bundle is well under Vercel's 250 MB Function limit.
+
 ### Local capture
 
 The Neon connection strings and JWT secret for this project are
