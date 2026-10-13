@@ -103,7 +103,11 @@ describe('EmployeeDashboardPageComponent', () => {
     expect(compiled.querySelector('empty-state')).toBeNull();
   });
 
-  it('renders the 4-card stat strip with per-status counts on list state', async () => {
+  it('does NOT render a stat strip (wireframe-forbidden summary stats)', async () => {
+    // Wireframe §"Content & Actions" #6: "No summary stats
+    // ('3 open, 1 closed') — those would imply team-wide
+    // visibility." Eli sees her own tickets; counts of how
+    // many are in each status are noise.
     ticketService.listMine.and.resolveTo([
       {
         id: 1,
@@ -117,24 +121,8 @@ describe('EmployeeDashboardPageComponent', () => {
         id: 2,
         number: 'T-000002',
         title: 'B',
-        status: 'Open',
-        priority: 'High',
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: 3,
-        number: 'T-000003',
-        title: 'C',
         status: 'In Progress',
         priority: 'Medium',
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: 4,
-        number: 'T-000004',
-        title: 'D',
-        status: 'Resolved',
-        priority: 'Low',
         updatedAt: new Date().toISOString(),
       },
     ]);
@@ -145,24 +133,8 @@ describe('EmployeeDashboardPageComponent', () => {
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
 
-    const strip = compiled.querySelector('[data-testid="stat-strip"]');
-    expect(strip).not.toBeNull();
-
-    const openCard = compiled.querySelector('[data-testid="stat-card-Open"]');
-    expect(openCard?.textContent).toContain('2');
-
-    const inProgressCard = compiled.querySelector(
-      '[data-testid="stat-card-In Progress"]',
-    );
-    expect(inProgressCard?.textContent).toContain('1');
-
-    const resolvedCard = compiled.querySelector(
-      '[data-testid="stat-card-Resolved"]',
-    );
-    expect(resolvedCard?.textContent).toContain('1');
-
-    const closedCard = compiled.querySelector('[data-testid="stat-card-Closed"]');
-    expect(closedCard?.textContent).toContain('0');
+    expect(compiled.querySelector('[data-testid="stat-strip"]')).toBeNull();
+    expect(compiled.querySelectorAll('[data-testid^="stat-card-"]').length).toBe(0);
   });
 
   it('shows SESSION_EXPIRED error and navigates to /login when listMine() throws a 401 ApiError', async () => {

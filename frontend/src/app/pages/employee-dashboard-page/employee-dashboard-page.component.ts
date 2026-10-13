@@ -23,6 +23,13 @@
  * + `<main id="main-content" tabindex="-1">` target. The first
  * interactive inside the header CTA; tab order then visits each
  * ticket-row.
+ *
+ * **Spec note — no stat strip.** The wireframe explicitly forbids
+ * "summary stats ('3 open, 1 closed')" on this page (Content &
+ * Actions #6 / User Context) because they would imply
+ * team-wide visibility. The implementation is therefore
+ * intentionally bare above the list: heading + Create Ticket +
+ * list rows.
  */
 
 import {
@@ -30,7 +37,6 @@ import {
   Component,
   DestroyRef,
   OnInit,
-  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -46,15 +52,6 @@ import { LoadingSkeletonComponent } from '../../components/patterns/loading-skel
 import type { Ticket } from '../../models/ticket';
 
 type RenderState = 'loading' | 'error' | 'empty' | 'list';
-
-type TicketStatusCount = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
-
-const STAT_CARDS: { status: TicketStatusCount; label: string }[] = [
-  { status: 'Open', label: 'Open' },
-  { status: 'In Progress', label: 'In Progress' },
-  { status: 'Resolved', label: 'Resolved' },
-  { status: 'Closed', label: 'Closed' },
-];
 
 const GENERIC_LOAD_ERROR = "Couldn't load your tickets. Refresh to try again.";
 const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
@@ -100,22 +97,6 @@ const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
             />
           }
           @case ('list') {
-            <div
-              class="stat-strip"
-              data-testid="stat-strip"
-              aria-label="Ticket status summary"
-            >
-              @for (card of statCards; track card.status) {
-                <div
-                  class="stat-card"
-                  [attr.data-status]="card.status"
-                  [attr.data-testid]="'stat-card-' + card.status"
-                >
-                  <span class="stat-label">{{ card.label }}</span>
-                  <span class="stat-count">{{ statusCounts()[card.status] }}</span>
-                </div>
-              }
-            </div>
             <ul class="ticket-list">
               @for (t of tickets(); track t.id) {
                 <ticket-row
@@ -146,10 +127,9 @@ const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
     }
     .dashboard-header h1 {
       margin: 0;
-      font-size: 28px;
-      font-weight: 700;
+      font-size: 24px;
+      font-weight: 600;
       color: var(--color-text);
-      letter-spacing: -0.02em;
     }
     .dashboard-header atom-button {
       width: auto;
@@ -171,81 +151,11 @@ const SESSION_EXPIRED_ERROR = 'Your session expired. Please sign in again.';
       padding: 0;
       background: var(--color-surface);
       border: 1px solid var(--color-border-subtle);
-      border-radius: 14px;
+      border-radius: 8px;
       overflow: hidden;
-      box-shadow: var(--shadow-card);
     }
     .ticket-list > * {
       display: block;
-    }
-    .stat-strip {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-      margin-bottom: 24px;
-    }
-    @media (max-width: 720px) {
-      .stat-strip {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-    .stat-card {
-      position: relative;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border-subtle);
-      border-radius: 14px;
-      padding: 18px 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      box-shadow: var(--shadow-card);
-      overflow: hidden;
-      transition: transform var(--duration-base) var(--ease-out),
-        box-shadow var(--duration-base) var(--ease-out);
-    }
-    .stat-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: var(--stat-accent, var(--color-primary));
-      opacity: 0.9;
-    }
-    .stat-card[data-status="Open"] {
-      --stat-accent: var(--status-open-dot);
-      background: linear-gradient(180deg, var(--status-open-bg) 0%, var(--color-surface) 60%);
-    }
-    .stat-card[data-status="In Progress"] {
-      --stat-accent: var(--status-in-progress-dot);
-      background: linear-gradient(180deg, var(--status-in-progress-bg) 0%, var(--color-surface) 60%);
-    }
-    .stat-card[data-status="Resolved"] {
-      --stat-accent: var(--status-resolved-dot);
-      background: linear-gradient(180deg, var(--status-resolved-bg) 0%, var(--color-surface) 60%);
-    }
-    .stat-card[data-status="Closed"] {
-      --stat-accent: var(--status-closed-dot);
-      background: linear-gradient(180deg, var(--status-closed-bg) 0%, var(--color-surface) 60%);
-    }
-    .stat-card:hover {
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-card-hover);
-    }
-    .stat-label {
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--color-label);
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-    .stat-count {
-      font-size: 32px;
-      font-weight: 700;
-      color: var(--color-text);
-      line-height: 1.1;
-      letter-spacing: -0.02em;
     }
   `],
 })
@@ -258,25 +168,6 @@ export class EmployeeDashboardPageComponent implements OnInit {
   readonly tickets = signal<Ticket[]>([]);
   readonly renderState = signal<RenderState>('loading');
   readonly errorMessage = signal<string | null>(null);
-
-  /** Per-status counts for the stat strip. */
-  readonly statusCounts = computed<Record<TicketStatusCount, number>>(() => {
-    const counts: Record<TicketStatusCount, number> = {
-      Open: 0,
-      'In Progress': 0,
-      Resolved: 0,
-      Closed: 0,
-    };
-    for (const t of this.tickets()) {
-      if (t.status in counts) {
-        counts[t.status as TicketStatusCount] += 1;
-      }
-    }
-    return counts;
-  });
-
-  /** Ordered list of stat cards (Open · In Progress · Resolved · Closed). */
-  readonly statCards = STAT_CARDS;
 
   ngOnInit(): void {
     void this.load();
