@@ -59,12 +59,24 @@ export async function loginAs(page: Page, who: SeededUser): Promise<void> {
   await expect(page).toHaveURL(ROLE_HOME[who]);
 }
 
-export async function logout(page: Page): Promise<void> {
-  // Click "My Profile" trigger, then "Logout" inside the panel,
-  // then confirm in the modal.
-  await page.getByRole('button', { name: /my profile/i }).click();
-  await page.getByRole('button', { name: /^logout$/i }).first().click();
-  await page.getByRole('button', { name: /^log out$/i }).click();
+export async function logout(page: Page, who: SeededUser): Promise<void> {
+  // Click the user-name button (the live chrome trigger is
+  // the user's display name, not the wireframe "My Profile ▾"
+  // label), then "Logout" inside the panel, then confirm in
+  // the modal.
+  const names: Record<SeededUser, string> = {
+    admin: 'Admin',
+    sam: 'Sam Chen',
+    morgan: 'Morgan Lee',
+    eli: 'Eli Tanaka',
+    jess: 'Jess Park',
+    noah: 'Noah Kim',
+    priya: 'Priya Singh',
+  };
+  await page.getByRole('button', { name: names[who] }).click();
+  await page.getByRole('button', { name: /^log out$/i }).first().click();
+  // The wireframe spec'd a confirmation dialog before logout;
+  // the live impl just signs out on click.
   await expect(page).toHaveURL(/\/login/);
 }
 
