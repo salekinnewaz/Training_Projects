@@ -252,3 +252,60 @@ Profile, Change Password, Register, Forgot Password, 404.
 
 ---
 
+### Iteration 4 — dashboard fix shipped + agent kanban placeholder (commits `c0d76e7`, `a02f954`)
+
+**Action.** Deployed the stat-strip removal; updated the
+placeholder text on the Agent Kanban search input from
+"Search…" to "Search queue…" per the wireframe. Hardened
+`feature.spec.ts` selectors (target `input#filter-search` to
+avoid the atom-input host/inner-input collision; wait for
+first `ticket-row` to be visible before counting).
+
+**Result.** 21/22 feature tests pass on live deployment. 7/7
+smoke tests pass. 29 total tests green.
+
+The remaining gap was a selector regex on the Agent Kanban
+test (the live "Open"/"In Progress"/etc. labels are duplicated
+as `<option>` inside the Status filter select, which Playwright
+picked first as "hidden"). Fixed by targeting the column
+headers as `heading[level=2]` instead.
+
+**Result.** 22/22 feature tests pass after the kanban selector
+fix.
+
+**Live verification.**
+
+- `/dashboard` (logged in as eli@company.com): no stat-strip.
+  Renders the page heading "My Tickets" + Create Ticket
+  primary button + a list of `ticket-row` elements. Matches
+  the wireframe's "Default (with tickets)" frame.
+- `/queue` (logged in as sam@company.com): "Queue" heading +
+  filter strip with "Search queue…" placeholder + 4 columns
+  (Open / In Progress / Resolved / Closed), each with cards.
+
+**New feature tests added (iteration 4)**
+
+- **Create Ticket** (4 tests) — renders the wireframe-listed
+  fields (Title / Description / Category / Priority /
+  Attachment), Submit disabled until Title + Description are
+  filled, Cancel closes the form, valid submit lands on
+  `/tickets/:id/created`.
+- **Submission Confirmation** (1 test) — after a fresh submit,
+  the page shows the wireframe-anchored signals: "Ticket
+  created" headline, `#HD-#` ticket number, "Open" status chip,
+  "View ticket" CTA, "Back to My Tickets" link.
+- **Ticket Detail** (1 test) — employee can open their own
+  ticket from the dashboard list and the page shows the
+  back-to-dashboard link.
+- **Admin Dashboard** (1 test) — admin lands on `/admin` and
+  the page shows the "Dashboard" heading + Users tab.
+- **404** (1 test) — unknown route renders the 404 page.
+
+**Next.** Add the remaining feature tests (Profile, Change
+Password, Forgot Password, Register, Users Tab, Forbidden),
+expand to ticket lifecycle (status change / comment add /
+reopen / close), and audit the ticket-detail wireframe
+against the live page.
+
+---
+
