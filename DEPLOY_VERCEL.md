@@ -609,6 +609,7 @@ deployment has been running since 2026-10-13.
 | API (Function)  | https://helpdesk-lite-tawny.vercel.app/api/* (Vercel Function, same origin) |
 | Database        | Neon free tier, project `sweet-boat-76912606`, region `aws-us-east-1` |
 | Migrations + seed | Applied once via `neonctl` + `npm run db:migrate --workspace backend && npm run db:seed --workspace backend` |
+| Auto-deploy     | **Wired**: `git push` to `main` triggers a production deploy via the Vercel GitHub App. Verified end-to-end on 2026-10-13 (empty marker commit `80f4773` built and reached Ready state in ~2 minutes). PRs will get preview URLs automatically. |
 
 ### Environment variables set on the Vercel project
 
