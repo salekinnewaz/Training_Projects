@@ -66,3 +66,11 @@ postgres-data/
 # diffs, screenshots, smoke logs). Installer-managed; never part
 # of the project source.
 .puku-cli/
+.vercel
+
+# ── Local Neon / Vercel deployment state ─────────────────────────
+# Captures the current neonctl project (`.neon/`) and a hand-rolled
+# `.vercel-neon.env` with production DB + JWT secrets. Never commit.
+.neon
+.neon/
+.vercel-neon.env
