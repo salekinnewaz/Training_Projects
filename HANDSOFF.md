@@ -675,12 +675,44 @@ the live URL matches its spec.
 
 ### What is still NOT covered
 
-- **E2E `qa/tests/feature.spec.ts` won't run via `npx playwright test --list`.**
-  TS parser reports "} expected" at end-of-file even though the
-  brace count is balanced by hand. Likely a multi-line regex
-  literal being misread. The `wireframe-audit.mjs` script
-  covers all the same wireframe tripwires (80 checks) and
-  passes 80/80, so the E2E suite's value is fully covered by
-  the audit. The 6 wireframe-anchored regression tests added
-  in iteration 11 are inside `feature.spec.ts` and will run
-  once the parser issue is resolved (separate cleanup task).
+- ~~**E2E `qa/tests/feature.spec.ts` won't run via `npx playwright test --list`.**~~
+  **RESOLVED in `12cf177`.** The "Feature: Admin Dashboard count
+  badge = bucket total" `test.describe` block was missing its
+  closing `});`. Added the missing brace. All 55 E2E tests now
+  load and pass against the live URL (52.7s).
+
+---
+
+## Iteration 13 — 2026-10-13 — Fix E2E parse + run full suite
+
+`qa/tests/feature.spec.ts` had a missing `});` at line 442
+(closing `test.describe('Feature: Admin Dashboard count badge = bucket total')`).
+TS parser was bailing at end-of-file, so `npx playwright test --list`
+reported "0 tests in 0 files".
+
+**Commit:** `12cf177` adds the missing brace.
+
+**Result:** `npx playwright test` now discovers all 55 tests
+(48 feature + 7 smoke) and they all PASS against the live URL
+in 52.7s. Includes the 6 wireframe-anchored regression tests
+from iteration 11:
+
+- `tests/feature.spec.ts:333 › H1 reads "Ticket #HD-N", not the title`
+- `tests/feature.spec.ts:342 › meta-grid shows Owner (not Assignee), Submitter, and Created rows`
+- `tests/feature.spec.ts:359 › action zone renders "+ Comment" for an Employee on an Open ticket`
+- `tests/feature.spec.ts:381 › action zone shows "Closed · read-only" on a Closed ticket`
+- `tests/feature.spec.ts:406 › section header is "Activity log", not just "Activity"`
+- `tests/feature.spec.ts:420 › admin card count shows the bucket total (not the visible row count)`
+- `tests/feature.spec.ts:454 › admin can navigate to the Users tab and see the user list` (NEW for iteration 12)
+
+### Final tally
+
+- **392/392** Angular unit tests pass.
+- **55/55** Playwright E2E tests pass against the live URL.
+- **80/80** wireframe-audit.mjs checks pass.
+- All 4 user-visible bug fixes from iterations 11-12 verified on
+  the live deployment: admin count badge = total, admin Users tab
+  content renders on click, ticket-detail H1 = `Ticket #HD-N`,
+  ticket-detail owner/submitter/created rows, attachment
+  micro-label.
+
