@@ -6,7 +6,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "prebuild": "node scripts/inline-swagger-assets.js",
+    "prebuild": "node scripts/inline-openapi-paths.js && node scripts/inline-swagger-assets.js",
     "build": "tsc",
     "start": "node dist/server.js",
     "db:migrate": "sequelize db:migrate",
