@@ -56,8 +56,13 @@ test.describe('Feature: Agent Kanban', () => {
 
   test('renders the Queue heading + filter strip + 4 columns', async ({ page }) => {
     await expect(page.getByRole('heading', { name: 'Queue', level: 1 })).toBeVisible();
-    // Filter strip elements
-    await expect(page.getByPlaceholder(/search queue/i)).toBeVisible();
+    // Filter strip — search input is inside an atom-input host
+    // that also carries the placeholder attribute, so we target
+    // the inner <input> by id to avoid the strict-mode collision.
+    await expect(page.locator('input#filter-search')).toBeVisible();
+    await expect(
+      page.locator('input#filter-search'),
+    ).toHaveAttribute('placeholder', /search queue/i);
     // 4 status column headers
     for (const status of ['Open', 'In Progress', 'Resolved', 'Closed']) {
       await expect(page.getByText(status, { exact: true }).first()).toBeVisible();
