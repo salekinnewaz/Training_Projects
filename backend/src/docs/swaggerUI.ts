@@ -50,11 +50,7 @@
  */
 
 import express, { Request, Response, Router } from 'express';
-import * as fs from 'fs';
-import * as path from 'path';
-// Typed via the ambient declaration in
-// `backend/src/types/swagger-ui-dist.d.ts`.
-import getAbsoluteSwaggerFsPath from 'swagger-ui-dist/absolute-path';
+import { INLINED_SWAGGER_ASSETS } from './swaggerUI.assets';
 
 /**
  * The four assets Swagger UI loads. Order doesn't matter; we look
@@ -199,36 +195,28 @@ window.onload = function() {
 `;
 
 /**
- * Load the four critical assets from `swagger-ui-dist` into
- * memory at module load. Vercel Functions run on a read-only
- * file system at request time, so reading once at boot is the
- * only safe pattern. If a future deployment to a non-bundling
- * host wants to re-enable live reads, this is the function to
- * swap — nothing downstream changes.
+ * Load the four critical assets into memory at module load.
+ *
+ * The asset bytes come from `swaggerUI.assets.ts` — a generated
+ * file produced by `backend/scripts/inline-swagger-assets.js`,
+ * which runs as a `prebuild` step before `tsc`. We embed the
+ * files in the compiled bundle because Vercel's function
+ * bundler (`@vercel/nft`) only follows static import / require
+ * graph edges; static files inside `node_modules/swagger-ui-dist`
+ * are not in the deployment payload, so a runtime
+ * `fs.readFileSync` would fail with ENOENT.
+ *
+ * Each entry's `base64` field is decoded into a `Buffer` here.
+ * The buffers live in module scope, so they are read once per
+ * cold start and reused across every request within the same
+ * instance.
  */
 function loadAssets(): Map<string, StaticAsset> {
-  const baseDir = getAbsoluteSwaggerFsPath();
-  const assets: StaticAsset[] = [
-    {
-      filename: 'swagger-ui.css',
-      contentType: 'text/css',
-      body: fs.readFileSync(path.join(baseDir, 'swagger-ui.css')),
-    },
-    {
-      filename: 'swagger-ui-bundle.js',
-      contentType: 'application/javascript',
-      body: fs.readFileSync(path.join(baseDir, 'swagger-ui-bundle.js')),
-    },
-    {
-      filename: 'swagger-ui-standalone-preset.js',
-      contentType: 'application/javascript',
-      body: fs.readFileSync(
-        path.join(baseDir, 'swagger-ui-standalone-preset.js'),
-      ),
-    },
-    // `swagger-ui-init.js` is generated from INIT_JS_TEMPLATE
-    // (with the spec inlined) and stored as a special entry.
-  ];
+  const assets: StaticAsset[] = INLINED_SWAGGER_ASSETS.map((entry) => ({
+    filename: entry.filename,
+    contentType: entry.contentType,
+    body: Buffer.from(entry.base64, 'base64'),
+  }));
 
   const map = new Map<string, StaticAsset>();
   for (const asset of assets) {
