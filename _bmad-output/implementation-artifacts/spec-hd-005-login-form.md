@@ -14,11 +14,13 @@ context:
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
+> **D-redesign pass (2026-10-16):** the original single-column centered-card layout was relaxed to a two-column split layout. The right column remains the same sign-in card; the left column now carries a small marketing shell (brand wordmark, "Support made simple." hero, three feature rows, illustration). The sign-in card itself gained a "Remember me" checkbox and an "or continue with / Sign in with SSO" footer. The "Sign in with Google" button from the design reference was deliberately skipped per the redesign brief. See `design-process/D-UX-Design/login.md` for the D-redesign token/geometric deltas. The never-rules below replace "no Remember me / no SSO / no signup" with the updated "no Register / no Sign in with Google" — the rationale is the same (self-registration is Admin-provisioned; Google is deferred).
+
 ## Intent
 
 **Problem:** `/login` currently renders a placeholder. HD-003 shipped the backend `POST /api/auth/login` + `GET /api/auth/me` endpoints, and HD-004 shipped the `AuthService` + `AuthInterceptor` on the frontend. With those in place, a user submitting the placeholder page still has no way to authenticate — the chrome (HD-004) collapses, the form is fake, and the role-correct dashboard routing is unreachable from the UI.
 
-**Approach:** Replace `LoginPageComponent` with a real reactive form (email + password, show/hide toggle) that calls `AuthService.login()` on submit. On success the user lands on the role-correct dashboard via `auth.roleHomePath()`. Field-level validation runs client-side; backend errors surface via the typed `ApiError` already produced by the HD-004 interceptor. New reusable atoms (button, input-text, link) and a `form-field` molecule land here so HD-008 (create-ticket), HD-014 (users form), and any future form page can compose the same primitives.
+**Approach:** Replace `LoginPageComponent` with a real reactive form (email + password, show/hide toggle, Remember me checkbox, Sign in with SSO button) that calls `AuthService.login()` on submit. The page is a two-column layout (`grid-template-columns: 1.05fr 1fr` on screens ≥960px, single column below): the left column is a marketing shell with the brand wordmark, a hero line, three feature rows, and an inline-SVG illustration; the right column is the sign-in card. On success the user lands on the role-correct dashboard via `auth.roleHomePath()`. Field-level validation runs client-side; backend errors surface via the typed `ApiError` already produced by the HD-004 interceptor. New reusable atoms (button, input-text, link) and a `form-field` molecule land here so HD-008 (create-ticket), HD-014 (users form), and any future form page can compose the same primitives.
 
 ## Boundaries & Constraints
 
@@ -32,13 +34,15 @@ context:
 - `displayName` is irrelevant for the login page; do not leak user state into the form.
 
 **Never:**
-- No "Remember me" checkbox, no marketing copy, no SSO buttons, no signup link, no accessibility/version footer (per the UX spec — these were deliberate cuts).
+- No "Sign in with Google" button, no signup link, no accessibility/version footer (per the UX spec — these were deliberate cuts in the D-redesign pass; self-registration is Admin-provisioned; the Google button was deferred from the redesign brief).
 - No `localStorage` or `sessionStorage` for the JWT — the httpOnly cookie handles it; storing the token again would defeat the purpose.
 - No proactive `/api/auth/me` call from this page. The "already-logged-in" handling is owned by the HD-006 `authGuard`. This page always renders the form.
 - No new dependencies (`@angular/forms` is already pulled in by `@angular/forms`; no `Formly`, no `ngx-formly`, no schema libs).
 - No route changes in `app.routes.ts` — `/login` is already wired and the route title is already "Sign in · HelpDesk Lite".
 - No CSRF double-submit header this story — backend support + frontend echo land together later (flagged in HD-003 progress log).
 - No "rate limit" UX beyond a stub path; backend doesn't rate-limit yet (HD-003 deferred). The 429 handler is wired but unreachable in dev.
+- No persistence of the "Remember me" checkbox state. Local UI only. Persistence (cookie vs. local storage vs. none) is a separate backend concern; flagged in the spec open questions.
+- No SSO handler on the "Sign in with SSO" button. Visual placeholder; the SSO entry point is out of scope for this story.
 
 ## I/O & Edge-Case Matrix
 
@@ -82,21 +86,28 @@ context:
 
 ### Modified organism
 
-- `frontend/src/app/pages/login-page/login-page.component.ts` — REPLACE body. Standalone, OnPush, imports `ReactiveFormsModule`, `Router`, `AuthService`, all four new atoms, `form-field`, and `show-password-toggle`. Reactive form with two controls (`email`, `password`) using `Validators.required` and a custom `emailRegexValidator` (regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`). Submit handler:
+- `frontend/src/app/pages/login-page/login-page.component.ts` — REPLACE body. Standalone, OnPush, imports `ReactiveFormsModule`, `Router`, `AuthService`, all four new atoms, `form-field`, and `show-password-toggle`. Reactive form with two controls (`email`, `password`) using `Validators.required` and a custom `emailRegexValidator` (regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`). Local `signal`s for `submitting`, `emailFieldError`, `passwordFieldError`, `passwordVisible`, and `rememberMe`. Submit handler:
   1. Mark all controls touched so inline errors show.
   2. If form invalid, set `passwordFieldError = 'Enter your password.'` and `emailFieldError = 'Enter a valid email address.'` based on which controls are invalid. Return.
-  3. Set `submitting = true`; clear `topError`.
+  3. Set `submitting = true`; clear both field errors.
   4. `await auth.login(email.value, password.value)`.
-  5. On success: `await router.navigateByUrl(auth.roleHomePath())`.
+  5. On success: `await router.navigateByUrl(this.returnTo ?? auth.roleHomePath())`.
   6. On failure (ApiError): map `errorCode` → message; set `passwordFieldError` (or `emailFieldError` per spec). On 401, focus email. Return form to idle.
   7. `submitting = false` in finally.
-- Template (sketch):
-  - Outer `<section class="login-page">` filling the viewport (`min-height: 100vh; display: grid; place-items: center; background: var(--color-page-bg);`).
-  - `<article class="login-card">` (white surface, `--color-border` border, 8px radius, `--shadow-dropdown` shadow, 48px 40px padding, 400px max-width).
-  - `<header class="brand">` — logomark (40×40, `--color-primary` bg, "HL" centered, 6px radius) + wordmark "HelpDesk Lite" (22px semibold, `--color-primary`).
-  - `<h1 class="visually-hidden">Sign in</h1>` — visually hidden SR-only H1.
-  - `<form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>` with two `<form-field>`s and the primary button + a `<atom-link href="/forgot-password">Forgot password?</atom-link>`.
-  - Each `<form-field>` contains an `<atom-input>` and, for password, the `<atom-show-password-toggle>` slotted to the right inside a wrapper `<div class="password-wrap">`.
+- Template (sketch, D-redesign):
+  - Outer `<section class="login-page" id="main-content">` filling the viewport (`min-height: 100vh; display: grid; grid-template-columns: 1.05fr 1fr; background: var(--color-page-bg);`).
+  - Left `<aside class="marketing-pane">` (hidden below 960px):
+    - `.marketing-brand` — logomark (40×40, `--gradient-brand` bg, headphones SVG, 10px radius) + wordmark "HelpDesk Lite" (18px / 700 weight, `--color-text`).
+    - `<h1 class="hero">` — "Support made <span class="hero-accent">simple.</span>" at 56px / 700 weight. The accent span uses `--color-primary`.
+    - `.hero-sub` — 16px muted text under the hero.
+    - `<ul class="feature-list">` — three `<li class="feature-row">` entries with colored icon tiles (bolt / chat / book on `#DBEAFE / #EDE9FE / #D1FAE5`).
+    - `.marketing-illustration` — a single inline-SVG decoration (`aria-hidden="true"`).
+  - Right `<main class="signin-pane">` containing `<article class="signin-card">` (white surface, `--color-border` border, 20px radius, soft shadow, 40px 40px 36px padding, 460px max-width).
+    - `.card-brand` — same logomark + wordmark as the left column.
+    - `<h2 class="card-title">` — "Welcome back" at 28px / 700 weight.
+    - `.card-subtitle` — "Sign in to your account to continue."
+    - `<form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>` with two `<form-field>`s wrapped in `.input-wrap` (leading mail / lock icon SVGs), the form-row (Remember me checkbox + Forgot password? link), the primary `atom-button` (Sign in with trailing arrow), a `.divider` (hairline + "or continue with" caption), and a secondary `<button class="sso-btn">` (4-color tile + "Sign in with SSO").
+  - Each `<form-field>` contains an `<atom-input>` and, for password, the `<atom-show-password-toggle>` slotted to the right inside the `.input-wrap` (absolute positioning).
 
 ### Unchanged
 
@@ -208,14 +219,21 @@ context:
 ## Design Notes
 
 **Form layout (matches `_bmad-output/planning-artifacts/ux/ux-HelpDesk-Lite-2026-09-06/mockups/01-login.html` + `design-process/D-UX-Design/login.md`):**
-- Page: full-viewport surface `var(--color-page-bg)`, centered card.
-- Card: 400px wide (per spec's "Form column width" token), `var(--color-surface)` bg, 1px `var(--color-border)`, 8px radius, padding 48px 40px, `var(--shadow-dropdown)` shadow.
-- Brand mark: 40×40 square `var(--color-primary)` bg, "HL" centered white bold; 12px gap to wordmark "HelpDesk Lite" 22px semibold `var(--color-primary)`.
+- Page: two-column grid `grid-template-columns: 1.05fr 1fr`, full viewport, surface `var(--color-page-bg)`. Below 960px the grid collapses to a single column and the marketing shell is hidden.
+- Left column (marketing shell, hidden below 960px): brand wordmark, "Support made simple." hero at 56px / 700 weight (the word "simple." in `var(--color-primary)`), 16px hero sub, three feature rows (bolt icon / chat icon / book icon on blue / violet / green tiles) and a stylized inline-SVG illustration.
+- Right column (sign-in card): 460px max-width card, `var(--color-surface)` bg, 1px `var(--color-border)`, 20px radius, soft shadow, padding 40px 40px 36px. The card is vertically centered in the right column.
+- Card brand: 40×40 square `var(--gradient-brand)` bg (headphones SVG icon, white stroke); 12px gap to wordmark "HelpDesk Lite" 18px / 700 weight `var(--color-text)`.
+- Card title (H2, visible): "Welcome back" at 28px / 700 weight `var(--color-text)`.
+- Card subtitle: "Sign in to your account to continue" at 15px `var(--color-text-soft)`.
 - H1 "Sign in" — visually hidden (`.visually-hidden` utility); provides the SR landmark.
-- Field stack: 16px gap between form-field rows; 32px gap from last field to Log in button; 16px gap to Forgot password link.
-- Button: 48px tall, 6px radius, full width within the card. `var(--color-primary)` bg, white text, 14px semibold. Loading: spinner + "Logging in…".
-- Forgot link: `<atom-link href="/forgot-password">` rendered as `var(--color-muted)` 14px with hover underline (per UX spec; existing `<a>` in `styles.css` already gives the underline).
-- Eye icon positioning: absolute right end of password input, vertically centered, 28×28 button hit-area.
+- Email field: leading mail-icon SVG (18×18, `var(--color-muted)`), left padding 40px to clear the icon, height `var(--field-height)` (44px), radius `var(--field-radius)` (10px), placeholder "eli@company.com".
+- Password field: leading lock-icon SVG, right-side show/hide toggle (existing `atom-show-password-toggle`, 28×28 hit-area, vertically centered).
+- Field stack: 20px gap between form-field rows; 14px gap from password → form row.
+- Form row: "Remember me" checkbox on the left (custom 18×18 check with primary-color fill when checked), "Forgot password?" link on the right (primary color, 14px / 500 weight).
+- Sign in button: `size="lg"` (48px tall), `var(--gradient-brand)` bg, white text, 14px / 600, full width, trailing arrow SVG icon when idle. Loading: spinner replaces the arrow + label changes to "Signing in…".
+- Divider: hairline 1px `var(--color-border)` on both sides of the centered caption "or continue with" at 13px `var(--color-muted)`.
+- Sign in with SSO button: secondary surface, 48px tall, full width, leading 4-color tile (Microsoft-style, no vendor mark — `#F25022 / #7FBA00 / #00A4EF / #FFB900`), label "Sign in with SSO." Currently a visual placeholder; no handler.
+- Forgot link: native `<a href="/forgot-password">` rendered as `var(--color-primary)` 14px / 500 weight (matches the atom-link default in `styles.css`).
 
 **Error mapping rules (the part most likely to drift in implementation):**
 - Client validation fires before any network call.

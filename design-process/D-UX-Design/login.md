@@ -10,33 +10,55 @@ Both archetypes arrive alert and with intent. **Eli the End-User** is blocked, m
 
 The page must feel *considered*, not minimal-in-a-demeaning-way. Whitespace, type, and button color signal "this tool takes its job seriously." A sketch-quality form would undermine the trust handshake that Login is responsible for.
 
+> **D-redesign (2026-10):** the page was relaxed from a single-column centered card to a two-column split layout that pairs the sign-in form with a small marketing / brand shell on the left. The marketing shell is the threshold: a brand wordmark, a hero line ("Support made simple."), three benefit rows (Quick ticket submission / Track your requests / Find answers easily), and a stylized illustration. The right column is the same sign-in card it always was, with the addition of a "Remember me" checkbox and a "or continue with / Sign in with SSO" footer. The shell collapses on screens narrower than 960px so the sign-in card remains the only surface below that breakpoint.
+
 ## Content & Actions
 
-The page contains exactly six elements:
+The page contains the following elements, organized in a two-column grid (`grid-template-columns: 1.05fr 1fr`):
 
-1. **Brand mark** — logomark + wordmark "HelpDesk Lite." Centered horizontally near the top of the page. Sized so it is the visual anchor without crowding the form below.
-2. **Page title (visually hidden but present for screen readers)** — "Sign in." Provides a single H1 landmark.
-3. **Email field** — `<input type="email">` with the label "Email" rendered as a visible label above the input. Placeholder "you@company.com" inside the field. Required. Auto-focused on page load so Eli can start typing immediately when blocked.
-4. **Password field** — `<input type="password">` with the label "Password" rendered as a visible label above the input. Required. Masked by default.
-5. **Show / hide password toggle** — eye icon button positioned at the right end of the password field. Toggles `type="password"` ↔ `type="text"`. Toggle state is local to this page load; not remembered across navigations. `aria-label="Show password"` / `aria-label="Hide password"` toggles with state.
-6. **Log in button** — primary CTA, full width within the form column. Disabled until both fields have content. Clicking or pressing Enter in either field submits the form.
-7. **"Forgot password?" link** — sits below the Log in button, smaller type and lower contrast. Routes to the password reset flow (designed elsewhere; this page spec only links to it).
+**Left column (marketing shell):**
 
-**No other content.** No marketing copy, no value prop, no signup link (accounts are Admin-provisioned), no SSO buttons, no Remember-me checkbox, no accessibility / terms / version footer.
+1. **Brand mark** — headphones-style logomark + wordmark "HelpDesk Lite," top-left, identical to the right-column brand. Sized so it is the visual anchor for the shell.
+2. **Hero line** — "Support made *simple.*" with the word "simple." rendered in the brand primary color. Set at 56px / 700 weight. Functions as the page H1 in addition to the (visually hidden) form-level H2 on the right column.
+3. **Hero sub** — one-sentence description of what the product does, set at 16px on the muted text color. Acts as the elevator pitch visible while the user is reaching for the form.
+4. **Feature list** — three rows, each with a colored icon tile, a bold title, and a one-line description:
+    - "Quick ticket submission — Get help in just a few clicks" (bolt icon, blue tile)
+    - "Track your requests — Stay updated in real time" (chat icon, violet tile)
+    - "Find answers easily — Explore our knowledge base" (book icon, green tile)
+5. **Illustration** — a stylized inline SVG of a person on a bean bag working on a laptop with floating chat bubbles and a checkmark. Decorative only (`aria-hidden="true"`); no alt text required.
+
+**Right column (sign-in card):**
+
+6. **Card brand** — same logomark + wordmark as the left column. Centered to the card, marks the start of the sign-in flow.
+7. **Card title (H2, visible)** — "Welcome back." Set at 28px / 700 weight.
+8. **Card subtitle** — "Sign in to your account to continue." Set at 15px on the muted text color.
+9. **Email field** — `<input type="email">` with the label "Email" rendered as a visible label above the input. Placeholder "eli@company.com" inside the field. Required. Auto-focused on page load so Eli can start typing immediately when blocked. Left-padded to make room for a leading mail icon.
+10. **Password field** — `<input type="password">` with the label "Password" rendered as a visible label above the input. Required. Masked by default. Left-padded for a leading lock icon; right-padded for the show/hide toggle.
+11. **Show / hide password toggle** — eye icon button positioned at the right end of the password field. Toggles `type="password"` ↔ `type="text"`. Toggle state is local to this page load; not remembered across navigations. `aria-label="Show password"` / `aria-label="Hide password"` toggles with state.
+12. **Remember me checkbox** — single checkbox labeled "Remember me" on the left of the form row. Local UI state only; not persisted.
+13. **Forgot password? link** — small primary-color link on the right of the form row, opposite the checkbox. Routes to the password reset flow (designed elsewhere; this page spec only links to it).
+14. **Sign in button** — primary CTA, full width within the form column, with a trailing right-arrow icon. CTA label is "Sign in"; while submitting, the label changes to "Signing in…" and the icon is replaced by the existing button spinner. Disabled until both fields have content.
+15. **"or continue with" divider** — a thin horizontal rule with the centered caption "or continue with." Sits between the email/password submit and the SSO button.
+16. **Sign in with SSO button** — full-width secondary button with a 4-color tile (Microsoft-style, no vendor mark) and the label "Sign in with SSO." Visual placeholder; no handler.
+
+**Excluded by design:** the Sign in with Google button shown in the design reference was deliberately skipped. Self-registration is Admin-provisioned; no Register link is rendered.
 
 ## Behavior
 
+- **Two-column responsive collapse:** below 960px viewport, the left column is hidden and the sign-in card remains the only surface. Below 520px, the card padding tightens and the title scales down.
 - **Auto-focus** on the email input when the page loads.
-- **Submit triggers** on (a) clicking the Log in button, or (b) pressing Enter in either field.
+- **Submit triggers** on (a) clicking the Sign in button, or (b) pressing Enter in either field.
 - **Client-side validation** runs on submit:
   - Email empty or invalid format → inline error under email field: "Enter a valid email address." Field keeps focus, value preserved.
   - Password empty → inline error under password field: "Enter your password." Field keeps focus.
   - Both fields valid → submit proceeds.
-- **In-flight state:** when the auth request is sent, the Log in button changes label to "Logging in…" with a small spinner, and both inputs plus the button become disabled. The user cannot double-click, double-submit, or edit while a request is in flight. Client-side deduplication + server-side idempotency ensure that even if a duplicate request reaches the server it is a no-op.
+- **In-flight state:** when the auth request is sent, the Sign in button changes label to "Signing in…" with a small spinner, and both inputs plus the button become disabled. The user cannot double-click, double-submit, or edit while a request is in flight. Client-side deduplication + server-side idempotency ensure that even if a duplicate request reaches the server it is a no-op.
 - **On success:** the server determines the user's role and routes to the role-correct dashboard (Employee Dashboard for `role = User`; Agent Dashboard for `role = Support Agent` or `role = Admin`). No intermediate landing page.
 - **On failure:** see States below.
 - **Already-logged-in handling:** if a request to `/login` arrives with a still-valid session, redirect immediately to the user's dashboard. No "you're already signed in" page.
 - **Show / hide password toggle:** clicking the eye icon flips `type` between `password` and `text` and updates `aria-label` accordingly. Keyboard accessible (focusable, activatable with Enter / Space).
+- **Remember me checkbox:** visual state only. State is held in the component; persistence (e.g. writing a "remember me" cookie) is a separate backend concern out of scope for this page spec.
+- **SSO button:** visual placeholder. Future work will wire it to the SSO entry point; for now it is a presentational button with no handler.
 - **Forgot password link:** standard `<a href="/forgot-password">`. Reset flow itself is a separate page spec.
 
 ## States
@@ -45,11 +67,11 @@ The page contains exactly six elements:
 |---|---|---|
 | **Default** | Page loaded | Email field auto-focused, password empty, button disabled, no messages. |
 | **Validating** | User submits with empty / malformed fields | Inline error(s) under the offending field(s); field retains focus and value; no spinner. |
-| **Submitting** | Auth request in flight | Button shows "Logging in…" + spinner; inputs + button disabled; no inline error. |
+| **Submitting** | Auth request in flight | Button shows "Signing in…" + spinner; inputs + button disabled; no inline error. |
 | **Wrong credentials** | Server returns 401 (incorrect email or password) | Inline error under password field: "Email or password is incorrect. Try again." Inputs preserved. Field focus moves to email so user can correct. No distinction between "wrong email" and "wrong password" — single ambiguous message avoids account enumeration. |
 | **Account inactive** | Server returns 403 with reason `account_inactive` | Inline error under password field: "Your account is inactive. Contact your administrator." Inputs preserved. |
 | **Rate-limited** | Server returns 429 | Inline error under password field: "Too many attempts. Try again in a few minutes." Inputs preserved. Button disabled for the duration of the cool-down window. |
-| **Network / server error** | Request fails (network unreachable, 5xx) | Inline error under password field: "Something went wrong. Please try again." Inputs preserved. No retry button — user clicks Log in again. |
+| **Network / server error** | Request fails (network unreachable, 5xx) | Inline error under password field: "Something went wrong. Please try again." Inputs preserved. No retry button — user clicks Sign in again. |
 | **Already-logged-in** | Request hits Login with valid session | Immediate redirect to user's role-correct dashboard. No Login UI shown. |
 
 ## Success
@@ -65,7 +87,7 @@ These values are the source for the rest of the app's design system. They were f
 | Token | Value | Used by |
 |---|---|---|
 | Page background | `#f8f9fa` | Page surface |
-| Surface (input bg, button label) | `#ffffff` | Inputs, button text |
+| Surface (input bg, card bg, button label) | `#ffffff` | Sign-in card, inputs, button text |
 | Primary (logomark, button bg, brand wordmark) | `#212529` | Logomark, "HelpDesk Lite" wordmark, Log in button fill |
 | Border default | `#adb5bd` 1px | Email + Password input borders |
 | Border subtle (button, toggle) | `#dee2e6` 1px | Show/hide toggle border |
@@ -101,21 +123,42 @@ These values are the source for the rest of the app's design system. They were f
 
 **Eye icon:** ellipse 9×5 (stroke 1px, no fill) + central pupil 2px radius — corresponds to a "show" state. The toggle rotates / fills when state flips to "hide"; see Behavior section.
 
+## D-Redesign (2026-10) — Two-column layout deltas
+
+The following token / geometry deltas are applied to the wireframe above:
+
+| Concern | Previous | New | Notes |
+|---|---|---|---|
+| Page grid | Single centered column | `grid-template-columns: 1.05fr 1fr` on screens ≥960px; single column below | Marketing shell hidden below 960px |
+| Card width | 400px form column | 460px max-width sign-in card | Card sits in the right column with horizontal padding |
+| Card chrome | Borderless on page bg | 1px border, 20px radius, soft shadow | Card lifts off the page surface |
+| Hero line | (none) | 56px / 700 weight on the left column, "simple." in primary color | Sets tone for the marketing shell |
+| Remember-me control | (forbidden) | Rendered as a styled checkbox, left of "Forgot password?" | Local UI state only |
+| SSO button | (none) | Rendered below an "or continue with" divider, 4-color tile + label | Visual placeholder; no handler |
+| Google sign-in | (none) | Skipped per the redesign brief | Not present anywhere on the page |
+
+**Icon tiles (left column feature list):**
+- Quick ticket submission: bolt icon on `#DBEAFE` background, `#2563EB` stroke.
+- Track your requests: chat icon on `#EDE9FE` background, `#7C3AED` stroke.
+- Find answers easily: book icon on `#D1FAE5` background, `#059669` stroke.
+
+**Input field iconography (right column):**
+- Email: leading mail envelope icon, 18×18, muted color.
+- Password: leading lock icon, 18×18, muted color. Trailing show/hide eye toggle remains.
+
 ## Design System Reference
 
 See `design-process/E-Design-System/01-design-tokens.md` for the consolidated token reference (colors, typography, spacing, shadows, radii, borders, focus ring). All token values documented in this spec's Visual Tokens section are part of the unified design system used across every page in the app.
 
 ## Open Questions
 
-None. All design decisions for the MVP Login spec were resolved during the discussion:
-
-- Brand mark: placeholder logomark + wordmark "HelpDesk Lite"; final visual established in the wireframe / token-extraction step.
-- Type and color tokens: established in this spec's wireframe and propagated to other pages.
-- Password reset flow: separate page spec, not in scope here.
-- Threshold for rate-limit message (N attempts / cool-down window): TBD with backend implementation; the spec only requires that the message and disabled-state behavior be in place.
+- SSO entry point: when SSO becomes real, what is the redirect URL? Out of scope for this page spec.
+- "Remember me" persistence: cookie vs. local storage vs. no persistence at all (current implementation is local-only). To be resolved with the auth backend when remember-me lands.
+- Illustration style: the current inline SVG is a stylized representation. A final illustration pass with a designer is expected once the marketing copy is locked.
 
 ---
 
-_Produced by Freya — 2026-09-14_
+_Originally produced by Freya — 2026-09-14_
+_D-redesign pass — 2026-10-16: two-column split layout, marketing shell, Remember me, SSO button, Google sign-in skipped._
 _Source: 01-eli-files-and-tracks-ticket.md, 02-sam-runs-the-queue.md, design-process/A-Product-Brief/product-brief.md_
-_Wireframe approved 2026-09-14; spec synced with tokens same day._
+_Wireframe approved 2026-09-14; spec synced with tokens same day. D-redesign pass synced 2026-10-16._
