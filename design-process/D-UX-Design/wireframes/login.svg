@@ -1,54 +1,125 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
-  <!-- Background -->
-  <rect x="0" y="0" width="1440" height="900" fill="#f8f9fa"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900"
+     font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+
+  <!-- ── Background ──────────────────────────────────────────── -->
+  <rect x="0" y="0" width="1440" height="900" fill="#F5F7FB" />
 
   <!--
-    Layout: form column is 400px wide, centered horizontally at x = (1440 - 400)/2 = 520.
-    Brand mark group must share the same horizontal center.
-    Brand mark group: logomark 40px wide + 12px gap + wordmark "HelpDesk Lite" measured 144.54px wide (22px HelveticaNeue-Bold).
-    Total brand width = 40 + 12 + 144.54 = 196.54px.
-    Centered at x = 720: logomark x = 720 - 196.54/2 = 621.73.
-    Wordmark x = 621.73 + 40 + 12 = 673.73.
+    D-redesign (2026-10):
+      Two-column grid, 1.05fr / 1fr.
+      Left  column (x = 0..760) — marketing shell: brand wordmark, hero,
+                                 three feature rows, illustration.
+      Right column (x = 760..1440, with 32px gutters) — sign-in card.
   -->
 
-  <!-- Brand mark group, centered at page center (x = 720) -->
-  <g id="brand-mark">
-    <rect x="621.73" y="180" width="40" height="40" rx="6" fill="#212529"/>
-    <text x="673.73" y="208" font-size="22" font-weight="600" fill="#212529">HelpDesk Lite</text>
+  <!-- ── LEFT: marketing pane ──────────────────────────────── -->
+
+  <!-- Brand wordmark -->
+  <g id="brand-mark-left">
+    <rect x="64" y="56" width="40" height="40" rx="10" fill="#4F46E5" />
+    <text x="116" y="84" font-size="18" font-weight="700" fill="#0F172A">HelpDesk Lite</text>
   </g>
+
+  <!-- Hero -->
+  <g id="hero">
+    <text x="64" y="226" font-size="56" font-weight="700" fill="#0F172A" letter-spacing="-1.4">Support</text>
+    <text x="64" y="290" font-size="56" font-weight="700" fill="#0F172A" letter-spacing="-1.4">made <tspan fill="#4F46E5">simple.</tspan></text>
+  </g>
+
+  <!-- Hero sub -->
+  <g id="hero-sub">
+    <text x="64" y="346" font-size="16" fill="#334155">Create tickets, track your requests, and get</text>
+    <text x="64" y="368" font-size="16" fill="#334155">help from the right people — all in one place.</text>
+  </g>
+
+  <!-- Feature rows -->
+  <g id="feature-1">
+    <rect x="64" y="420" width="36" height="36" rx="10" fill="#DBEAFE" />
+    <path d="M86 432 L82 442 L91 442 L88 452" stroke="#2563EB" stroke-width="2.2"
+          stroke-linecap="round" stroke-linejoin="round" fill="none" />
+    <text x="112" y="437" font-size="15" font-weight="600" fill="#0F172A">Quick ticket submission</text>
+    <text x="112" y="456" font-size="13" fill="#334155">Get help in just a few clicks</text>
+  </g>
+  <g id="feature-2">
+    <rect x="64" y="476" width="36" height="36" rx="10" fill="#EDE9FE" />
+    <text x="112" y="493" font-size="15" font-weight="600" fill="#0F172A">Track your requests</text>
+    <text x="112" y="512" font-size="13" fill="#334155">Stay updated in real time</text>
+  </g>
+  <g id="feature-3">
+    <rect x="64" y="532" width="36" height="36" rx="10" fill="#D1FAE5" />
+    <text x="112" y="549" font-size="15" font-weight="600" fill="#0F172A">Find answers easily</text>
+    <text x="112" y="568" font-size="13" fill="#334155">Explore our knowledge base</text>
+  </g>
+
+  <!--
+    Illustration placeholder: outlined area showing where the
+    SVG illustration lands. Designers replace this with the
+    final art; for the wireframe we draw a stylised bean-bag
+    + chat-bubbles + plant.
+  -->
+  <g id="illustration" opacity="0.92">
+    <ellipse cx="380" cy="760" rx="240" ry="60" fill="#EEF2FF" />
+    <ellipse cx="380" cy="720" rx="200" ry="40" fill="#6366F1" />
+    <circle cx="380" cy="600" r="62" fill="#F4D7B5" />
+    <path d="M330 596 Q330 540 380 540 Q430 540 430 596 Z" fill="#1F2937" />
+    <rect x="328" y="650" width="104" height="80" rx="14" fill="#7C8DFA" />
+    <rect x="316" y="722" width="50" height="80" fill="#1F2937" rx="8" />
+    <rect x="394" y="722" width="50" height="80" fill="#111827" rx="8" />
+    <!-- chat bubbles -->
+    <rect x="468" y="500" width="80" height="56" rx="14" fill="#6366F1" />
+    <rect x="558" y="572" width="60" height="60" rx="10" fill="#A7F3D0" />
+    <rect x="450" y="610" width="60" height="68" rx="8" fill="#C4B5FD" />
+  </g>
+
+  <!-- ── RIGHT: sign-in card pane ──────────────────────────────
+       Card sits centered horizontally in the right column
+       (x = 760..1440), with vertical centering.
+       Card outer: x = 920, y = 130, w = 460, h = 640.
+  -->
+
+  <!-- Card surface -->
+  <rect x="920" y="130" width="460" height="640" rx="20"
+        fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
+
+  <!-- Card brand -->
+  <rect x="952" y="170" width="40" height="40" rx="10" fill="#4F46E5" />
+  <text x="1004" y="198" font-size="18" font-weight="700" fill="#0F172A">HelpDesk Lite</text>
+
+  <!-- Card title + subtitle -->
+  <text x="952" y="290" font-size="28" font-weight="700" fill="#0F172A" letter-spacing="-0.6">Welcome back</text>
+  <text x="952" y="318" font-size="15" fill="#334155">Sign in to your account to continue</text>
 
   <!-- Email field -->
-  <g id="email-field">
-    <text x="520" y="320" font-size="14" font-weight="500" fill="#495057">Email</text>
-    <rect x="520" y="332" width="400" height="44" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
-    <text x="532" y="360" font-size="15" fill="#adb5bd">you@company.com</text>
-  </g>
+  <text x="952" y="376" font-size="13" font-weight="600" fill="#0F172A">Email *</text>
+  <rect x="952" y="388" width="396" height="44" rx="10" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
+  <text x="982" y="416" font-size="14" fill="#94A3B8">eli@company.com</text>
 
   <!-- Password field -->
-  <g id="password-field">
-    <text x="520" y="404" font-size="14" font-weight="500" fill="#495057">Password</text>
-    <rect x="520" y="416" width="400" height="44" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1"/>
-    <circle cx="536" cy="438" r="3" fill="#adb5bd"/>
-    <circle cx="548" cy="438" r="3" fill="#adb5bd"/>
-    <circle cx="560" cy="438" r="3" fill="#adb5bd"/>
-    <circle cx="572" cy="438" r="3" fill="#adb5bd"/>
-    <circle cx="584" cy="438" r="3" fill="#adb5bd"/>
-    <circle cx="596" cy="438" r="3" fill="#adb5bd"/>
-    <g id="show-hide-toggle">
-      <rect x="884" y="424" width="28" height="28" rx="4" fill="#ffffff" stroke="#dee2e6" stroke-width="1"/>
-      <ellipse cx="898" cy="438" rx="9" ry="5" fill="none" stroke="#495057" stroke-width="1"/>
-      <circle cx="898" cy="438" r="2" fill="#495057"/>
-    </g>
-  </g>
+  <text x="952" y="456" font-size="13" font-weight="600" fill="#0F172A">Password *</text>
+  <rect x="952" y="468" width="396" height="44" rx="10" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
+  <text x="982" y="496" font-size="14" fill="#94A3B8">••••••••</text>
+  <rect x="1312" y="476" width="28" height="28" rx="4" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
 
-  <!-- Log in button (primary, full width) -->
-  <g id="login-button">
-    <rect x="520" y="488" width="400" height="48" rx="6" fill="#212529"/>
-    <text x="720" y="518" font-size="16" font-weight="600" fill="#ffffff" text-anchor="middle">Log in</text>
-  </g>
+  <!-- Form row: Remember me + Forgot password? -->
+  <rect x="952" y="528" width="18" height="18" rx="5" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5" />
+  <text x="978" y="542" font-size="14" fill="#334155">Remember me</text>
+  <text x="1348" y="542" font-size="14" fill="#4F46E5" text-anchor="end">Forgot password?</text>
 
-  <!-- Forgot password link -->
-  <g id="forgot-password">
-    <text x="720" y="568" font-size="14" fill="#868e96" text-anchor="middle">Forgot password?</text>
-  </g>
+  <!-- Sign in button -->
+  <rect x="952" y="566" width="396" height="48" rx="10" fill="#4F46E5" />
+  <text x="1142" y="596" font-size="16" font-weight="600" fill="#FFFFFF" text-anchor="middle">Sign in →</text>
+
+  <!-- Divider -->
+  <line x1="952" y1="638" x2="1080" y2="638" stroke="#E2E8F0" stroke-width="1" />
+  <text x="1150" y="642" font-size="13" fill="#94A3B8" text-anchor="middle">or continue with</text>
+  <line x1="1220" y1="638" x2="1348" y2="638" stroke="#E2E8F0" stroke-width="1" />
+
+  <!-- Sign in with SSO button -->
+  <rect x="952" y="664" width="396" height="48" rx="10" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
+  <!-- 4-color tile -->
+  <rect x="978" y="680" width="9" height="9" fill="#F25022" />
+  <rect x="987" y="680" width="9" height="9" fill="#7FBA00" />
+  <rect x="978" y="689" width="9" height="9" fill="#00A4EF" />
+  <rect x="987" y="689" width="9" height="9" fill="#FFB900" />
+  <text x="1150" y="694" font-size="14" font-weight="500" fill="#0F172A" text-anchor="middle">Sign in with SSO</text>
 </svg>

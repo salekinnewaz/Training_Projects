@@ -2,7 +2,7 @@
 title: HelpDesk Lite — Experience
 status: final
 created: 2026-09-06
-updated: 2026-09-06
+updated: 2026-10-16
 project: Training_3
 form_factor: web
 ---
@@ -109,6 +109,18 @@ Agent/Admin on Ticket Details sees a single "Status" dropdown:
 - On Resolved tickets where `currentUser == ticket.createdBy`: button **"Confirm and close"** appears.
 - One-click (no modal — it's an explicit action).
 - On confirm: status → Closed, ticket becomes read-only (no edits, no comments, no reopen).
+
+### Login Page (D-redesign, 2026-10)
+
+Public, unauthenticated `/login`. Two-column grid (`1.05fr / 1fr`) on screens ≥960px; collapses to a single column (sign-in card only) below that breakpoint.
+
+- **Left column (marketing shell):** brand wordmark, "Support made *simple.*" hero (the word "simple." in `colors.action.primary`), one-line product description, three benefit rows (Quick ticket submission / Track your requests / Find answers easily) with colored icon tiles, and a decorative inline-SVG illustration. Hidden below 960px.
+- **Right column (sign-in card):** "Welcome back" title, "Sign in to your account to continue" subtitle, Email + Password fields (with leading iconography and show/hide toggle on the password), a Remember me checkbox + Forgot password link row, the primary "Sign in" CTA with a trailing arrow, an "or continue with" divider, and a visual-placeholder "Sign in with SSO" button (4-color tile, no handler). Self-registration is out of scope — no Register link. Sign in with Google was deliberately skipped per the redesign brief.
+- **Auto-focus** lands on the email input on page load.
+- **Inline validation** runs client-side: empty / malformed email → "Enter a valid email address." under email; empty password → "Enter your password." under password.
+- **Server errors** surface under the password field (account-enumeration guard): "Email or password is incorrect. Try again.", "Your account is inactive. Contact your administrator.", "Too many attempts. Please wait a moment.", or the generic "Something went wrong. Please try again."
+- **On success:** navigate to `auth.roleHomePath()` (or to a `?return_to=` deep-link if present, validated for open-redirect safety).
+- **Already-logged-in handling** is owned by the `loginGuard` (HD-006) — the page always renders the form, never proactively calls `/api/auth/me`.
 
 ## State Patterns
 

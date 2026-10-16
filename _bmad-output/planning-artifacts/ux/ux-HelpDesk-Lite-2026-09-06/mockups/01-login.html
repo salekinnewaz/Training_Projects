@@ -22,63 +22,139 @@
     background: var(--surface-subtle);
     color: var(--text-primary);
     min-height: 100vh;
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+  }
+  /* Two-column shell mirrors the D-redesign (2026-10).
+     On screens <960px the left column is hidden via media query. */
+  @media (max-width: 960px) {
+    body { grid-template-columns: 1fr; }
+    .marketing-pane { display: none; }
+  }
+
+  /* Left column: marketing shell */
+  .marketing-pane {
+    padding: 56px 72px 32px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .marketing-brand {
     display: flex;
     align-items: center;
-    justify-content: center;
-    padding: 32px;
-  }
-  .login-card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-default);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(31, 41, 51, 0.08);
-    padding: 48px 40px;
-    width: 100%;
-    max-width: 400px;
-  }
-  .brand {
-    text-align: center;
-    margin-bottom: 32px;
+    gap: 12px;
+    z-index: 2;
   }
   .brand-mark {
     width: 40px;
     height: 40px;
     background: var(--action-primary);
-    border-radius: 6px;
-    margin: 0 auto 12px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    color: white;
+  }
+  .brand-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+  .hero {
+    margin-top: 64px;
+    font-size: 56px;
+    line-height: 1.05;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+  .hero-accent { color: var(--action-primary); }
+  .hero-sub {
+    margin-top: 24px;
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    max-width: 440px;
+  }
+  .feature-list {
+    list-style: none;
+    margin-top: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .feature-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .feature-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+  }
+  .feature-icon--bolt { background: #DBEAFE; color: #2563EB; }
+  .feature-icon--chat { background: #EDE9FE; color: #7C3AED; }
+  .feature-icon--book { background: #D1FAE5; color: #059669; }
+  .feature-text { display: flex; flex-direction: column; gap: 2px; }
+  .feature-title { font-size: 15px; font-weight: 600; }
+  .feature-sub { font-size: 13px; color: var(--text-secondary); }
+
+  /* Right column: sign-in card */
+  .signin-pane {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    padding: 56px 32px;
+  }
+  .signin-card {
+    width: 100%;
+    max-width: 460px;
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 20px;
+    box-shadow: 0 24px 48px -16px rgba(31, 41, 51, 0.08);
+    padding: 40px 40px 36px;
+  }
+  .card-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .card-title {
+    font-size: 28px;
     font-weight: 700;
-    font-size: 18px;
+    letter-spacing: -0.02em;
   }
-  .brand-name {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--text-primary);
+  .card-subtitle {
+    margin-top: 8px;
+    font-size: 15px;
+    color: var(--text-secondary);
   }
-  h1 {
-    font-size: 20px;
-    font-weight: 600;
-    text-align: center;
-    margin-bottom: 24px;
-    color: var(--text-primary);
-  }
-  .form-group {
-    margin-bottom: 16px;
-  }
+  .signin-form { margin-top: 28px; }
+  .form-group { margin-bottom: 16px; }
   label {
     display: block;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
   }
-  input[type="email"],
-  input[type="password"] {
+  .input-wrap {
+    position: relative;
+  }
+  .input-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+  }
+  .input-wrap input {
     width: 100%;
-    padding: 8px 12px;
+    padding: 10px 40px;
     border: 1px solid var(--border-default);
     border-radius: 6px;
     font-size: 14px;
@@ -86,81 +162,184 @@
     color: var(--text-primary);
     background: var(--surface-base);
   }
-  input:focus {
+  .input-wrap input:focus {
     outline: none;
-    border-color: var(--border-strong);
-    box-shadow: 0 0 0 2px var(--action-primary);
+    border-color: var(--action-primary);
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.20);
   }
-  .helper-row {
+  .form-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin: 16px 0 24px;
+    margin: 14px 0 20px;
     font-size: 14px;
   }
-  .helper-row label {
-    margin: 0;
-    display: flex;
+  .form-row label { margin: 0; }
+  .remember {
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    font-size: 14px;
     color: var(--text-secondary);
-    font-weight: 400;
   }
-  .helper-row a {
+  .forgot-link {
     color: var(--action-primary);
     text-decoration: none;
+    font-weight: 500;
   }
   button.primary {
     width: 100%;
-    padding: 10px 16px;
+    padding: 12px 16px;
     background: var(--action-primary);
     color: white;
     border: none;
     border-radius: 6px;
     font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  button.primary:hover { background: var(--action-primary-hover); }
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 24px 0 16px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .divider-line { flex: 1; height: 1px; background: var(--border-default); }
+  .sso-btn {
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    font-size: 14px;
     font-weight: 500;
     font-family: inherit;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
   }
-  button.primary:hover { background: var(--action-primary-hover); }
-  .secondary-link {
-    text-align: center;
-    margin-top: 16px;
-    font-size: 14px;
-    color: var(--text-secondary);
+  .sso-tile {
+    width: 18px; height: 18px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 1.5px;
   }
-  .secondary-link a {
-    color: var(--action-primary);
-    text-decoration: none;
-    font-weight: 500;
-  }
+  .sso-tile span { display: block; }
+  .sso-tile .r { background: #F25022; }
+  .sso-tile .g { background: #7FBA00; }
+  .sso-tile .b { background: #00A4EF; }
+  .sso-tile .y { background: #FFB900; }
 </style>
 </head>
 <body>
-  <div class="login-card">
-    <div class="brand">
-      <div class="brand-mark">H</div>
+  <!-- Left column: marketing shell -->
+  <aside class="marketing-pane">
+    <div class="marketing-brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
+             stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 14a9 9 0 0 1 18 0v3a2 2 0 0 1-2 2h-1v-7h3"/>
+          <path d="M3 14v3a2 2 0 0 0 2 2h1v-7H3"/>
+        </svg>
+      </div>
       <div class="brand-name">HelpDesk Lite</div>
     </div>
-    <h1>Sign in to your account</h1>
-    <form>
-      <div class="form-group">
-        <label for="email">Email</label>
-        <input type="email" id="email" placeholder="you@company.com" autocomplete="email">
+    <h1 class="hero">Support<br />made <span class="hero-accent">simple.</span></h1>
+    <p class="hero-sub">
+      Create tickets, track your requests, and get help from the right
+      people — all in one place.
+    </p>
+    <ul class="feature-list">
+      <li class="feature-row">
+        <span class="feature-icon feature-icon--bolt">⚡</span>
+        <span class="feature-text">
+          <span class="feature-title">Quick ticket submission</span>
+          <span class="feature-sub">Get help in just a few clicks</span>
+        </span>
+      </li>
+      <li class="feature-row">
+        <span class="feature-icon feature-icon--chat">💬</span>
+        <span class="feature-text">
+          <span class="feature-title">Track your requests</span>
+          <span class="feature-sub">Stay updated in real time</span>
+        </span>
+      </li>
+      <li class="feature-row">
+        <span class="feature-icon feature-icon--book">📖</span>
+        <span class="feature-text">
+          <span class="feature-title">Find answers easily</span>
+          <span class="feature-sub">Explore our knowledge base</span>
+        </span>
+      </li>
+    </ul>
+  </aside>
+
+  <!-- Right column: sign-in card -->
+  <main class="signin-pane">
+    <div class="signin-card">
+      <div class="card-brand">
+        <div class="brand-mark">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
+               stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 14a9 9 0 0 1 18 0v3a2 2 0 0 1-2 2h-1v-7h3"/>
+            <path d="M3 14v3a2 2 0 0 0 2 2h1v-7H3"/>
+          </svg>
+        </div>
+        <div class="brand-name">HelpDesk Lite</div>
       </div>
-      <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
-      </div>
-      <div class="helper-row">
-        <label><input type="checkbox"> Remember me</label>
-        <a href="#">Forgot password?</a>
-      </div>
-      <button type="submit" class="primary">Sign in</button>
-    </form>
-    <div class="secondary-link">
-      Don't have an account? <a href="#">Register</a>
+      <h2 class="card-title">Welcome back</h2>
+      <p class="card-subtitle">Sign in to your account to continue</p>
+      <form class="signin-form">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <div class="input-wrap">
+            <span class="input-icon">✉</span>
+            <input type="email" id="email" placeholder="eli@company.com"
+                   autocomplete="email">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="password" placeholder="••••••••"
+                   autocomplete="current-password">
+          </div>
+        </div>
+        <div class="form-row">
+          <label class="remember">
+            <input type="checkbox"> Remember me
+          </label>
+          <a href="#" class="forgot-link">Forgot password?</a>
+        </div>
+        <button type="submit" class="primary">Sign in →</button>
+        <div class="divider">
+          <span class="divider-line"></span>
+          or continue with
+          <span class="divider-line"></span>
+        </div>
+        <button type="button" class="sso-btn">
+          <span class="sso-tile">
+            <span class="r"></span><span class="g"></span>
+            <span class="b"></span><span class="y"></span>
+          </span>
+          Sign in with SSO
+        </button>
+      </form>
     </div>
-  </div>
+  </main>
 </body>
 </html>

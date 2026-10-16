@@ -24,8 +24,9 @@
  *   (j) The "Forgot password?" link points to /forgot-password
  *   (k) D4: 429 with `rate_limited` → password field shows
  *       "Too many attempts. Please wait a moment."
- *   (l) The wireframe-forbidden "Remember me" checkbox and
- *       "Register" link are NOT rendered
+ *   (l) The "Register" link is NOT rendered (self-registration is
+ *       admin-provisioned, wireframe-forbidden). The "Remember me"
+ *       checkbox IS rendered since the D-redesign wireframe.
  *
  * Mirrors the existing create-ticket-page spec pattern: TestBed +
  * AuthService stub (BehaviorSubject-based) + Router stub +
@@ -99,29 +100,39 @@ describe('LoginPageComponent (D2)', () => {
     await configureTestBed();
   });
 
-  it('renders the brand mark + wordmark on the card', () => {
+  it('renders the brand mark + wordmark on the page', () => {
     const fixture = TestBed.createComponent(LoginPageComponent);
     fixture.detectChanges();
 
     const root = fixture.nativeElement as HTMLElement;
-    expect(root.querySelector('.brand-mark')?.textContent?.trim()).toBe('HL');
+    // D-redesign: two .brand-mark instances (one in the marketing
+    // pane, one in the sign-in card) — both share the same wordmark.
+    const brandMarks = root.querySelectorAll('.brand-mark');
+    expect(brandMarks.length).toBe(2);
     expect(root.textContent).toContain('HelpDesk Lite');
   });
 
-  it('renders email + password form fields with required labels', () => {
+  it('renders email + password form fields with required labels and a remember-me label', () => {
     const fixture = TestBed.createComponent(LoginPageComponent);
     fixture.detectChanges();
 
     const root = fixture.nativeElement as HTMLElement;
     const labels = root.querySelectorAll('label');
-    // Wireframe §"Content & Actions" — only Email and Password
-    // labels. Remember me is forbidden.
-    expect(labels.length).toBe(2);
-    expect(labels[0]?.textContent).toContain('Email');
-    expect(labels[1]?.textContent).toContain('Password');
-    // Required indicator (*)
-    expect(labels[0]?.textContent).toContain('*');
-    expect(labels[1]?.textContent).toContain('*');
+    // D-redesign: Email, Password, and Remember me.
+    const labelTexts = Array.from(labels).map((l) => l.textContent ?? '');
+    expect(labelTexts.some((t) => t.includes('Email'))).toBeTrue();
+    expect(labelTexts.some((t) => t.includes('Password'))).toBeTrue();
+    expect(labelTexts.some((t) => t.includes('Remember me'))).toBeTrue();
+    // Email + Password use the form-field molecule which paints a *
+    // for required; Remember me does not.
+    const emailLabel = Array.from(labels).find((l) =>
+      (l.textContent ?? '').includes('Email'),
+    );
+    const pwdLabel = Array.from(labels).find((l) =>
+      (l.textContent ?? '').includes('Password'),
+    );
+    expect(emailLabel?.textContent).toContain('*');
+    expect(pwdLabel?.textContent).toContain('*');
   });
 
   it('disables the submit button when email or password is empty', () => {
@@ -485,12 +496,16 @@ describe('LoginPageComponent (D2)', () => {
     expect(link).not.toBeNull();
   });
 
-  it('does NOT render a Remember me checkbox (wireframe-forbidden)', () => {
+  it('renders a Remember me checkbox (D-redesign)', () => {
     const fixture = TestBed.createComponent(LoginPageComponent);
     fixture.detectChanges();
 
-    const checkbox = fixture.nativeElement.querySelector('input#remember-me');
-    expect(checkbox).toBeNull();
+    const checkbox = fixture.nativeElement.querySelector(
+      'input#remember-me',
+    ) as HTMLInputElement;
+    expect(checkbox).not.toBeNull();
+    expect(checkbox.type).toBe('checkbox');
+    expect(checkbox.checked).toBeFalse();
   });
 
   it('does NOT render a Register link (wireframe-forbidden)', () => {
