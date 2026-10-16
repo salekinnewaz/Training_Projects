@@ -78,7 +78,10 @@ Attachment.init(
     tableName: 'attachments',
     modelName: 'Attachment',
     underscored: true,
-    timestamps: false,
+    // Auto-stamp createdAt on insert. Attachments are immutable
+    // past MVP — no `updated_at` column.
+    timestamps: true,
+    updatedAt: false,
   },
 );
 
