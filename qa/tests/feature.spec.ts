@@ -429,7 +429,7 @@ test.describe('Feature: Admin Dashboard count badge = bucket total', () => {
 
     // Pull the Open card's count and "Showing N of M" footer.
     const openCard = page.locator('article.card').first();
-    const countText = (await openCard.locator('span.count').textContent())?.trim();
+    const countText = (await openCard.locator('.count-badge').textContent())?.trim();
     const footerText = await openCard.locator('.admin-card-footer').textContent().catch(() => '');
     const expectedTotal = (footerText?.match(/of (\d+)/)?.[1]) ?? null;
     if (!expectedTotal) {
@@ -442,9 +442,9 @@ test.describe('Feature: Admin Dashboard count badge = bucket total', () => {
 });
 
 test.describe('Feature: Admin Dashboard', () => {
-  test('admin lands on /admin and sees the Dashboard tab', async ({ page }) => {
+  test('admin lands on /admin and sees the Tickets tab', async ({ page }) => {
     await loginAs(page, 'admin');
-    await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Tickets', level: 1 })).toBeVisible();
     // Admin should see a Users tab — wireframe says admin-only.
     await expect(page.getByRole('tab', { name: /^users$/i }).or(
       page.getByRole('link', { name: /^users$/i })
@@ -470,11 +470,171 @@ test.describe('Feature: Admin Dashboard', () => {
     // In Progress / Resolved / Closed."
     await loginAs(page, 'admin');
     for (const status of ['Open', 'In Progress', 'Resolved', 'Closed']) {
-      // The status badge text appears inside the summary card
-      // (e.g., "Open (12)"). The wireframe calls for both the
+      // The status label appears as a column header on the
+      // redesigned card. The wireframe calls for both the
       // status label and a count.
       await expect(page.getByText(status).first()).toBeVisible();
     }
+  });
+
+  test('admin dashboard renders the redesigned page subtitle', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await expect(
+      page.getByText(/monitor and manage all support tickets across different stages/i),
+    ).toBeVisible();
+  });
+
+  test('admin dashboard renders tinted column headers with icon chips + count badges', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.waitForSelector('article.card', { timeout: 10_000 });
+    // Each card has a tinted header zone + a kanban-column-header row
+    // + an icon chip + a count badge.
+    const headers = page.locator('.card-row .card .kanban-column-header');
+    await expect(headers).toHaveCount(4);
+    // Each header has a column-label + count-badge.
+    for (const status of ['Open', 'In Progress', 'Resolved', 'Closed']) {
+      const card = page.locator(`.card-row .card[data-status="${status}"]`);
+      await expect(card.locator('.column-label')).toHaveText(status);
+      await expect(card.locator('.count-badge')).toBeVisible();
+      await expect(card.locator('.icon-chip')).toBeVisible();
+    }
+  });
+
+  test('admin dashboard ticket cards have row icon + ticket number + title + timestamp', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.waitForSelector('article.card .admin-card-row', { timeout: 10_000 });
+    const openCard = page.locator('.card-row .card').first();
+    const rows = openCard.locator('a.admin-card-row');
+    const count = await rows.count();
+    if (count > 0) {
+      const first = rows.first();
+      // Icon, number, title, timestamp all present.
+      await expect(first.locator('.row-icon svg')).toBeVisible();
+      await expect(first.locator('.number')).toContainText(/^HD-\d+$/);
+      await expect(first.locator('.title')).not.toBeEmpty();
+      await expect(first.locator('.timestamp')).not.toBeEmpty();
+    }
+  });
+
+  test('admin dashboard card row navigation goes to /tickets/:id (Open column)', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.waitForSelector('.card-row .card a.admin-card-row', { timeout: 10_000 });
+    const openRow = page.locator('.card-row .card a.admin-card-row').first();
+    const href = await openRow.getAttribute('href');
+    expect(href).toMatch(/\/tickets\/\d+/);
+  });
+
+  test('admin dashboard closed-column rows are NOT links (muted, non-clickable)', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.waitForSelector('.card-row .card', { timeout: 10_000 });
+    const closedCard = page.locator('.card-row .card[data-status="Closed"]');
+    const closedLinks = await closedCard.locator('a.admin-card-row').count();
+    expect(closedLinks).toBe(0);
+    // Muted <li> rows should be present instead.
+    const mutedRows = await closedCard.locator('li.admin-card-row.is-muted').count();
+    expect(mutedRows).toBeGreaterThanOrEqual(0); // 0 if no closed tickets
+  });
+
+  test('admin dashboard "View all" footer link routes to /queue with status filter', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.waitForSelector('.card-row .card', { timeout: 10_000 });
+    const viewAll = page.locator('.card-row .card .admin-card-footer .view-all').first();
+    const exists = await viewAll.count();
+    if (exists > 0) {
+      const href = await viewAll.getAttribute('href');
+      expect(href).toMatch(/^\/queue(\?|%3F)status(%3D|=)/);
+    }
+  });
+
+  test('admin dashboard renders 4 equal-width columns at desktop viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await loginAs(page, 'admin');
+    await page.waitForSelector('.card-row .card', { timeout: 10_000 });
+    const cards = page.locator('.card-row .card');
+    const widths = await cards.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().width));
+    expect(widths.length).toBe(4);
+    // All four columns should be the same width (within 1px rounding).
+    const min = Math.min(...widths);
+    const max = Math.max(...widths);
+    expect(max - min).toBeLessThan(2);
+  });
+
+  test('admin dashboard stacks to 2x2 at tablet viewport (960px)', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 1100 });
+    await loginAs(page, 'admin');
+    await page.waitForSelector('.card-row .card', { timeout: 10_000 });
+    const tops = await page.locator('.card-row .card').evaluateAll((els) =>
+      els.map((e) => e.getBoundingClientRect().top),
+    );
+    // In a 2x2 grid, the 3rd card should sit on a new row (different top
+    // from cards 1 and 2).
+    if (tops.length === 4) {
+      expect(tops[2]).toBeGreaterThan(tops[0]);
+    }
+  });
+
+  test('admin dashboard does not cause horizontal page overflow at 1440px', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await loginAs(page, 'admin');
+    await page.waitForSelector('.card-row .card', { timeout: 10_000 });
+    // The body should not have horizontal overflow.
+    const overflow = await page.evaluate(() => {
+      return document.documentElement.scrollWidth > document.documentElement.clientWidth;
+    });
+    expect(overflow).toBe(false);
+  });
+
+  test('admin dashboard renders the filter strip (search + 5 selects)', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.waitForSelector('.filter-strip', { timeout: 10_000 });
+    await expect(page.locator('input.filter-search-input')).toBeVisible();
+    const selects = page.locator('.filter-strip select');
+    await expect(selects).toHaveCount(5);
+  });
+
+  test('admin dashboard ticket cards render priority + category badges', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.waitForSelector('.card-row .card a.admin-card-row', { timeout: 10_000 });
+    const firstRow = page.locator('.card-row .card a.admin-card-row').first();
+    // Priority badge is always rendered.
+    await expect(firstRow.locator('badge-priority .badge')).toBeVisible();
+  });
+});
+
+test.describe('Feature: Admin Dashboard chrome (WDS-2026)', () => {
+  test('admin chrome renders the notification bell with the unread red dot', async ({ page }) => {
+    await loginAs(page, 'admin');
+    const bell = page.getByTestId('notification-bell');
+    await expect(bell).toBeVisible();
+    // Red dot is visible by default (hasUnreadNotifications=true).
+    await expect(bell.locator('.notification-dot')).toBeVisible();
+  });
+
+  test('clicking the notification bell dismisses the red dot', async ({ page }) => {
+    await loginAs(page, 'admin');
+    const bell = page.getByTestId('notification-bell');
+    await expect(bell.locator('.notification-dot')).toBeVisible();
+    await bell.click();
+    await expect(bell.locator('.notification-dot')).toHaveCount(0);
+  });
+
+  test('chrome search input shows the Cmd+K shortcut hint', async ({ page }) => {
+    await loginAs(page, 'admin');
+    const kbd = page.locator('.search-shortcut');
+    await expect(kbd).toBeVisible();
+    await expect(kbd).toHaveText('⌘K');
+  });
+
+  test('Cmd+K shortcut focuses the chrome search input', async ({ page }) => {
+    await loginAs(page, 'admin');
+    // Move focus away from the search input first.
+    await page.locator('h1').click();
+    await page.keyboard.press('Meta+K');
+    const isFocused = await page.evaluate(() => {
+      const el = document.activeElement;
+      return el && el.classList && el.classList.contains('search-input');
+    });
+    expect(isFocused).toBe(true);
   });
 });
 

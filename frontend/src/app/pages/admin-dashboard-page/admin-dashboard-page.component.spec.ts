@@ -106,15 +106,21 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
     component = fixture.componentInstance;
   });
 
-  it('renders 4 status badges in success state (Open / In Progress / Resolved / Closed)', async () => {
+  it('renders 4 status column headers in success state (Open / In Progress / Resolved / Closed)', async () => {
     ticketService.adminDashboard.and.resolveTo(makeSummary());
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
 
     expect(component.renderState()).toBe('success');
-    const badges = fixture.nativeElement.querySelectorAll('.card .pill-zone badge-status');
-    expect(badges.length).toBe(4);
+    // The redesigned card has a tinted kanban-column-header per
+    // status. 4 column headers should be present in the row.
+    const headers = fixture.nativeElement.querySelectorAll('.card-row .card .kanban-column-header');
+    expect(headers.length).toBe(4);
+    const labels = Array.from(headers).map(
+      (h) => (h as HTMLElement).querySelector('.column-label')?.textContent?.trim(),
+    );
+    expect(labels).toEqual(['Open', 'In Progress', 'Resolved', 'Closed']);
   });
 
   it('shows the right counts in each card top zone (count = bucket.total, not rows.length)', async () => {
@@ -133,7 +139,7 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
     expect(cards.length).toBe(4);
 
     const counts = Array.from(cards).map(
-      (card) => (card as HTMLElement).querySelector('.count')?.textContent?.trim(),
+      (card) => (card as HTMLElement).querySelector('.count-badge')?.textContent?.trim(),
     );
     expect(counts).toEqual(['11', '5', '4', '3']);
   });
@@ -180,7 +186,15 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
     const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
     const openFooter = cards[0].querySelector('.admin-card-footer');
     expect(openFooter).toBeTruthy();
-    expect(openFooter.textContent.trim()).toBe('Showing 2 of 11');
+    // The footer now contains both the "Showing N of M" copy and a
+    // "View all" deep link. We assert both pieces independently so
+    // accidental formatting drift doesn't break the contract.
+    expect(openFooter.textContent).toContain('Showing 2 of 11');
+    const viewAll = openFooter.querySelector('.view-all');
+    expect(viewAll).toBeTruthy();
+    // RouterLink encodes the query string; accept the encoded form.
+    expect(viewAll.getAttribute('href'))
+      .toMatch(/^\/queue(\?|%3F)status(%3D|=)/);
   });
 
   it('hides the "Showing N of M" footer when total === rows.length', async () => {
@@ -292,14 +306,14 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
     expect(ticketService.adminDashboard).toHaveBeenCalledTimes(2);
   });
 
-  it('reactive heading reflects the active tab on initial load (Dashboard)', async () => {
+  it('reactive heading reflects the active tab on initial load (Tickets)', async () => {
     ticketService.adminDashboard.and.resolveTo(makeSummary());
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
 
     const h1 = fixture.nativeElement.querySelector('h1');
-    expect(h1?.textContent?.trim()).toBe('Dashboard');
+    expect(h1?.textContent?.trim()).toBe('Tickets');
   });
 
   it('renders the tablist with role="tablist" and two role="tab" anchors', async () => {
@@ -322,9 +336,9 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
     fixture.detectChanges();
 
     const tabs = fixture.nativeElement.querySelectorAll('.tab[role="tab"]') as NodeListOf<HTMLAnchorElement>;
-    const dashboardTab = Array.from(tabs).find((t) => t.textContent?.trim() === 'Dashboard')!;
+    const ticketsTab = Array.from(tabs).find((t) => t.textContent?.trim() === 'Tickets')!;
     const usersTab = Array.from(tabs).find((t) => t.textContent?.trim() === 'Users')!;
-    expect(dashboardTab.getAttribute('aria-selected')).toBe('true');
+    expect(ticketsTab.getAttribute('aria-selected')).toBe('true');
     expect(usersTab.getAttribute('aria-selected')).toBe('false');
   });
 
@@ -410,6 +424,235 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
   it('buckets returns empty array when summary is null', () => {
     // Default state — summary not yet set.
     expect(component.buckets()).toEqual([]);
+  });
+
+  describe('redesign — kanban-column-header + tinted icon chips', () => {
+    it('applies a tint class to each card matching its status', async () => {
+      ticketService.adminDashboard.and.resolveTo(makeSummary());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const expected: Array<[string, string]> = [
+        ['Open', 'tint-open'],
+        ['In Progress', 'tint-inprogress'],
+        ['Resolved', 'tint-resolved'],
+        ['Closed', 'tint-closed'],
+      ];
+      const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
+      expected.forEach(([status, tint], i) => {
+        const card = cards[i] as HTMLElement;
+        expect(card.getAttribute('data-status')).toBe(status);
+        expect(card.classList.contains(tint)).toBe(true);
+      });
+    });
+
+    it('renders an icon chip inside each kanban-column-header', async () => {
+      ticketService.adminDashboard.and.resolveTo(makeSummary());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const headers = fixture.nativeElement.querySelectorAll('.card-row .card .kanban-column-header');
+      headers.forEach((h: Element) => {
+        const chip = h.querySelector('.icon-chip');
+        expect(chip).toBeTruthy();
+        // Icon chip carries an SVG glyph (the status icon).
+        const svg = chip?.querySelector('svg');
+        expect(svg).toBeTruthy();
+      });
+    });
+
+    it('renders the redesigned page subtitle below the heading', async () => {
+      ticketService.adminDashboard.and.resolveTo(makeSummary());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const subtitle = fixture.nativeElement.querySelector('.page-subtitle');
+      expect(subtitle?.textContent?.trim()).toBe(
+        'Monitor and manage all support tickets across different stages.',
+      );
+    });
+  });
+
+  describe('redesign — filter strip (WDS-2026)', () => {
+    it('renders the search input + 5 select dropdowns in success state', async () => {
+      ticketService.adminDashboard.and.resolveTo(makeSummary());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const strip = fixture.nativeElement.querySelector('.filter-strip');
+      expect(strip).toBeTruthy();
+      const search = strip.querySelector('input.filter-search-input');
+      expect(search).toBeTruthy();
+      expect(search.getAttribute('placeholder')).toContain('Search');
+
+      // 5 selects: customers / applications / priorities / assignees / sort
+      const selects = strip.querySelectorAll('select');
+      expect(selects.length).toBe(5);
+    });
+
+    it('shows the friendly default label inside each select wrapper', async () => {
+      ticketService.adminDashboard.and.resolveTo(makeSummary());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const labels = Array.from(
+        fixture.nativeElement.querySelectorAll('.filter-select .filter-select-label'),
+      ).map((el) => (el as HTMLElement).textContent?.trim());
+      // Sort label is first because of the .filter-sort wrapper order in
+      // the template; values are {customer, application, priority,
+      // assignee, sort} = ['All customers', 'All applications', 'All
+      // priorities', 'All assignees', 'Newest first'].
+      expect(labels).toEqual([
+        'All customers',
+        'All applications',
+        'All priorities',
+        'All assignees',
+        'Newest first',
+      ]);
+    });
+
+    it('renders a skeleton filter strip during the loading state', async () => {
+      let resolveFn!: (s: AdminDashboardSummary) => void;
+      ticketService.adminDashboard.and.returnValue(
+        new Promise<AdminDashboardSummary>((r) => { resolveFn = r; }),
+      );
+      fixture.detectChanges();
+      fixture.detectChanges();
+      // Skeleton strip is present.
+      const strip = fixture.nativeElement.querySelector('.filter-strip');
+      expect(strip).toBeTruthy();
+      // 1 search bar + 5 select pills
+      const bars = strip.querySelectorAll('.skel-bar');
+      expect(bars.length).toBe(6);
+      resolveFn(makeSummary());
+    });
+  });
+
+  describe('redesign — priority + category badges inside ticket cards', () => {
+    it('renders the priority pill inside each ticket card row', async () => {
+      ticketService.adminDashboard.and.resolveTo(makeSummary());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const openCard = fixture.nativeElement.querySelectorAll('.card-row .card')[0];
+      const openRow = openCard.querySelector('a.admin-card-row');
+      // Default priority is Medium in makeTicket.
+      const priorityBadge = openRow.querySelector('badge-priority .badge');
+      expect(priorityBadge).toBeTruthy();
+      expect(priorityBadge.textContent.trim()).toBe('Medium');
+    });
+
+    it('does NOT render a category badge when the ticket has no category', async () => {
+      ticketService.adminDashboard.and.resolveTo(makeSummary());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const openCard = fixture.nativeElement.querySelectorAll('.card-row .card')[0];
+      const openRow = openCard.querySelector('a.admin-card-row');
+      const categoryBadge = openRow.querySelector('badge-category .badge');
+      expect(categoryBadge).toBeNull();
+    });
+
+    it('renders the category pill when the ticket has a category', async () => {
+      // makeSummary uses a baseUser, but the ticket factory in this
+      // spec sets category: null. We craft a custom summary with a
+      // category-bearing ticket to exercise the @if branch.
+      const catTicket: Ticket = {
+        ...makeTicket(1, 'Open', 'IT ticket', 1),
+        category: 'IT',
+      };
+      ticketService.adminDashboard.and.resolveTo(
+        makeSummary({ open: { rows: [catTicket], total: 1 } }),
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const openCard = fixture.nativeElement.querySelectorAll('.card-row .card')[0];
+      const openRow = openCard.querySelector('a.admin-card-row');
+      const categoryBadge = openRow.querySelector('badge-category .badge');
+      expect(categoryBadge).toBeTruthy();
+      expect(categoryBadge.classList.contains('it')).toBe(true);
+      expect(categoryBadge.textContent.trim()).toBe('IT');
+    });
+  });
+
+  describe('redesign — 3-line ticket card structure', () => {
+    it('renders the row-content wrapper with 3 sub-lines (number/timestamp, title, badges)', async () => {
+      ticketService.adminDashboard.and.resolveTo(makeSummary());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const openCard = fixture.nativeElement.querySelectorAll('.card-row .card')[0];
+      const openRow = openCard.querySelector('a.admin-card-row');
+      const content = openRow.querySelector('.row-content');
+      expect(content).toBeTruthy();
+      const lines = content.querySelectorAll(':scope > div');
+      expect(lines.length).toBe(3);
+      // Line 1: number + timestamp
+      expect(lines[0].querySelector('.number')).toBeTruthy();
+      expect(lines[0].querySelector('.timestamp')).toBeTruthy();
+      // Line 2: title
+      expect(lines[1].querySelector('.title')).toBeTruthy();
+      // Line 3: badge zone (priority at minimum)
+      expect(lines[2].querySelector('badge-priority')).toBeTruthy();
+    });
+  });
+
+  describe('view all footer link', () => {
+    it('viewAllHref returns /queue with encoded status param', () => {
+      expect(component.viewAllHref('Open')).toBe('/queue?status=Open');
+      expect(component.viewAllHref('In Progress')).toBe(
+        '/queue?status=In%20Progress',
+      );
+      expect(component.viewAllHref('Resolved')).toBe(
+        '/queue?status=Resolved',
+      );
+      expect(component.viewAllHref('Closed')).toBe('/queue?status=Closed');
+    });
+
+    it('renders the View all link only when total exceeds rendered rows', async () => {
+      // Open: 2 rows but total 11 → footer renders + View all link.
+      ticketService.adminDashboard.and.resolveTo(makeSummary());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
+      const openViewAll = cards[0].querySelector('.admin-card-footer .view-all');
+      expect(openViewAll).toBeTruthy();
+    });
+
+    it('does not render a footer when total equals rows.length', async () => {
+      // Use a custom summary where every bucket has rows.length === total.
+      ticketService.adminDashboard.and.resolveTo(
+        makeSummary({
+          open: { rows: [makeTicket(1, 'Open')], total: 1 },
+          inProgress: { rows: [], total: 0 },
+          resolved: { rows: [], total: 0 },
+          closed: { rows: [], total: 0 },
+        }),
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
+      // Open: 1 row, total 1 → no footer / no view-all.
+      const openViewAll = cards[0].querySelector('.admin-card-footer .view-all');
+      expect(openViewAll).toBeNull();
+      // In Progress: 0 rows, total 0 → no footer.
+      const ipViewAll = cards[1].querySelector('.admin-card-footer .view-all');
+      expect(ipViewAll).toBeNull();
+    });
   });
 });
 

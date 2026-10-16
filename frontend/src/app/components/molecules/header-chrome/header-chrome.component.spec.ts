@@ -110,13 +110,14 @@ describe('HeaderChromeComponent', () => {
     authService.userSnapshot.and.returnValue(user);
   }
 
-  it('renders the 28x28 brand mark + 16px wordmark', () => {
+  it('renders the 32x32 brand mark + 16px wordmark', () => {
     fixture = TestBed.createComponent(HeaderChromeComponent);
     fixture.detectChanges();
 
     const brand = fixture.nativeElement.querySelector('.brand') as HTMLElement;
     expect(brand).not.toBeNull();
-    expect(brand.textContent).toContain('HL');
+    // The brand now renders an SVG headset icon + the wordmark.
+    // We assert the wordmark text + that the mark is 32x32.
     expect(brand.textContent).toContain('HelpDesk Lite');
     const mark = fixture.nativeElement.querySelector('.brand-mark') as HTMLElement;
     // WDS-2026: brand mark is 32x32 (was 40x40 in HD-004).
@@ -125,6 +126,10 @@ describe('HeaderChromeComponent', () => {
     const computed = getComputedStyle(mark);
     expect(computed.width).toBe('32px');
     expect(computed.height).toBe('32px');
+    // The icon itself is an SVG (no text glyph) and is hidden from
+    // assistive tech via aria-hidden on the parent.
+    const svg = mark.querySelector('svg');
+    expect(svg).not.toBeNull();
   });
 
   it('does not render nav, search, or profile when the user is null', () => {
@@ -434,5 +439,127 @@ describe('HeaderChromeComponent', () => {
 
     // Cleanup the appended node so other tests start clean.
     document.body.removeChild(outside);
+  });
+
+  // ── WDS-2026: notification bell + Cmd+K shortcut hint ────────
+
+  it('renders the notification bell trigger with the unread red dot', () => {
+    seedUser(makeUser());
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const bell = fixture.nativeElement.querySelector('.notification-trigger') as HTMLButtonElement;
+    expect(bell).not.toBeNull();
+    // SVG glyph is present.
+    expect(bell.querySelector('svg')).not.toBeNull();
+    // Red dot renders by default (hasUnreadNotifications is true).
+    expect(bell.querySelector('.notification-dot')).not.toBeNull();
+    // aria-label mentions unread so screen-reader users get the affordance.
+    expect(bell.getAttribute('aria-label')?.toLowerCase()).toContain('unread');
+  });
+
+  it('clicking the notification bell dismisses the unread dot', () => {
+    seedUser(makeUser());
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const bell = fixture.nativeElement.querySelector('.notification-trigger') as HTMLButtonElement;
+    expect(bell.querySelector('.notification-dot')).not.toBeNull();
+    bell.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.notification-dot')).toBeNull();
+    expect(fixture.componentInstance.hasUnreadNotifications()).toBe(false);
+  });
+
+  it('renders the Cmd+K kbd shortcut hint inside the search input', () => {
+    seedUser(makeUser({ role: 'Support Agent' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const kbd = fixture.nativeElement.querySelector('.search-shortcut') as HTMLElement;
+    expect(kbd).not.toBeNull();
+    expect(kbd.textContent?.trim()).toBe('⌘K');
+  });
+
+  it('does NOT render the Cmd+K shortcut for the user role (no search input)', () => {
+    seedUser(makeUser({ role: 'User' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.search-shortcut')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.notification-trigger')).not.toBeNull();
+  });
+
+  it('Cmd+K focuses the search input when canSearch() is true', () => {
+    seedUser(makeUser({ role: 'Admin' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('input.search-input') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    expect(document.activeElement).not.toBe(input);
+
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'k',
+        metaKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('Ctrl+K (Windows) also focuses the search input', () => {
+    seedUser(makeUser({ role: 'Support Agent' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('input.search-input') as HTMLInputElement;
+    expect(input).not.toBeNull();
+
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'K',
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('Cmd+K inside a textarea is a no-op (does not steal the composer focus)', () => {
+    seedUser(makeUser({ role: 'Admin' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    // Blur any element that might be active from previous tests
+    // (e.g. the search input focused by the prior Cmd+K test).
+    (document.activeElement as HTMLElement | null)?.blur?.();
+
+    // Create a textarea in the document and focus it.
+    const ta = document.createElement('textarea');
+    document.body.appendChild(ta);
+    ta.focus();
+    expect(document.activeElement).toBe(ta);
+
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'k',
+        metaKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    fixture.detectChanges();
+
+    // The textarea retains focus; chrome search is NOT focused.
+    expect(document.activeElement).toBe(ta);
+    document.body.removeChild(ta);
   });
 });
