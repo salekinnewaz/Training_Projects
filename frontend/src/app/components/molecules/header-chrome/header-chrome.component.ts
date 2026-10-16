@@ -51,6 +51,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -69,6 +70,7 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    CommonModule,
     FormsModule,
     RouterLink,
     RouterLinkActive,
@@ -87,7 +89,13 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
         (click)="goHome()"
         aria-label="HelpDesk Lite — go to your dashboard"
       >
-        <span class="brand-mark" aria-hidden="true">HL</span>
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 14v-2a9 9 0 0 1 18 0v2" />
+            <path d="M21 14a2 2 0 0 1-2 2h-1v-4h1a2 2 0 0 1 2 2z" fill="currentColor" stroke="none" />
+            <path d="M3 14a2 2 0 0 1 2-2h1v4H5a2 2 0 0 1-2-2z" fill="currentColor" stroke="none" />
+          </svg>
+        </span>
         <span class="brand-wordmark">HelpDesk Lite</span>
       </button>
 
@@ -125,10 +133,27 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
               (input)="onSearchInput($event)"
               aria-label="Search tickets"
             />
+            <kbd class="search-shortcut" aria-hidden="true">⌘K</kbd>
           </form>
         } @else {
           <div class="chrome-search-spacer"></div>
         }
+
+        <button
+          type="button"
+          class="notification-trigger"
+          (click)="onNotificationClick()"
+          [attr.aria-label]="notificationLabel()"
+          data-testid="notification-bell"
+        >
+          <svg viewBox="0 0 20 20" width="18" height="18" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 9 a5 5 0 0 1 10 0 v3.5 l1.5 2 H3.5 l1.5 -2 z" />
+            <path d="M8 16 a2 2 0 0 0 4 0" />
+          </svg>
+          @if (hasUnreadNotifications()) {
+            <span class="notification-dot" aria-hidden="true"></span>
+          }
+        </button>
 
         <button
           #trigger
@@ -201,14 +226,14 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
     .chrome {
       height: var(--chrome-height);
       display: grid;
-      grid-template-columns: auto auto 1fr auto;
+      grid-template-columns: auto auto 1fr auto auto;
       align-items: center;
-      column-gap: 20px;
+      column-gap: 16px;
       padding: 0 32px;
       background: var(--glass-bg);
       backdrop-filter: var(--glass-blur);
       -webkit-backdrop-filter: var(--glass-blur);
-      border-bottom: 1px solid var(--color-border-subtle);
+      border-bottom: 1px solid var(--color-card-border);
       box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
     }
     .brand {
@@ -217,7 +242,7 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
       align-items: center;
       gap: 10px;
       cursor: pointer;
-      color: var(--color-text);
+      color: var(--color-text-primary);
     }
     .brand:hover .brand-wordmark {
       color: var(--color-primary);
@@ -238,7 +263,7 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
     .brand-wordmark {
       font-size: 16px;
       font-weight: 700;
-      color: var(--color-text);
+      color: var(--color-text-primary);
       letter-spacing: -0.02em;
       transition: color var(--duration-fast) var(--ease-out);
     }
@@ -248,7 +273,7 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
       gap: 2px;
       padding: 4px;
       background: var(--color-page-bg);
-      border: 1px solid var(--color-border-subtle);
+      border: 1px solid var(--color-card-border);
       border-radius: 12px;
     }
     .nav-link {
@@ -256,16 +281,17 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
       border-radius: 8px;
       font-size: 14px;
       font-weight: 500;
-      color: var(--color-label);
+      color: var(--color-text-secondary);
       text-decoration: none;
       transition: background-color var(--duration-fast) var(--ease-out),
         color var(--duration-fast) var(--ease-out);
     }
     .nav-link:hover {
-      color: var(--color-text);
+      color: var(--color-text-primary);
     }
     .nav-link.active {
-      color: var(--color-text);
+      color: var(--color-primary);
+      font-weight: 600;
       background: var(--color-surface);
       box-shadow: var(--shadow-xs);
     }
@@ -274,12 +300,12 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
       align-items: center;
       gap: 8px;
       max-width: 360px;
-      height: 38px;
+      height: 40px;
       padding: 0 14px;
-      background: var(--color-page-bg);
-      border: 1px solid var(--color-border-subtle);
+      background: var(--color-surface);
+      border: 1px solid var(--color-card-border);
       border-radius: 10px;
-      color: var(--color-muted);
+      color: var(--color-text-secondary);
       transition: border-color var(--duration-fast) var(--ease-out),
         box-shadow var(--duration-fast) var(--ease-out),
         background-color var(--duration-fast) var(--ease-out);
@@ -299,12 +325,76 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
       border: 0;
       background: transparent;
       font-size: 14px;
-      color: var(--color-text);
+      color: var(--color-text-primary);
       font-family: inherit;
       outline: none;
     }
     .search-input::placeholder {
       color: var(--color-muted);
+    }
+    /* Cmd+K shortcut hint inside the search input. Renders as a
+       small kbd chip at the right edge of the input so users
+       discover the keyboard shortcut without a tooltip. The actual
+       keyboard binding is wired via @HostListener('document:keydown')
+       in the component class — see onSearchShortcut. */
+    .search-shortcut {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 22px;
+      padding: 0 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      background: var(--color-page-bg);
+      border: 1px solid var(--color-card-border);
+      border-radius: 5px;
+      box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+      flex-shrink: 0;
+      pointer-events: none;
+    }
+    /* Notification bell trigger (WDS-2026). 36×36 icon button with
+       a small red dot in the top-right when there are unread
+       notifications. Click is currently a no-op (notification
+       panel is out of scope for the current slice) but the
+       affordance is present so the chrome is visually complete. */
+    .notification-trigger {
+      all: unset;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      cursor: pointer;
+      color: var(--color-text-soft);
+      transition:
+        background-color var(--duration-fast) var(--ease-out),
+        color var(--duration-fast) var(--ease-out);
+    }
+    .notification-trigger:hover {
+      background: var(--color-page-bg);
+      color: var(--color-text-primary);
+    }
+    .notification-trigger:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--color-primary-ring);
+    }
+    .notification-trigger svg {
+      display: block;
+    }
+    .notification-dot {
+      position: absolute;
+      top: 7px;
+      right: 7px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color-error);
+      border: 1.5px solid var(--color-surface);
+      box-shadow: 0 0 0 1px var(--color-error);
     }
     .chrome-search-spacer {
       /* empty center cell when search is hidden (user role) */
@@ -392,8 +482,21 @@ export class HeaderChromeComponent {
   readonly logoutDialogOpen = signal(false);
   readonly logoutError = signal<string | null>(null);
   readonly searchValue = signal('');
+  /**
+   * Notification bell unread state. Always true in this slice
+   * (the panel is out of scope) so the red dot is visible per the
+   * WDS-2026 mockup. Future work will subscribe to a real
+   * notifications feed.
+   */
+  readonly hasUnreadNotifications = signal(true);
+  readonly notificationLabel = computed(() =>
+    this.hasUnreadNotifications()
+      ? 'Notifications — you have unread notifications'
+      : 'Notifications',
+  );
 
   readonly trigger = viewChild<ElementRef<HTMLButtonElement>>('trigger');
+  readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   readonly canShowProfile = computed(() => this.user() !== null);
 
@@ -481,6 +584,31 @@ export class HeaderChromeComponent {
     });
   }
 
+  /**
+   * Notification bell click. The notification panel is out of
+   * scope for this slice; clicking dismisses the dot for
+   * immediate visual feedback (the red badge goes away) and is
+   * a no-op for navigation. When a real notifications surface
+   * ships, this becomes the panel-open trigger.
+   */
+  onNotificationClick(): void {
+    this.hasUnreadNotifications.set(false);
+  }
+
+  /**
+   * Focus the chrome search input. Used by the Cmd+K / Ctrl+K
+   * shortcut — wired via @HostListener('document:keydown') below.
+   * Safe no-op when the user role is logged in (the search input
+   * is hidden behind @if (canSearch()) so the viewChild is null).
+   */
+  focusSearchInput(): void {
+    const input = this.searchInput()?.nativeElement;
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }
+
   async confirmLogout(): Promise<void> {
     this.logoutError.set(null);
     try {
@@ -504,6 +632,32 @@ export class HeaderChromeComponent {
     } else if (this.dropdownOpen()) {
       this.dropdownOpen.set(false);
     }
+  }
+
+  /**
+   * WDS-2026: ⌘K / Ctrl+K focuses the chrome search input. The
+   * shortcut is universal across the app (any view, any role that
+   * has a search input) — that's why the listener is on document
+   * and not scoped to the form. We `preventDefault()` so the
+   * browser's default ⌘K (Chrome's address bar) doesn't fire on
+   * macOS. For the user role the search input is not rendered
+   * (canSearch() === false) so focusSearchInput() is a no-op.
+   *
+   * Skip the shortcut when the active element is a <textarea> —
+   * the ticket comment composer uses one, and stealing focus
+   * from a mid-edit composer would be jarring. We check
+   * `document.activeElement` rather than `event.target` because
+   * the target is the document body (we listen on `document`),
+   * not the element that's actually focused.
+   */
+  @HostListener('document:keydown', ['$event'])
+  onDocumentKeydown(event: KeyboardEvent): void {
+    const isMacK = (event.metaKey || event.ctrlKey) && (event.key === 'k' || event.key === 'K');
+    if (!isMacK) return;
+    const active = document.activeElement;
+    if (active && active.tagName === 'TEXTAREA') return;
+    event.preventDefault();
+    this.focusSearchInput();
   }
 
   @HostListener('document:click', ['$event'])

@@ -32,6 +32,32 @@
   --gradient-success: linear-gradient(135deg, #10B981 0%, #059669 100%);
   --gradient-warning: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
   --gradient-danger: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+
+  /* Premium admin-dashboard column-header tints (HD-redesign). Per-column
+     subtle gradient that mirrors the status semantic color without
+     being a saturated chip. Tints stay < 12% opacity over white. */
+  --column-open-header: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%);
+  --column-open-icon-bg: #EEF2FF;
+  --column-open-icon-fg: #4F46E5;
+  --column-inprogress-header: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+  --column-inprogress-icon-bg: #FEF3C7;
+  --column-inprogress-icon-fg: #B45309;
+  --column-resolved-header: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
+  --column-resolved-icon-bg: #D1FAE5;
+  --column-resolved-icon-fg: #047857;
+  --column-closed-header: linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%);
+  --column-closed-icon-bg: #E2E8F0;
+  --column-closed-icon-fg: #475569;
+
+  /* Admin-dashboard ticket card icon tints (subtle, per-status). */
+  --ticket-icon-bg-open: #EEF2FF;
+  --ticket-icon-fg-open: #4F46E5;
+  --ticket-icon-bg-inprogress: #FEF3C7;
+  --ticket-icon-fg-inprogress: #B45309;
+  --ticket-icon-bg-resolved: #D1FAE5;
+  --ticket-icon-fg-resolved: #047857;
+  --ticket-icon-bg-closed: #E2E8F0;
+  --ticket-icon-fg-closed: #64748B;
   --gradient-mesh: radial-gradient(at 27% 37%, hsla(252, 75%, 64%, 0.18) 0px, transparent 50%),
                    radial-gradient(at 97% 21%, hsla(295, 75%, 64%, 0.12) 0px, transparent 50%),
                    radial-gradient(at 52% 99%, hsla(354, 75%, 64%, 0.10) 0px, transparent 50%),
@@ -39,10 +65,13 @@
                    radial-gradient(at 97% 96%, hsla(38, 75%, 64%, 0.08) 0px, transparent 50%);
 
   /* ── Colors ─ surface ─────────────────────────────────────────── */
-  --color-page-bg: #F5F7FB;
+  --color-page-bg: #F6F7FB;
   --color-surface: #ffffff;
   --color-surface-subtle: #F8FAFC;
   --color-surface-muted: #EEF1F4;
+  --color-card-border: #E7EAF2;
+  --color-text-primary: #172033;
+  --color-text-secondary: #7B879B;
 
   /* ── Colors ─ text ────────────────────────────────────────────── */
   --color-text: #0F172A;            /* slate-900 — primary text */
@@ -324,10 +353,12 @@ a:hover {
 
 .page-content {
   flex: 1;
-  padding: 32px;
+  padding: 24px 32px 40px;
   max-width: var(--content-column-width);
   margin: 0 auto;
   width: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .placeholder-page {
@@ -545,36 +576,66 @@ a:hover {
   background: var(--color-kanban-invalid-drop);
 }
 
-/* ── Admin Dashboard cards (HD-013) ─────────────────────────────────
-   4 status summary cards in a single horizontal row (Open / In
-   Progress / Resolved / Closed). The page component owns the
-   card chrome (top zone, count, body, footer) and the per-page
-   skeleton; this block owns the row + card layout so the page
-   fits in the 2kB component-style soft budget. Mirrors the
-   HD-011 / HD-012 pattern of pushing the heaviest rules to
-   global.
-
-   Per design spec §Spacing: card width 320px (fixed), 4 cards
-   fit 1440px canvas with 16px gaps and 56px outer padding.
-   The page sits inside <app-chrome> which already has the 56px
-   outer padding baked in via .page-content, so the cards align
-   flush to the chrome. */
+/* ── Admin Dashboard cards (HD-013 + redesign) ──────────────────────
+   Four equal-width status columns (Open / In Progress / Resolved /
+   Closed) that stretch the full content width and align to a
+   single top baseline. Each column has a tinted header, a
+   scrollable ticket list, and a footer pinned to the bottom of
+   the column. Geometry owned here so the page component's
+   inline style budget stays under 2kB. Mirrors the HD-011 / HD-012
+   pattern of pushing the heaviest rules to global. */
 .card-row {
   display: grid;
-  grid-template-columns: repeat(4, 320px);
-  gap: 16px;
-  align-items: start;
-  justify-content: start;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  align-items: stretch;
+  width: 100%;
 }
+@media (max-width: 1200px) {
+  .card-row {
+    gap: 16px;
+  }
+}
+@media (max-width: 960px) {
+  .card-row {
+    /* Tablet: still 2x2 to keep status counts comparable; a
+       single-column stack would lose the Kanban-style read. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .card-row {
+    /* Mobile: horizontal scroll for a true Kanban feel. The page
+       wrapper holds the scroll, individual columns stay full-height. */
+    display: flex;
+    grid-template-columns: none;
+    gap: 14px;
+    overflow-x: auto;
+    overflow-y: visible;
+    padding-bottom: 8px;
+    margin: 0 -8px;
+    padding-left: 8px;
+    padding-right: 8px;
+    scroll-snap-type: x mandatory;
+  }
+  .card-row > .card,
+  .card-row > .card-skel {
+    min-width: 280px;
+    max-width: 320px;
+    flex: 0 0 320px;
+    scroll-snap-align: start;
+  }
+}
+
 .card-row > .card,
 .card-row > .card-skel {
   background: var(--color-surface);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-card-border);
   border-radius: 14px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  width: 320px;
+  min-width: 0;
   box-shadow: var(--shadow-card);
   transition:
     box-shadow var(--duration-base) var(--ease-out),
@@ -582,7 +643,6 @@ a:hover {
 }
 .card-row > .card:hover:not(.muted) {
   box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
 }
 .card-row > .card.muted {
   /* Closed card is muted everywhere; spec line: "Closed count is
@@ -590,15 +650,19 @@ a:hover {
   opacity: 0.78;
 }
 .card-row > .card > .card-top {
-  padding: 18px 18px 14px;
-  border-bottom: 1px solid var(--color-border-subtle);
-  background: linear-gradient(180deg, var(--color-surface) 0%, #FAFBFC 100%);
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid var(--color-card-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 .card-row > .card > .card-body {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   padding: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Status badge mini-pill in the admin card top zone is sized down
@@ -614,78 +678,311 @@ a:hover {
   border-radius: 9px;
 }
 
-/* Admin Dashboard card-body row (HD-013). Each row = mono number
- * (left) · title (center-left, 1-line clamp) · relative timestamp
- * (right). Open / In Progress / Resolved rows are <a> (hover tints
- * subtle, focus ring); Closed rows are <li> (muted, no hover, no
- * click). Geometry follows design spec §Spacing "row height 40px,
- * mono number 11px #868e96, title 13px #212529, timestamp 11px
- * #868e96". The page component owns the count + footer + skeleton;
- * this block owns the per-row geometry so the page component's
- * inline style budget stays under 2kB. */
+/* Column tinted header row (redesign). Replaces the old pill-zone
+   badge in the card top zone. Header is a single horizontal row:
+   leading icon chip · column title · count badge on the right. */
+.kanban-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 14px;
+}
+.kanban-column-header .leading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.kanban-column-header .icon-chip {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.kanban-column-header .icon-chip svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+.kanban-column-header .column-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kanban-column-header .count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+}
+.kanban-column-header .count-badge.muted-count {
+  color: var(--color-text-secondary);
+}
+
+/* Column header tint variant classes — applied at the .card level so
+   the header gradient, icon chip, and badge pick up the right hue
+   together. */
+.card-row > .card.tint-open {
+  --card-header-bg: var(--column-open-header);
+  --card-icon-bg: var(--column-open-icon-bg);
+  --card-icon-fg: var(--column-open-icon-fg);
+}
+.card-row > .card.tint-inprogress {
+  --card-header-bg: var(--column-inprogress-header);
+  --card-icon-bg: var(--column-inprogress-icon-bg);
+  --card-icon-fg: var(--column-inprogress-icon-fg);
+}
+.card-row > .card.tint-resolved {
+  --card-header-bg: var(--column-resolved-header);
+  --card-icon-bg: var(--column-resolved-icon-bg);
+  --card-icon-fg: var(--column-resolved-icon-fg);
+}
+.card-row > .card.tint-closed {
+  --card-header-bg: var(--column-closed-header);
+  --card-icon-bg: var(--column-closed-icon-bg);
+  --card-icon-fg: var(--column-closed-icon-fg);
+}
+.card-row > .card.tint-open .card-top,
+.card-row > .card.tint-inprogress .card-top,
+.card-row > .card.tint-resolved .card-top,
+.card-row > .card.tint-closed .card-top {
+  background: var(--card-header-bg);
+}
+.card-row > .card .icon-chip {
+  background: var(--card-icon-bg, var(--color-surface-muted));
+  color: var(--card-icon-fg, var(--color-text-secondary));
+}
+
+/* Status icon tint variants per ticket card body row. */
+.ticket-card-row .row-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.ticket-card-row .row-icon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+.ticket-card-row.tint-open .row-icon {
+  background: var(--ticket-icon-bg-open);
+  color: var(--ticket-icon-fg-open);
+}
+.ticket-card-row.tint-inprogress .row-icon {
+  background: var(--ticket-icon-bg-inprogress);
+  color: var(--ticket-icon-fg-inprogress);
+}
+.ticket-card-row.tint-resolved .row-icon {
+  background: var(--ticket-icon-bg-resolved);
+  color: var(--ticket-icon-fg-resolved);
+}
+.ticket-card-row.tint-closed .row-icon {
+  background: var(--ticket-icon-bg-closed);
+  color: var(--ticket-icon-fg-closed);
+}
+
+/* Admin Dashboard card-body row (HD-013 + redesign). Each row is a
+   compact three-line ticket card:
+      [ icon ]  HD-21                              11h ago
+                Printer on 3F keeps disconnecting
+                [High] [IT]
+   Open / In Progress / Resolved rows are <a> (hover tints subtle,
+   focus ring); Closed rows are <li> (muted, no hover, no click).
+   Geometry: ~78–84px tall, 32px icon chip, 12px gap. The new
+   `.row-content` wrapper owns a 3-line stack (line 1: number +
+   timestamp, line 2: title, line 3: priority + category pills). */
 .admin-card-row {
   display: grid;
-  grid-template-columns: 90px 1fr 80px;
-  align-items: center;
-  gap: 12px;
-  height: 40px;
-  padding: 0 12px;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: flex-start;
+  column-gap: 12px;
+  padding: 10px 12px;
   color: var(--color-label);
   text-decoration: none;
-  border-radius: 6px;
+  border-radius: 8px;
   transition:
     background-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.admin-card-row .row-icon {
+  grid-row: 1 / span 3;
+  align-self: flex-start;
+  margin-top: 1px;
+}
+.admin-card-row .row-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.admin-card-row .row-line-1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.admin-card-row .row-line-2 {
+  display: block;
+  min-width: 0;
+}
+.admin-card-row .row-line-3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.admin-card-row .number {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.4px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.admin-card-row .title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  line-height: 1.35;
+  display: block;
+}
+.admin-card-row .timestamp {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 a.admin-card-row:hover {
-  background: var(--color-primary-soft-tint, rgba(99, 102, 241, 0.06));
+  background: var(--color-surface-muted);
   text-decoration: none;
+}
+a.admin-card-row:hover .title {
+  color: var(--color-primary);
 }
 a.admin-card-row:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--color-primary-ring);
 }
 .admin-card-row.is-muted {
-  color: var(--color-muted);
   cursor: default;
+  opacity: 0.95;
 }
 .admin-card-row.is-muted .number,
 .admin-card-row.is-muted .title,
 .admin-card-row.is-muted .timestamp {
-  color: var(--color-muted);
-}
-.admin-card-row .number {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--color-muted);
-  letter-spacing: 0.5px;
-}
-.admin-card-row .title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-.admin-card-row .timestamp {
-  font-size: 11px;
-  color: var(--color-muted);
-  justify-self: end;
+  color: var(--color-text-secondary);
 }
 
-/* Admin Dashboard card-skel (HD-013). 4 placeholder cards render
- * during the loading state. Each skeleton has 4 grey bars
- * (pulsing). Geometry owned here so the page component budget
- * holds. */
+/* Compact pill style for priority + category badges inside the
+   ticket card row. The base atoms render at 22px; we override just
+   here so other callers (submission-confirmation, ticket-row) are
+   untouched. Matches the screenshot's "tight" pill in the new
+   column-card layout. */
+.ticket-card-row badge-priority .badge,
+.ticket-card-row badge-category .badge {
+  min-height: 20px;
+  padding: 0 8px;
+  font-size: 10px;
+  line-height: 20px;
+  border-radius: 999px;
+  letter-spacing: 0.01em;
+}
+
+/* Admin Dashboard card-skel (HD-013 + redesign). 4 placeholder
+   cards render during the loading state. Each skeleton mimics the
+   tinted header + 5 row placeholders. Geometry owned here so the
+   page component budget holds. */
 .card-row > .card-skel {
-  padding: 16px;
-  min-height: 720px;
+  padding: 0;
+  min-height: 540px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+.card-row > .card-skel .skel-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-card-border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--color-surface-muted);
+}
+.card-row > .card-skel .skel-header .skel-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.08);
+}
+.card-row > .card-skel .skel-header .skel-label {
+  flex: 1;
+  height: 14px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.08);
+  max-width: 70%;
+}
+.card-row > .card-skel .skel-header .skel-count {
+  width: 28px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+}
+.card-row > .card-skel .skel-rows {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.card-row > .card-skel .skel-row {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  align-items: center;
   gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+.card-row > .card-skel .skel-row .skel-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+}
+.card-row > .card-skel .skel-row .skel-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 .card-row > .card-skel .bar {
   background: linear-gradient(
@@ -695,19 +992,13 @@ a.admin-card-row:focus-visible {
     var(--color-surface-muted) 100%
   );
   background-size: 200% 100%;
-  border-radius: 6px;
+  border-radius: 4px;
   animation: admin-skel-shimmer 1400ms ease-in-out infinite;
-}
-.card-row > .card-skel .bar-top {
-  height: 22px;
-  width: 40%;
-}
-.card-row > .card-skel .bar-row {
-  height: 14px;
+  height: 10px;
   width: 100%;
 }
-.card-row > .card-skel .bar-row.short {
-  width: 60%;
+.card-row > .card-skel .bar.bar-narrow {
+  width: 40%;
 }
 @keyframes admin-skel-shimmer {
   0%   { background-position: 200% 0; }
@@ -720,27 +1011,219 @@ a.admin-card-row:focus-visible {
   }
 }
 
-/* Admin Dashboard page chrome (HD-013). The page header, tab
-   switcher, and per-card top / body / footer chrome are kept
+/* Admin Dashboard page chrome (HD-013 + redesign). The page header,
+   tab switcher, and per-card top / body / footer chrome are kept
    global so the page component's inline style budget holds under
    2kB. Mirrors the HD-011 / HD-012 pattern of pushing the heaviest
    rules to global. */
 .admin-page {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  /* Allow the kanban row to consume the available viewport
+     height when there is room (so columns stretch consistently). */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Filter strip (HD-WDS-2026 admin mockup). Sits between the page
+   header and the kanban row. Two regions: a wide search input on
+   the left + a row of dropdown selects on the right. The selects
+   are presentational (no backend filter logic yet) but render so
+   the page is visually complete. The strip is also rendered
+   inside the loading skeleton to keep the layout stable. */
+.filter-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.filter-strip-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 320px;
+  min-width: 220px;
+  max-width: 480px;
+  height: 40px;
+  padding: 0 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-card-border);
+  border-radius: 10px;
+  color: var(--color-text-secondary);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.filter-strip-search:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-primary-ring);
+}
+.filter-strip-search .search-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.filter-strip-search .filter-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  font-family: inherit;
+  outline: none;
+  padding: 0;
+}
+.filter-strip-search .filter-search-input::placeholder {
+  color: var(--color-muted);
+}
+.filter-strip-selects {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+.filter-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-card-border);
+  border-radius: 10px;
+  padding: 0 32px 0 14px;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.filter-select .filter-select-label {
+  position: relative;
+  z-index: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+.filter-select:hover {
+  border-color: var(--color-border-strong);
+}
+.filter-select:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-primary-ring);
+}
+/* Carat rendered via background-image so the native select can
+   stay focusable; the actual <select> is positioned to overlap
+   the visible label area. */
+.filter-select::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid var(--color-text-secondary);
+  border-bottom: 1.5px solid var(--color-text-secondary);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+.filter-select:hover::after {
+  border-color: var(--color-text-primary);
+}
+.filter-select .sort-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-secondary);
+  pointer-events: none;
+}
+.filter-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: transparent;
+  cursor: pointer;
+  padding: 0 32px 0 14px;
+  z-index: 2;
+}
+/* The native <option> dropdown menu must use the opaque text
+   color so the open menu reads correctly. The visible label is
+   painted on top of the select (z-index 1) by .filter-select-label
+   — the select stays transparent so the label shows through. */
+/* Restore visible text by inheriting transparent → visible via
+   `color: inherit` on the selected <option>. The <select> itself
+   stays transparent so the wrapper's text shows through. */
+.filter-select select option {
+  color: var(--color-text-primary);
+}
+.filter-sort {
+  padding-left: 38px;
+}
+.filter-sort select {
+  padding-left: 38px;
+}
+/* Skeleton variants — used inside the loading state. */
+.filter-strip .skel-bar {
+  height: 40px;
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-muted) 0%,
+    #F8FAFC 50%,
+    var(--color-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: 10px;
+  animation: admin-skel-shimmer 1400ms ease-in-out infinite;
+}
+.filter-strip .skel-pill {
+  width: 140px;
+  height: 40px;
+  border-radius: 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .filter-strip .skel-bar {
+    animation: none;
+    background: var(--color-surface-muted);
+  }
 }
 .admin-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
   gap: 24px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
 }
-.admin-header h1 {
+.admin-header .heading-block h1 {
   margin: 0;
   font-size: 28px;
   font-weight: 700;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.admin-header .heading-block .page-subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  max-width: 56ch;
 }
 /* Tab switcher — design spec §2: 14px semibold #212529 active
    with a 2px underline at y=124; inactive 14px regular #868e96,
@@ -750,7 +1233,7 @@ a.admin-card-row:focus-visible {
   gap: 4px;
   padding: 4px;
   background: var(--color-page-bg);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-card-border);
   border-radius: 12px;
 }
 .tab {
@@ -758,7 +1241,7 @@ a.admin-card-row:focus-visible {
   padding: 8px 16px;
   font-size: 14px;
   font-weight: 500;
-  color: var(--color-muted);
+  color: var(--color-text-secondary);
   text-decoration: none;
   border-radius: 8px;
   transition:
@@ -766,12 +1249,12 @@ a.admin-card-row:focus-visible {
     color var(--duration-fast) var(--ease-out);
 }
 .tab:hover {
-  color: var(--color-text);
+  color: var(--color-text-primary);
   text-decoration: none;
   background: var(--color-surface);
 }
 .tab.active {
-  color: var(--color-text);
+  color: var(--color-text-primary);
   font-weight: 600;
   background: var(--color-surface);
   box-shadow: var(--shadow-sm);
@@ -815,37 +1298,68 @@ a.admin-card-row:focus-visible {
 }
 .empty-marker {
   padding: 24px 12px;
-  color: var(--color-muted);
+  color: var(--color-text-secondary);
   font-size: 13px;
   text-align: center;
+  font-weight: 500;
 }
 .admin-card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.admin-card-top .count {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--color-primary);
-  line-height: 1;
-  letter-spacing: -0.02em;
-}
-.admin-card-top .count.muted-count {
-  color: var(--color-muted);
+  /* Header is now styled via .kanban-column-header; keep selector
+     for backwards compatibility in tests/queries. */
 }
 .admin-card-body {
   list-style: none;
   margin: 0;
-  padding: 4px 0;
+  padding: 6px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Custom scrollbar that lives inside the column body. Keeps
+     the column header above the fold even when many tickets
+     overflow. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+.admin-card-body::-webkit-scrollbar {
+  width: 6px;
+}
+.admin-card-body::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 6px;
+  border: none;
+}
+.admin-card-body::-webkit-scrollbar-track {
+  background: transparent;
 }
 .admin-card-footer {
-  padding: 10px 14px;
+  padding: 12px 16px;
   font-size: 12px;
-  color: var(--color-muted);
-  border-top: 1px solid var(--color-border-subtle);
-  background: var(--color-page-bg);
+  color: var(--color-text-secondary);
+  border-top: 1px solid var(--color-card-border);
+  background: var(--color-surface);
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.admin-card-footer .view-all {
+  color: var(--color-primary);
+  font-weight: 600;
+  font-size: 12px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+.admin-card-footer .view-all:hover {
+  color: var(--color-primary-deep);
+  text-decoration: none;
 }
 
 /* Users Tab page chrome (HD-014). The page header, table chrome,

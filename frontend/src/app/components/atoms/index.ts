@@ -39,6 +39,7 @@ export { SelectComponent } from './select/select.component';
 export type { SelectOption } from './select/select.component';
 export type { SelectPlaceholderOption } from './select/select.component';
 export { BadgePriorityComponent } from './badge-priority/badge-priority.component';
+export { BadgeCategoryComponent } from './badge-category/badge-category.component';
 export { BadgeRoleComponent } from './badge-role/badge-role.component';
 export { BadgeStatusComponent } from './badge-status/badge-status.component';
 export { CaretDownComponent } from './caret-down/caret-down.component';
