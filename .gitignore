@@ -74,3 +74,12 @@ postgres-data/
 .neon
 .neon/
 .vercel-neon.env
+
+# ── QA / Playwright debug scratch ────────────────────────────────
+# `.qa-tmp/` holds throwaway Playwright probe scripts, generated
+# fixture PNGs, and probe screenshots. Not part of the product.
+# `test-results/` (and the per-project `qa/test-results/`) are
+# Playwright's default output dirs.
+.qa-tmp/
+test-results/
+qa/test-results/
