@@ -64,7 +64,10 @@ Comment.init(
     tableName: 'comments',
     modelName: 'Comment',
     underscored: true,
-    timestamps: false,
+    // Auto-stamp createdAt on insert. Comments are immutable past
+    // MVP — no updatedAt column on the table.
+    timestamps: true,
+    updatedAt: false,
   },
 );
 

@@ -94,7 +94,10 @@ ActivityLog.init(
     tableName: 'activity_logs',
     modelName: 'ActivityLog',
     underscored: true,
-    timestamps: false,
+    // Auto-stamp createdAt on insert. updatedAt is excluded because
+    // the activity stream is append-only — no `updated_at` column.
+    timestamps: true,
+    updatedAt: false,
   },
 );
 

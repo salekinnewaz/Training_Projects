@@ -90,167 +90,204 @@ const PASSWORD_REQUIRED = 'Enter your password.';
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
                  stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 14a9 9 0 0 1 18 0v3a2 2 0 0 1-2 2h-1v-7h3" />
-              <path d="M3 14v3a2 2 0 0 0 2 2h1v-7H3" />
+              <path d="M4 14v-2a8 8 0 0 1 16 0v2" />
+              <path d="M4 14a2 2 0 0 1 2-2h1v8H6a2 2 0 0 1-2-2z" fill="currentColor" />
+              <path d="M20 14a2 2 0 0 0-2-2h-1v8h1a2 2 0 0 0 2-2z" fill="currentColor" />
             </svg>
           </span>
-          <span class="brand-wordmark">HelpDesk Lite</span>
+          <span class="brand-wordmark">Helpdesk Lite</span>
         </header>
 
-        <div class="marketing-content">
-          <h1 class="hero">
-            Support<br />
-            made <span class="hero-accent">simple.</span>
-          </h1>
-          <p class="hero-sub">
-            Create tickets, track your requests, and get<br />
-            help from the right people — all in one place.
-          </p>
+        <div class="marketing-scene">
+          <div class="marketing-content">
+            <h1 class="hero">
+              Support<br />made<br />
+              <span class="hero-accent">simple.</span>
+            </h1>
+            <p class="hero-sub">
+              Create tickets, track your requests, and get help from the
+              right people — all in one place.
+            </p>
 
-          <ul class="feature-list">
-            <li class="feature-row">
-              <span class="feature-icon feature-icon--bolt" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
-                     stroke="currentColor" stroke-width="2.2"
-                     stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                </svg>
-              </span>
-              <span class="feature-text">
-                <span class="feature-title">Quick ticket submission</span>
-                <span class="feature-sub">Get help in just a few clicks</span>
-              </span>
-            </li>
-            <li class="feature-row">
-              <span class="feature-icon feature-icon--chat" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
-                     stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7
-                           8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8
-                           8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48
-                           8.48 0 0 1 8 8v.5z" />
-                </svg>
-              </span>
-              <span class="feature-text">
-                <span class="feature-title">Track your requests</span>
-                <span class="feature-sub">Stay updated in real time</span>
-              </span>
-            </li>
-            <li class="feature-row">
-              <span class="feature-icon feature-icon--book" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
-                     stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-                  <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-                </svg>
-              </span>
-              <span class="feature-text">
-                <span class="feature-title">Find answers easily</span>
-                <span class="feature-sub">Explore our knowledge base</span>
-              </span>
-            </li>
-          </ul>
-        </div>
+            <ul class="feature-list">
+              <li class="feature-row">
+                <span class="feature-icon feature-icon--bolt" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                       stroke="currentColor" stroke-width="2.2"
+                       stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                  </svg>
+                </span>
+                <span class="feature-text">
+                  <span class="feature-title">Quick ticket submission</span>
+                  <span class="feature-sub">Get help in just a few clicks</span>
+                </span>
+              </li>
+              <li class="feature-row">
+                <span class="feature-icon feature-icon--chat" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                       stroke="currentColor" stroke-width="2"
+                       stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7
+                             8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8
+                             8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48
+                             8.48 0 0 1 8 8v.5z" />
+                  </svg>
+                </span>
+                <span class="feature-text">
+                  <span class="feature-title">Track your requests</span>
+                  <span class="feature-sub">Stay updated in real time</span>
+                </span>
+              </li>
+              <li class="feature-row">
+                <span class="feature-icon feature-icon--book" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                       stroke="currentColor" stroke-width="2"
+                       stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                  </svg>
+                </span>
+                <span class="feature-text">
+                  <span class="feature-title">Find answers easily</span>
+                  <span class="feature-sub">Explore our knowledge base</span>
+                </span>
+              </li>
+            </ul>
+          </div>
 
         <!--
-          Decorative illustration: an inline SVG that captures the
-          "person on a bean bag with floating chat bubbles" idea
-          from the wireframe. We don't ship a raster asset to keep
-          the bundle slim and the look crisp on any DPR.
+          Decorative illustration: a "person at a laptop on a bean
+          bag, with a potted plant and floating chat bubbles". The
+          composition fills the lower half of the marketing pane.
+          Hand-rolled SVG to keep the bundle slim and crisp on any
+          DPR.
         -->
         <div class="marketing-illustration" aria-hidden="true">
-          <svg viewBox="0 0 460 320" xmlns="http://www.w3.org/2000/svg"
-               width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+          <svg viewBox="0 0 720 540" xmlns="http://www.w3.org/2000/svg"
+               width="100%" height="100%" preserveAspectRatio="xMidYMax meet">
             <defs>
-              <linearGradient id="bgWave" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="#EEF2FF" stop-opacity="0.95" />
-                <stop offset="100%" stop-color="#F5F3FF" stop-opacity="0.9" />
-              </linearGradient>
               <linearGradient id="beanBag" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#6366F1" />
-                <stop offset="100%" stop-color="#4F46E5" />
+                <stop offset="0%" stop-color="#5B7CF5" />
+                <stop offset="100%" stop-color="#3B5BDB" />
+              </linearGradient>
+              <linearGradient id="beanBagDark" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#3B5BDB" />
+                <stop offset="100%" stop-color="#2E4AB8" />
               </linearGradient>
               <linearGradient id="shirt" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#7C8DFA" />
-                <stop offset="100%" stop-color="#6366F1" />
+                <stop offset="0%" stop-color="#4A6BF0" />
+                <stop offset="100%" stop-color="#3859D6" />
+              </linearGradient>
+              <linearGradient id="plantPot" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#E2E8F0" />
+                <stop offset="100%" stop-color="#CBD5E1" />
+              </linearGradient>
+              <linearGradient id="laptop" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#94A3B8" />
+                <stop offset="100%" stop-color="#64748B" />
               </linearGradient>
             </defs>
 
-            <!-- soft background blob -->
-            <ellipse cx="230" cy="180" rx="210" ry="120" fill="url(#bgWave)" />
+            <!-- large soft circular halo behind the person -->
+            <circle cx="380" cy="380" r="280" fill="#EEF4FF" opacity="0.7" />
 
-            <!-- plant on the left -->
-            <g transform="translate(36 188)">
-              <ellipse cx="20" cy="92" rx="22" ry="6" fill="#E2E8F0" />
-              <path d="M0 90 Q4 60 20 50 Q36 60 40 90 Z" fill="#E5E7EB" />
-              <path d="M10 60 Q-2 30 6 4 Q24 18 18 56 Z" fill="#34D399" />
-              <path d="M28 60 Q40 30 32 4 Q14 18 22 56 Z" fill="#10B981" />
-              <path d="M19 60 Q19 30 19 8" stroke="#065F46" stroke-width="1.5"
+            <!-- potted plant on the left -->
+            <g transform="translate(40 320)">
+              <path d="M30 130 L120 130 L108 200 L42 200 Z" fill="url(#plantPot)" />
+              <ellipse cx="75" cy="130" rx="45" ry="8" fill="#F1F5F9" />
+              <ellipse cx="75" cy="130" rx="42" ry="6" fill="#94A3B8" />
+              <path d="M75 130 Q30 50 18 -10 Q40 30 60 60 Q40 60 30 80 Q55 90 75 130 Z"
+                    fill="#10B981" />
+              <path d="M75 130 Q75 40 88 -10 Q90 50 80 100 Q100 100 120 110 Q90 130 75 130 Z"
+                    fill="#059669" />
+              <path d="M75 130 Q120 60 145 30 Q130 80 105 120 Q130 110 150 110 Q110 130 75 130 Z"
+                    fill="#10B981" />
+              <path d="M75 130 Q40 70 18 40 Q40 90 65 130 Z" fill="#34D399" />
+            </g>
+
+            <!-- bean bag (large, sweeping shape under them) -->
+            <ellipse cx="450" cy="490" rx="320" ry="60" fill="url(#beanBagDark)" opacity="0.4" />
+            <ellipse cx="450" cy="470" rx="290" ry="80" fill="url(#beanBag)" />
+            <ellipse cx="450" cy="450" rx="270" ry="60" fill="#5B7CF5" opacity="0.7" />
+            <ellipse cx="380" cy="440" rx="180" ry="22" fill="#A5B4FC" opacity="0.4" />
+
+            <!-- person sitting on the bean bag -->
+            <g transform="translate(310 200)">
+              <path d="M0 240 Q-10 260 30 290 L80 290 L80 200 Z" fill="#1E293B" />
+              <path d="M70 200 Q120 230 200 270 Q220 280 210 290 L90 290 Q70 270 70 240 Z" fill="#0F172A" />
+              <ellipse cx="215" cy="288" rx="22" ry="8" fill="#F8FAFC" />
+              <ellipse cx="218" cy="286" rx="14" ry="4" fill="#E2E8F0" />
+              <path d="M30 100 Q20 90 30 75 L120 75 Q160 80 170 110 L180 200 Q140 210 30 200 Z"
+                    fill="url(#shirt)" />
+              <path d="M70 75 Q90 88 120 75 L130 95 Q90 105 60 95 Z"
+                    fill="#3859D6" opacity="0.5" />
+              <path d="M30 100 Q-10 130 5 180 Q15 200 50 195 Q60 160 50 130 Z"
+                    fill="url(#shirt)" />
+              <path d="M170 110 Q200 140 195 180 Q190 200 155 200 Q145 160 155 130 Z"
+                    fill="#3859D6" />
+              <rect x="80" y="55" width="40" height="25" rx="6" fill="#F4D7B5" />
+              <circle cx="100" cy="35" r="32" fill="#F4D7B5" />
+              <path d="M70 32 Q70 0 100 0 Q135 0 135 35 Q132 22 122 18
+                       Q108 14 92 18 Q78 22 70 32 Z" fill="#1F2937" />
+              <ellipse cx="70" cy="36" rx="3" ry="5" fill="#E5C4A0" />
+              <circle cx="92" cy="38" r="2" fill="#1F2937" />
+              <path d="M88 48 Q92 52 100 50" stroke="#9A6B4A" stroke-width="1.5"
                     fill="none" stroke-linecap="round" />
-            </g>
-
-            <!-- bean bag / cushion -->
-            <ellipse cx="260" cy="240" rx="150" ry="44" fill="url(#beanBag)" />
-            <ellipse cx="260" cy="232" rx="150" ry="40" fill="#6366F1" />
-            <ellipse cx="260" cy="226" rx="135" ry="32" fill="#7C8DFA"
-                     opacity="0.55" />
-
-            <!-- person -->
-            <g transform="translate(180 92)">
-              <!-- head -->
-              <circle cx="40" cy="34" r="26" fill="#F4D7B5" />
-              <!-- hair -->
-              <path d="M14 32 Q14 6 40 6 Q66 6 66 32 Q66 22 56 20
-                       Q44 14 32 18 Q22 22 14 32 Z" fill="#1F2937" />
-              <!-- shirt / torso -->
-              <path d="M-6 70 Q-6 60 18 56 L62 56 Q86 60 86 70
-                       L82 138 L-2 138 Z" fill="url(#shirt)" />
-              <!-- arms -->
-              <path d="M-6 70 Q-14 96 -2 124 L18 122 L18 78 Z"
-                    fill="#7C8DFA" />
-              <path d="M86 70 Q94 96 82 124 L62 122 L62 78 Z"
-                    fill="#7C8DFA" />
-              <!-- pants -->
-              <path d="M0 138 L34 138 L34 210 L8 210 Z" fill="#1F2937" />
-              <path d="M34 138 L68 138 L74 210 L34 210 Z" fill="#111827" />
-              <!-- shoes -->
-              <ellipse cx="20" cy="214" rx="18" ry="6" fill="#F8FAFC" />
-              <ellipse cx="60" cy="214" rx="18" ry="6" fill="#F8FAFC" />
               <!-- laptop on lap -->
-              <rect x="14" y="116" width="56" height="36" rx="3"
-                    fill="#E2E8F0" />
-              <rect x="14" y="116" width="56" height="6" rx="2"
-                    fill="#CBD5E1" />
-              <rect x="22" y="124" width="40" height="22" rx="1"
-                    fill="#F8FAFC" />
+              <g transform="translate(40 145)">
+                <rect x="0" y="0" width="120" height="70" rx="4" fill="url(#laptop)" />
+                <rect x="4" y="4" width="112" height="62" rx="2" fill="#CBD5E1" />
+                <rect x="-6" y="68" width="132" height="6" rx="2" fill="#64748B" />
+                <rect x="-6" y="68" width="132" height="2" fill="#94A3B8" />
+              </g>
             </g>
 
-            <!-- chat bubbles -->
-            <g transform="translate(286 28)">
-              <rect x="0" y="0" width="62" height="42" rx="10" fill="#6366F1" />
-              <path d="M10 42 L14 50 L18 42 Z" fill="#6366F1" />
-              <rect x="10" y="14" width="42" height="3" rx="1.5" fill="#fff" opacity="0.95" />
-              <rect x="10" y="22" width="32" height="3" rx="1.5" fill="#fff" opacity="0.7" />
+            <!-- floating chat bubble (blue) -->
+            <g transform="translate(490 220)">
+              <rect x="0" y="0" width="120" height="78" rx="16" fill="#5B7CF5" />
+              <path d="M14 78 L20 92 L34 78 Z" fill="#5B7CF5" />
+              <rect x="18" y="22" width="84" height="6" rx="3" fill="#fff" opacity="0.95" />
+              <rect x="18" y="38" width="60" height="6" rx="3" fill="#fff" opacity="0.7" />
+              <rect x="18" y="54" width="72" height="6" rx="3" fill="#fff" opacity="0.5" />
             </g>
-            <g transform="translate(360 92)">
-              <circle cx="20" cy="20" r="20" fill="#A7F3D0" />
-              <path d="M12 20 l5 5 l11 -10" stroke="#047857" stroke-width="3"
+
+            <!-- browser window card (center top) -->
+            <g transform="translate(420 100)">
+              <rect x="0" y="0" width="110" height="78" rx="10" fill="#FFFFFF" />
+              <rect x="0" y="0" width="110" height="20" rx="10" fill="#F1F5F9" />
+              <circle cx="10" cy="10" r="3" fill="#EF4444" />
+              <circle cx="20" cy="10" r="3" fill="#F59E0B" />
+              <circle cx="30" cy="10" r="3" fill="#10B981" />
+              <rect x="8" y="32" width="94" height="6" rx="3" fill="#E2E8F0" />
+              <rect x="8" y="44" width="68" height="6" rx="3" fill="#E2E8F0" />
+              <rect x="8" y="56" width="78" height="6" rx="3" fill="#E2E8F0" />
+              <rect x="8" y="68" width="40" height="6" rx="3" fill="#5B7CF5" opacity="0.7" />
+            </g>
+
+            <!-- green check (success) -->
+            <g transform="translate(560 160)">
+              <circle cx="30" cy="30" r="28" fill="#A7F3D0" />
+              <path d="M16 30 L26 40 L44 22" stroke="#047857" stroke-width="5"
                     fill="none" stroke-linecap="round" stroke-linejoin="round" />
             </g>
-            <g transform="translate(338 152)">
-              <rect x="0" y="0" width="44" height="50" rx="6" fill="#C4B5FD" />
-              <rect x="6" y="6" width="32" height="3" rx="1.5" fill="#5B21B6" opacity="0.8" />
-              <rect x="6" y="14" width="22" height="3" rx="1.5" fill="#5B21B6" opacity="0.6" />
-              <rect x="6" y="22" width="28" height="3" rx="1.5" fill="#5B21B6" opacity="0.6" />
+
+            <!-- document/file card (purple) -->
+            <g transform="translate(580 320)">
+              <rect x="0" y="0" width="68" height="84" rx="8" fill="#C4B5FD" />
+              <path d="M0 0 L48 0 L68 20 L68 84 L0 84 Z" fill="#C4B5FD" />
+              <path d="M48 0 L48 20 L68 20 Z" fill="#A78BFA" />
+              <rect x="10" y="32" width="48" height="5" rx="2" fill="#5B21B6" opacity="0.7" />
+              <rect x="10" y="44" width="32" height="5" rx="2" fill="#5B21B6" opacity="0.5" />
+              <rect x="10" y="56" width="40" height="5" rx="2" fill="#5B21B6" opacity="0.5" />
             </g>
 
-            <!-- dashed orbit -->
-            <path d="M120 60 Q260 -10 410 80" stroke="#A5B4FC"
-                  stroke-width="2" stroke-dasharray="2 6" fill="none"
-                  stroke-linecap="round" />
+            <!-- dashed orbit connecting the floating elements -->
+            <path d="M340 150 Q420 80 540 130 Q620 180 600 280 Q580 380 580 380"
+                  stroke="#A5B4FC" stroke-width="2" stroke-dasharray="2 8"
+                  fill="none" stroke-linecap="round" opacity="0.6" />
           </svg>
+        </div>
         </div>
       </aside>
 
@@ -262,11 +299,12 @@ const PASSWORD_REQUIRED = 'Enter your password.';
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
                    stroke="currentColor" stroke-width="2"
                    stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 14a9 9 0 0 1 18 0v3a2 2 0 0 1-2 2h-1v-7h3" />
-                <path d="M3 14v3a2 2 0 0 0 2 2h1v-7H3" />
+                <path d="M4 14v-2a8 8 0 0 1 16 0v2" />
+                <path d="M4 14a2 2 0 0 1 2-2h1v8H6a2 2 0 0 1-2-2z" fill="currentColor" />
+                <path d="M20 14a2 2 0 0 0-2-2h-1v8h1a2 2 0 0 0 2-2z" fill="currentColor" />
               </svg>
             </span>
-            <span class="brand-wordmark">HelpDesk Lite</span>
+            <span class="brand-wordmark">Helpdesk Lite</span>
           </header>
 
           <h2 class="card-title">Welcome back</h2>
@@ -283,7 +321,6 @@ const PASSWORD_REQUIRED = 'Enter your password.';
               <form-field
                 id="login-email"
                 label="Email"
-                [required]="true"
                 [error]="emailFieldError()"
               >
                 <div class="input-wrap">
@@ -315,7 +352,6 @@ const PASSWORD_REQUIRED = 'Enter your password.';
               <form-field
                 id="login-password"
                 label="Password"
-                [required]="true"
                 [error]="passwordFieldError()"
               >
                 <div class="input-wrap">
@@ -332,7 +368,7 @@ const PASSWORD_REQUIRED = 'Enter your password.';
                     ariaDescribedBy="login-password-error"
                     (valueChange)="form.controls.password.setValue($event)"
                   />
-                  <span class="input-icon input-icon--left" aria-hidden="true">
+                  <span class="input-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
                          stroke="currentColor" stroke-width="2"
                          stroke-linecap="round" stroke-linejoin="round">
@@ -341,7 +377,6 @@ const PASSWORD_REQUIRED = 'Enter your password.';
                     </svg>
                   </span>
                   <atom-show-password-toggle
-                    class="password-toggle"
                     [pressed]="passwordVisible()"
                     [disabled]="submitting()"
                     (toggle)="togglePasswordVisibility()"
@@ -359,23 +394,10 @@ const PASSWORD_REQUIRED = 'Enter your password.';
                   [disabled]="submitting()"
                   (change)="onRememberMeChange($event)"
                 />
-                <span class="remember-check" aria-hidden="true">
-                  @if (rememberMe()) {
-                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none"
-                         stroke="currentColor" stroke-width="3"
-                         stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  }
-                </span>
-                <span class="remember-label">Remember me</span>
+                Remember me
               </label>
 
-              <a
-                class="forgot-link"
-                href="/forgot-password"
-                data-testid="forgot-password-link"
-              >Forgot password?</a>
+              <atom-link href="/forgot-password">Forgot password?</atom-link>
             </div>
 
             <atom-button
@@ -398,27 +420,6 @@ const PASSWORD_REQUIRED = 'Enter your password.';
                 }
               </span>
             </atom-button>
-
-            <div class="divider" role="separator" aria-label="Or continue with">
-              <span class="divider-line"></span>
-              <span class="divider-text">or continue with</span>
-              <span class="divider-line"></span>
-            </div>
-
-            <button
-              type="button"
-              class="sso-btn"
-              data-testid="sso-button"
-              [disabled]="submitting()"
-            >
-              <span class="sso-tile" aria-hidden="true">
-                <span class="sso-tile__quad sso-tile__quad--red"></span>
-                <span class="sso-tile__quad sso-tile__quad--green"></span>
-                <span class="sso-tile__quad sso-tile__quad--blue"></span>
-                <span class="sso-tile__quad sso-tile__quad--yellow"></span>
-              </span>
-              <span class="sso-label">Sign in with SSO</span>
-            </button>
           </form>
         </article>
       </main>
@@ -428,32 +429,36 @@ const PASSWORD_REQUIRED = 'Enter your password.';
     :host {
       display: block;
       min-height: 100vh;
-      background: var(--color-page-bg);
+      background:
+        radial-gradient(at 95% 8%, rgba(160, 202, 253, 0.55) 0px, transparent 45%),
+        radial-gradient(at 92% 50%, rgba(37, 99, 235, 0.10) 0px, transparent 50%),
+        linear-gradient(180deg, #FBFCFE 0%, #F4F8FE 100%);
     }
 
     .login-page {
       min-height: 100vh;
       display: grid;
-      grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-      background: var(--color-page-bg);
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+      align-items: stretch;
     }
 
     .marketing-pane {
       position: relative;
-      padding: 56px 72px 32px;
+      padding: 48px 56px 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      min-height: 100vh;
     }
     .marketing-brand {
       display: flex;
       align-items: center;
       gap: 12px;
-      z-index: 2;
+      z-index: 3;
     }
     .brand-mark {
-      width: 40px;
-      height: 40px;
+      width: 36px;
+      height: 36px;
       display: grid;
       place-items: center;
       background: var(--gradient-brand);
@@ -462,42 +467,57 @@ const PASSWORD_REQUIRED = 'Enter your password.';
       box-shadow: var(--shadow-button);
     }
     .brand-wordmark {
-      font-size: 18px;
+      font-size: 20px;
       font-weight: 700;
       color: var(--color-text);
       letter-spacing: -0.01em;
     }
 
+    /*
+     * marketing-scene: a relative-positioned wrapper that lets the
+     * illustration sit absolutely in the lower-right, overlapping
+     * the feature list, like the reference image. The content
+     * (hero + sub + feature list) lives in the upper-left and is
+     * raised above the illustration with z-index.
+     */
+    .marketing-scene {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      margin-top: 40px;
+    }
     .marketing-content {
-      margin-top: 64px;
+      position: relative;
       z-index: 2;
+      max-width: 460px;
     }
     .hero {
-      font-size: 56px;
+      font-size: 64px;
       line-height: 1.05;
-      font-weight: 700;
+      font-weight: 800;
       color: var(--color-text);
-      letter-spacing: -0.025em;
+      letter-spacing: -0.035em;
       margin: 0;
     }
     .hero-accent {
-      color: var(--color-primary);
+      color: #1A73FD;
     }
     .hero-sub {
-      margin: 24px 0 0;
-      font-size: 16px;
-      line-height: 1.6;
+      margin: 18px 0 0;
+      font-size: 18px;
+      line-height: 1.55;
       color: var(--color-text-soft);
-      max-width: 440px;
+      max-width: 380px;
     }
 
     .feature-list {
       list-style: none;
       padding: 0;
-      margin: 40px 0 0;
+      margin: 36px 0 0;
       display: flex;
       flex-direction: column;
-      gap: 18px;
+      gap: 14px;
+      max-width: 380px;
     }
     .feature-row {
       display: flex;
@@ -505,8 +525,8 @@ const PASSWORD_REQUIRED = 'Enter your password.';
       gap: 14px;
     }
     .feature-icon {
-      width: 36px;
-      height: 36px;
+      width: 40px;
+      height: 40px;
       border-radius: 10px;
       display: grid;
       place-items: center;
@@ -528,46 +548,56 @@ const PASSWORD_REQUIRED = 'Enter your password.';
       display: flex;
       flex-direction: column;
       gap: 2px;
+      min-width: 0;
     }
     .feature-title {
-      font-size: 15px;
+      font-size: 16px;
       font-weight: 600;
       color: var(--color-text);
+      letter-spacing: -0.005em;
+      line-height: 1.3;
     }
     .feature-sub {
-      font-size: 13px;
+      font-size: 14px;
+      line-height: 1.4;
       color: var(--color-text-soft);
     }
 
     .marketing-illustration {
-      margin-top: auto;
-      width: 100%;
-      max-width: 540px;
-      align-self: center;
+      position: absolute;
+      right: -120px;
+      bottom: -40px;
+      width: 80%;
+      max-width: 640px;
       pointer-events: none;
+      z-index: 1;
+      opacity: 0.95;
     }
 
     .signin-pane {
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 56px 32px;
+      padding: 48px 56px;
     }
     .signin-card {
       width: 100%;
-      max-width: 460px;
+      max-width: 540px;
       background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 20px;
-      box-shadow: 0 24px 48px -16px rgba(15, 23, 42, 0.08),
-                  0 4px 12px rgba(15, 23, 42, 0.04);
-      padding: 40px 40px 36px;
+      border: 1px solid #E8EEF8;
+      border-radius: 16px;
+      box-shadow:
+        0 24px 48px -24px rgba(26, 115, 253, 0.18),
+        0 8px 24px -8px rgba(15, 23, 42, 0.06);
+      padding: 44px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
     }
     .card-brand {
       display: flex;
       align-items: center;
       gap: 12px;
-      margin-bottom: 28px;
     }
     .card-title {
       font-size: 28px;
@@ -575,26 +605,30 @@ const PASSWORD_REQUIRED = 'Enter your password.';
       color: var(--color-text);
       letter-spacing: -0.02em;
       margin: 0;
+      line-height: 1.2;
     }
     .card-subtitle {
-      margin: 8px 0 0;
+      margin: 6px 0 0;
       font-size: 15px;
+      line-height: 1.5;
       color: var(--color-text-soft);
     }
 
     .signin-form {
-      margin-top: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
     }
 
     .fields {
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 18px;
     }
     .input-wrap {
       position: relative;
     }
-    .input-icon {
+    .input-wrap .input-icon {
       position: absolute;
       left: 14px;
       top: 50%;
@@ -603,148 +637,93 @@ const PASSWORD_REQUIRED = 'Enter your password.';
       display: grid;
       place-items: center;
       pointer-events: none;
+      z-index: 1;
     }
     .input-wrap atom-input {
       padding-left: 40px;
     }
-    .password-toggle {
+    .input-wrap atom-show-password-toggle::ng-deep .toggle {
       position: absolute;
-      right: 10px;
+      right: 6px;
       top: 50%;
       transform: translateY(-50%);
+      z-index: 1;
     }
 
     .form-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-top: 14px;
+      gap: 12px;
+      flex-wrap: wrap;
     }
     .remember {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       font-size: 14px;
       color: var(--color-text-soft);
       cursor: pointer;
       user-select: none;
+      line-height: 1;
     }
     .remember input[type="checkbox"] {
-      position: absolute;
-      opacity: 0;
-      pointer-events: none;
-    }
-    .remember-check {
       width: 18px;
       height: 18px;
-      border-radius: 5px;
-      border: 1.5px solid var(--color-border-strong);
-      background: var(--color-surface);
-      display: grid;
-      place-items: center;
-      color: #ffffff;
-      transition: background var(--duration-fast, 150ms) var(--ease-out, ease),
-                  border-color var(--duration-fast, 150ms) var(--ease-out, ease);
+      margin: 0;
+      accent-color: var(--color-primary);
+      cursor: pointer;
     }
-    .remember input[type="checkbox"]:checked + .remember-check {
-      background: var(--color-primary);
-      border-color: var(--color-primary);
+    .remember input[type="checkbox"]:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
     }
-    .remember input[type="checkbox"]:focus-visible + .remember-check {
-      box-shadow: 0 0 0 3px var(--color-primary-ring);
-    }
-    .remember input[type="checkbox"]:disabled + .remember-check {
-      opacity: 0.5;
-    }
-    .forgot-link {
-      color: var(--color-primary);
-      text-decoration: none;
-      font-size: 14px;
-      font-weight: 500;
-      transition: color var(--duration-fast, 150ms) var(--ease-out, ease);
-    }
-    .forgot-link:hover {
-      color: var(--color-primary-deep);
-      text-decoration: underline;
-    }
-
     form > atom-button {
       display: block;
       width: 100%;
-      margin-top: 20px;
+    }
+    /* Override the atom-button's solid primary fill with the blue
+       gradient from the reference image. */
+    form > atom-button::ng-deep button {
+      background: linear-gradient(90deg, #1A73FD 0%, #4F46E5 100%) !important;
+    }
+    form > atom-button::ng-deep button:hover:not(:disabled) {
+      background: linear-gradient(90deg, #1565E0 0%, #4338CA 100%) !important;
     }
     .signin-cta {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 8px;
     }
 
-    .divider {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin: 24px 0 16px;
-    }
-    .divider-line {
-      flex: 1;
-      height: 1px;
-      background: var(--color-border);
-    }
-    .divider-text {
-      font-size: 13px;
-      color: var(--color-muted);
-      white-space: nowrap;
-    }
+    /* ── Responsive ──────────────────────────────────────────── */
 
-    .sso-btn {
-      width: 100%;
-      height: 48px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: var(--button-radius);
-      color: var(--color-text);
-      font-family: inherit;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      box-shadow: var(--shadow-xs);
-      transition: background var(--duration-fast, 150ms) var(--ease-out, ease),
-                  border-color var(--duration-fast, 150ms) var(--ease-out, ease);
+    @media (max-width: 1180px) {
+      .login-page {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      }
+      .marketing-pane {
+        padding: 40px 40px 0;
+      }
+      .marketing-content {
+        max-width: none;
+      }
+      .hero {
+        font-size: 52px;
+      }
+      .hero-sub {
+        font-size: 16px;
+      }
+      .marketing-illustration {
+        right: -60px;
+        width: 75%;
+        max-width: 480px;
+      }
+      .signin-pane {
+        padding: 40px 32px;
+      }
     }
-    .sso-btn:hover:not(:disabled) {
-      background: var(--color-page-bg);
-      border-color: var(--color-border-strong);
-    }
-    .sso-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .sso-btn:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 4px var(--color-primary-ring);
-      border-color: var(--color-primary);
-    }
-    .sso-tile {
-      width: 18px;
-      height: 18px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: 1fr 1fr;
-      gap: 1.5px;
-      flex-shrink: 0;
-    }
-    .sso-tile__quad {
-      width: 100%;
-      height: 100%;
-    }
-    .sso-tile__quad--red { background: #F25022; }
-    .sso-tile__quad--green { background: #7FBA00; }
-    .sso-tile__quad--blue { background: #00A4EF; }
-    .sso-tile__quad--yellow { background: #FFB900; }
 
     @media (max-width: 960px) {
       .login-page {
@@ -757,10 +736,11 @@ const PASSWORD_REQUIRED = 'Enter your password.';
         padding: 40px 20px;
       }
     }
+
     @media (max-width: 520px) {
       .signin-card {
-        padding: 32px 24px 28px;
-        border-radius: 16px;
+        padding: 28px 24px;
+        gap: 20px;
       }
       .card-title {
         font-size: 24px;
@@ -800,13 +780,10 @@ export class LoginPageComponent implements AfterViewInit {
   private readonly passwordInput?: ElementRef<HTMLElement>;
 
   ngAfterViewInit(): void {
-    // Read & validate the optional ?return_to= deep-link target
-    // (added by authGuard). Must start with `/` and not contain `//`
-    // or `\\` — that combination rejects absolute URLs ("https://evil"),
-    // protocol-relative URLs ("//evil"), backslash-bypass attempts
-    // ("/\evil" — WHATWG URL parser normalizes `\` to `/`),
-    // and bare paths ("foo"). A bare `/` is also treated as null
-    // so a successful login doesn't bounce through the `''` redirect.
+    // Validate the optional ?return_to= deep-link target (set by
+    // authGuard). Rejects absolute/protocol-relative URLs, backslash
+    // bypasses, and bare `/` so a successful login doesn't bounce
+    // through the empty redirect.
     const raw = this.route.snapshot.queryParamMap.get('return_to') ?? '';
     const isSafeSpaPath =
       raw.startsWith('/') &&
@@ -816,32 +793,19 @@ export class LoginPageComponent implements AfterViewInit {
     if (isSafeSpaPath) {
       this.returnTo = raw;
     } else if (raw) {
-      // Open-redirect attempt or malformed value. Fall back to the
-      // role-correct home — logged in dev only, no UI noise so the
-      // user isn't tipped off about the protection in place.
       // eslint-disable-next-line no-console
       console.warn('[hd-006] rejected unsafe return_to:', raw);
       this.returnTo = null;
     }
 
-    // Auto-focus the email input on page load (UX spec).
-    // ViewChild is unresolved at construction time, but resolves
-    // after the first CD cycle — wrap in queueMicrotask so the
-    // host element is fully painted.
-    queueMicrotask(() => this.focusEmailInput());
+    // Auto-focus email on page load — queueMicrotask waits for the
+    // host to paint so the inner <input> querySelector resolves.
+    queueMicrotask(() => this.focusField(this.emailInput));
   }
 
-  private focusEmailInput(): void {
-    const host = this.emailInput?.nativeElement;
-    const inner: HTMLInputElement | null =
-      host?.querySelector('input') ?? null;
-    inner?.focus();
-  }
-
-  private focusPasswordInput(): void {
-    const host = this.passwordInput?.nativeElement;
-    const inner: HTMLInputElement | null =
-      host?.querySelector('input') ?? null;
+  private focusField(ref: ElementRef<HTMLElement> | undefined): void {
+    const host = ref?.nativeElement;
+    const inner: HTMLInputElement | null = host?.querySelector('input') ?? null;
     inner?.focus();
   }
 
@@ -888,9 +852,9 @@ export class LoginPageComponent implements AfterViewInit {
       // email when email is invalid, otherwise password.
       queueMicrotask(() => {
         if (emailInvalid) {
-          this.focusEmailInput();
+          this.focusField(this.emailInput);
         } else {
-          this.focusPasswordInput();
+          this.focusField(this.passwordInput);
         }
       });
       return;
@@ -945,8 +909,8 @@ export class LoginPageComponent implements AfterViewInit {
             this.passwordFieldError.set(GENERIC_ERROR);
           }
           queueMicrotask(() => {
-            if (target === 'email') this.focusEmailInput();
-            else this.focusPasswordInput();
+            if (target === 'email') this.focusField(this.emailInput);
+            else this.focusField(this.passwordInput);
           });
           return;
         }
@@ -977,9 +941,9 @@ export class LoginPageComponent implements AfterViewInit {
     // Restore focus to the most relevant field (UX spec: on 401
     // "email gains focus").
     if (err instanceof ApiError && err.errorCode === 'invalid_credentials') {
-      queueMicrotask(() => this.focusEmailInput());
+      queueMicrotask(() => this.focusField(this.emailInput));
     } else {
-      queueMicrotask(() => this.focusPasswordInput());
+      queueMicrotask(() => this.focusField(this.passwordInput));
     }
   }
 }

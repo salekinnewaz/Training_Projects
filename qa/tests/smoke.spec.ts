@@ -16,21 +16,25 @@ test.describe('Smoke', () => {
 
   test('login page renders the brand mark and both fields', async ({ page }) => {
     await page.goto('/login');
-    // Brand mark: the wordmark is the spec's authoritative anchor.
-    await expect(page.getByText('HelpDesk Lite', { exact: false })).toBeVisible();
+    // Wordmark is rendered twice (marketing pane + sign-in card);
+    // getByText matches the first occurrence.
+    await expect(
+      page.getByText('Helpdesk Lite', { exact: false }).first(),
+    ).toBeVisible();
     // The atom-input renders a real <input> nested inside the
     // <atom-input> host, and the host shares the same id. We
     // target the inner <input> explicitly to avoid the duplicate
     // id ambiguity and to be robust to label/host id collision.
     await expect(page.locator('input#login-email')).toBeVisible();
     await expect(page.locator('input#login-password')).toBeVisible();
-    // Wireframe §"Content & Actions" #6 — CTA label is "Log in".
-    await expect(page.getByRole('button', { name: 'Log in', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Sign in', exact: true }),
+    ).toBeVisible();
   });
 
   test('login button is disabled until both fields have content', async ({ page }) => {
     await page.goto('/login');
-    const button = page.getByRole('button', { name: 'Log in', exact: true });
+    const button = page.getByRole('button', { name: 'Sign in', exact: true });
     await expect(button).toBeDisabled();
     await page.locator('input#login-email').fill('admin@company.com');
     await expect(button).toBeDisabled();
@@ -44,16 +48,14 @@ test.describe('Smoke', () => {
     await expect(page).toHaveURL(/\/forgot-password/);
   });
 
-  test('login page has no marketing copy, remember-me, or register link', async ({ page }) => {
-    // Wireframe §"Content & Actions" explicitly forbids each of
-    // these — the page is a threshold, not a landing page. Any
-    // regression on these is an automatic fail.
+  test('login page has no SSO and no register link', async ({ page }) => {
+    // SSO is out of scope (self-removed) and self-registration is
+    // admin-provisioned; both are explicitly forbidden on /login.
     await page.goto('/login');
     const body = await page.locator('body').innerText();
-    expect(body).not.toMatch(/zero chaos/i);
-    expect(body).not.toMatch(/trello-style/i);
-    expect(body).not.toMatch(/remember me/i);
+    expect(body).not.toMatch(/sign in with sso/i);
     expect(body).not.toMatch(/don.?t have an account/i);
+    expect(await page.locator('a[href="/register"]').count()).toBe(0);
   });
 
   test('health endpoint responds 200', async ({ request }) => {

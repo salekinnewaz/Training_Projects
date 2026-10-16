@@ -14,7 +14,7 @@
 
 export const environment = {
   production: false,
-  apiBaseUrl: 'http://localhost:3000/api',
+  apiBaseUrl: 'http://127.0.0.1:3000/api',
 } as const;
 
 export type Environment = typeof environment;

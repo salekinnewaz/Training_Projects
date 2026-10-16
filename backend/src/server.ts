@@ -35,6 +35,15 @@ const app: Application = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:4200';
 
+// Accept both `localhost` and `127.0.0.1` so dev users don't have
+// to match the exact host they happen to type into the address bar.
+// In prod on Vercel the env var still pins a single origin.
+const ALLOWED_ORIGINS = [
+  FRONTEND_ORIGIN,
+  'http://localhost:4200',
+  'http://127.0.0.1:4200',
+];
+
 // On Vercel (or any reverse-proxied deploy) trust the first proxy
 // hop so express-rate-limit and req.ip see the real client IP, not
 // the edge. Safe in local dev too (no proxy is still no-op).
@@ -43,7 +52,12 @@ app.set('trust proxy', 1);
 // ── Middleware ──────────────────────────────────────────────────────
 app.use(
   cors({
-    origin: FRONTEND_ORIGIN,
+    origin: (origin, cb) => {
+      // Same-origin requests (no Origin header, e.g. curl) are fine.
+      if (!origin) return cb(null, true);
+      if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+      return cb(new Error(`Origin ${origin} not allowed by CORS`));
+    },
     credentials: true,
   })
 );

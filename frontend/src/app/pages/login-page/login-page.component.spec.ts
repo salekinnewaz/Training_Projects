@@ -105,34 +105,25 @@ describe('LoginPageComponent (D2)', () => {
     fixture.detectChanges();
 
     const root = fixture.nativeElement as HTMLElement;
-    // D-redesign: two .brand-mark instances (one in the marketing
-    // pane, one in the sign-in card) — both share the same wordmark.
+    // Two .brand-mark instances (one in the marketing pane, one
+    // in the sign-in card) — both share the same wordmark.
     const brandMarks = root.querySelectorAll('.brand-mark');
     expect(brandMarks.length).toBe(2);
-    expect(root.textContent).toContain('HelpDesk Lite');
+    expect(root.textContent).toContain('Helpdesk Lite');
   });
 
-  it('renders email + password form fields with required labels and a remember-me label', () => {
+  it('renders email + password form fields with labels and a remember-me label', () => {
     const fixture = TestBed.createComponent(LoginPageComponent);
     fixture.detectChanges();
 
     const root = fixture.nativeElement as HTMLElement;
     const labels = root.querySelectorAll('label');
-    // D-redesign: Email, Password, and Remember me.
+    // Email, Password, and Remember me — labels are plain
+    // (no required asterisk) per the reference design.
     const labelTexts = Array.from(labels).map((l) => l.textContent ?? '');
     expect(labelTexts.some((t) => t.includes('Email'))).toBeTrue();
     expect(labelTexts.some((t) => t.includes('Password'))).toBeTrue();
     expect(labelTexts.some((t) => t.includes('Remember me'))).toBeTrue();
-    // Email + Password use the form-field molecule which paints a *
-    // for required; Remember me does not.
-    const emailLabel = Array.from(labels).find((l) =>
-      (l.textContent ?? '').includes('Email'),
-    );
-    const pwdLabel = Array.from(labels).find((l) =>
-      (l.textContent ?? '').includes('Password'),
-    );
-    expect(emailLabel?.textContent).toContain('*');
-    expect(pwdLabel?.textContent).toContain('*');
   });
 
   it('disables the submit button when email or password is empty', () => {
@@ -491,12 +482,13 @@ describe('LoginPageComponent (D2)', () => {
     fixture.detectChanges();
 
     const link = fixture.nativeElement.querySelector(
-      'a.forgot-link[href="/forgot-password"]',
+      'atom-link a[href="/forgot-password"]',
     );
     expect(link).not.toBeNull();
+    expect(link.textContent.trim()).toBe('Forgot password?');
   });
 
-  it('renders a Remember me checkbox (D-redesign)', () => {
+  it('renders a Remember me checkbox', () => {
     const fixture = TestBed.createComponent(LoginPageComponent);
     fixture.detectChanges();
 
