@@ -19,6 +19,16 @@ The product brief calls this the **adoption meter** — the page Eli returns to 
 - **No team-wide visibility, no other employees' tickets, no Agent queue state, no admin data.** This is *Eli's* surface; if she's curious about Sam's work she doesn't see it here.
 - **Newest-first sort** is fixed. The page does not offer re-sort controls in MVP.
 - **Click target:** the entire row is clickable and routes to Ticket Detail. The Create Ticket button at top-right is the only other interactive element.
+- **Stat strip (added HD-020, restyled HD-021):** a horizontal strip of five cards between the header and the list summarising **Eli's own** tickets — Total · Open · In progress · Resolved · Closed. Sourced from `GET /api/tickets/stats/mine`, whose counters are filtered to the caller's own ticket IDs **in SQL**. This preserves the "no team-wide visibility" rule above: Eli sees her own counts and never learns the team's queue state. The strip is optional — if the stats request fails it is omitted and the list still renders.
+  - **Layout (HD-021):** one row, five cards, all **88px tall** but of **unequal width**. Measured against the reference screenshot the cards are **305 · 249 · 240 · 259 · 299px** — the Total card is the widest (it carries the label, the number, the delta pill *and* the caption) and Closed is second widest. The strip shares its width across five fractional grid tracks (`22.56fr 18.42fr 17.75fr 19.16fr 22.12fr`), 8px gap. Below 1180px the row collapses to three equal columns; below 760px, two.
+  - **Total card:** a lavender rounded-square tile (52×52, 14px radius, `#F0EAFE` fill) with a **solid** purple clipboard glyph (`#7433FE`), the label ("Total Tickets", 14px semibold) above the number (26px bold), a period-over-period delta pill top-right (green `#09C05B` on `#E1F9EE` when up, red `#D92D20` on `#FEE2E2` when down; hidden when there is no previous period to compare against), and a "vs last month" caption (15px, `#A7ACCC`) bottom-right. The pill and the caption stack in the same right-hand column.
+  - **Status cards:** a tinted square tile (52×52) holding a **solid 25px disc** in the status's accent colour — a plain disc for Open, a white play triangle for In progress, a white check for Resolved, a white × for Closed — with the label above the number, a 54px **sparkline** in the top-right corner, and an 8px-tall horizontal **progress bar** bottom-right. The bar's width is not fixed: its left edge is anchored at card+129 and its right edge 18px inside the card's border, so it spans the gap between them (the four bars measure 101 / 92 / 109 / 132px). The sparkline's **box** is 14px inside the card's right border — its *ink* comes out flush with the bar's track, but the boxes are 4px apart. The bar's filled portion is `value / total`, so the four bars together account for the whole row.
+  - **Label clearance:** each card's label is bounded on the right so it can never run under the card's right-hand visual — the sparkline on a status card (bound at card width − 91px, less 4px for the trailing letter-spacing) and the delta pill / caption aside on the Total card (card width − 135px). A label too long for its bound is ellipsised, never spilled.
+  - Labels and order: **Total Tickets** · **Open** · **In Progress** · **Resolved** · **Closed**.
+  - Accent colours are the strip's **own** palette, deliberately separate from the shared `--status-*-dot` family (which the Ticket Detail pills and Kanban columns also read): Total `#7433FE` · Open `#0674FE` · In progress `#FEAF11` · Resolved `#08D076` · Closed `#5D749D`. The sparklines use their own set again — Open `#6366F1` · In progress `#B4BEEB` (periwinkle, so the amber bar stays the card's only warm element) · Resolved `#02C878` · Closed `#87A0D0`.
+  - The sparkline is a **pale wash**, not a solid line: stroke opacity 0.34 over a gradient fill at 0.10, compounding to the reference's ~0.406 effective alpha.
+  - **Counts are the caller's own.** A User with 7 open tickets sees "7" on the Open card regardless of how many open tickets the team has.
+  - Built as the `stat-strip` molecule (`components/molecules/stat-strip/`), which supersedes the older `stat-card` molecule for this use case. The agent Tickets page (HD-019) and the Admin dashboard render the **same** molecule; only the data scope differs.
 
 ## Content & Actions
 
@@ -27,18 +37,30 @@ The page contains exactly these elements, in this order:
 1. **App-header chrome strip** — same shared strip as Ticket Detail / Create Ticket / Submission Confirmation.
 2. **Page heading "My Tickets"** — 24px semibold, `#212529`, top-left of page content.
 3. **"Create Ticket" primary button** — `#212529` fill, white 15px semibold label, 40px tall, 6px radius. Right-aligned in the page header row, horizontally aligned with the heading. Routes to `/tickets/new`.
-4. **List area** — 880px-wide content column, full row backgrounds (`#ffffff` with 1px `#dee2e6` bottom border), 64px tall per row.
+4. **Stat strip** (HD-020, restyled HD-021) — five cards in one row, between the header and the list.
+   - Labels and order: **Total Tickets** · **Open** · **In Progress** · **Resolved** · **Closed**.
+   - **Card geometry:** all five cards are **88px tall**; widths are **unequal** (305 · 249 · 240 · 259 · 299px in the reference), shared across five fractional tracks with an 8px gap. Three equal columns below 1180px, two below 760px.
+   - **Total card** (widest): a lavender rounded-square tile (52×52, 14px radius) with a **solid** purple clipboard glyph, the label above a bold number, a period-over-period delta pill top-right, and a "vs last month" caption bottom-right — pill and caption stacked in one right-hand column.
+   - **Status cards:** a tinted square tile (52×52) holding a **solid 25px disc** in the status accent colour, the label above a bold number, a 54px sparkline top-right and an 8px-tall progress bar bottom-right. The bar's width is not fixed — it is anchored at card+129 on the left and 18px inside the card's right border. Bar fill = `value / total`.
+   - Glyph per card (inline SVG, `currentColor`): clipboard (Total) · plain disc (Open) · disc with a white play triangle (In progress) · disc with a white check (Resolved) · disc with a white × (Closed).
+   - Accent colours are the strip's own palette, separate from the shared `--status-*-dot` family: Total `#7433FE` · Open `#0674FE` · In progress `#FEAF11` · Resolved `#08D076` · Closed `#5D749D`.
+   - The delta compares the caller's own tickets created in the last **30 days** against the **30 days** before that. It is hidden when there is no previous period to compare against — a misleading "+100%" is worse than no pill at all.
+   - Built as the `stat-strip` molecule (`components/molecules/stat-strip/`), which supersedes the older `stat-card` molecule for this use case. The agent Tickets page (HD-019) and the Admin dashboard render the **same** molecule; only the data scope differs.
+   - **Counts are the caller's own.** A User with 7 open tickets sees "7" on the Open card regardless of how many open tickets the team has.
+5. **List area** — 880px-wide content column, full row backgrounds (`#ffffff` with 1px `#dee2e6` bottom border), 64px tall per row.
    - Each row: ticket number (left, mono) · title · status badge · priority badge · last-updated timestamp (right-aligned).
    - Hover state: row background tints to `#f1f3f5` to confirm clickability.
    - Click anywhere on the row → routes to `/tickets/:id` (Ticket Detail).
-5. **Empty state card** (only rendered when Eli has zero tickets) — centered horizontally inside the content column, vertically positioned in the upper-third of the available list area (not pushed to the bottom — she should see it on first load, not have to scroll past a phantom "your list is empty" footer).
+6. **Empty state card** (only rendered when Eli has zero tickets) — centered horizontally inside the content column, vertically positioned in the upper-third of the available list area (not pushed to the bottom — she should see it on first load, not have to scroll past a phantom "your list is empty" footer).
    - Headline: "No tickets yet" — 20px semibold, `#212529`.
    - Caption: "When you file a request it'll appear here." — 14px, `#495057`.
    - CTA: `Create Ticket` — same primary button as the header (button label `#ffffff`, fill `#212529`, 6px radius, 48px tall — slightly taller than the header's 40px so the empty-state CTA is the most prominent affordance).
    - Vertically stacked: headline → caption (8px gap) → button (32px gap). Centered horizontally within the column.
-6. **"Load more" / pagination** — out of MVP. If Eli's queue grows past the visible window, the page is scrollable; she scrolls. The MVP team will not hit a pagination need.
+7. **"Load more" / pagination** — out of MVP. If Eli's queue grows past the visible window, the page is scrollable; she scrolls. The MVP team will not hit a pagination need.
 
-**No other content.** No welcome message. No "Did you know you can also Slack us?" anti-pattern. No summary stats ("3 open, 1 closed") — those would imply team-wide visibility. No calendar/date picker. No "Activity since you last logged in" panel.
+**No other content.** No welcome message. No "Did you know you can also Slack us?" anti-pattern. No calendar/date picker. No "Activity since you last logged in" panel.
+
+> **Amendment (HD-020).** This spec originally forbade summary stats outright: *"No summary stats ('3 open, 1 closed') — those would imply team-wide visibility."* The stat strip in item 4 supersedes that ban **only** in its user-scoped form. The concern the ban encoded was real: un-scoped counters would tell Eli about the team's queue. The HD-020 endpoint resolves that by filtering to the caller's own tickets server-side, so the strip answers "how is *my* request history doing?" without exposing anyone else's data. The team-wide `GET /api/tickets/stats` endpoint remains Support Agent + Admin only.
 
 ## Behavior
 
@@ -72,10 +94,11 @@ The page contains exactly these elements, in this order:
 
 | State | Trigger | Display |
 |---|---|---|
-| **Default (with tickets)** | Page loaded, Eli has ≥ 1 ticket | Heading + Create Ticket button + list area with rows. Newest-first. |
-| **Default (empty)** | Page loaded, Eli has 0 tickets | Heading + Create Ticket button (in header) + centered empty-state card. |
+| **Default (with tickets)** | Page loaded, Eli has ≥ 1 ticket | Heading + Create Ticket button + stat strip + list area with rows. Newest-first. |
+| **Default (empty)** | Page loaded, Eli has 0 tickets | Heading + Create Ticket button (in header) + centered empty-state card. The stat strip still renders, with every counter at 0. |
 | **Loading** | Initial fetch in flight | Skeleton: heading placeholder, button placeholder, 5 row skeletons (16px tall bars where content would be). No spinner overlay. |
 | **Server error** | Fetch fails (network / 5xx) | Inline error above the list area: "Couldn't load your tickets. Refresh to try again." Heading + Create Ticket still rendered. No list. |
+| **Stats unavailable** | The stats request fails but the ticket list succeeds | Stat strip omitted; heading + Create Ticket + list area render normally. The strip is supplementary — a stats failure never blanks the list. |
 | **Session expired** | Fetch returns 401 | Redirect to `/login?return_to=/dashboard`. After re-auth, Eli lands back here. |
 
 **Note on the wireframe:** the canonical frame is **Default (with tickets)** — the most common and the one that establishes the row layout. Empty state is documented; would render as a separate frame if needed.
@@ -99,6 +122,30 @@ Inherited from Login + Ticket Detail + Create Ticket. New tokens introduced on t
 | Type stack | `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` | All text |
 | Monospace stack | `ui-monospace, SFMono-Regular, Menlo, monospace` | Ticket number only |
 
+### Stat-strip tokens (HD-021)
+
+The strip introduces its **own** accent palette, deliberately separate from the shared `--status-*-dot` family — changing those would shift the Ticket Detail pills and the Kanban columns too. Every value is measured from the reference screenshot.
+
+| Token | Value | Where used |
+|---|---|---|
+| `--stat-accent-total` | `#7433FE` | Total card glyph |
+| `--stat-accent-open` | `#0674FE` | Open disc |
+| `--stat-accent-in-progress` | `#FEAF11` | In Progress disc |
+| `--stat-accent-resolved` | `#08D076` | Resolved disc |
+| `--stat-accent-closed` | `#5D749D` | Closed disc |
+| `--stat-tile-total` | `#F0EAFE` | Total card tile fill |
+| `--stat-tile-open` | `#EAF2FE` | Open card tile fill |
+| `--stat-tile-in-progress` | `#FEF4E0` | In Progress card tile fill |
+| `--stat-tile-resolved` | `#E1F9EE` | Resolved card tile fill |
+| `--stat-tile-closed` | `#EBEEF6` | Closed card tile fill |
+| `--stat-spark-open` | `#6366F1` | Open sparkline stroke |
+| `--stat-spark-in-progress` | `#B4BEEB` | In Progress sparkline stroke |
+| `--stat-spark-resolved` | `#02C878` | Resolved sparkline stroke |
+| `--stat-spark-closed` | `#87A0D0` | Closed sparkline stroke |
+| Delta up | text `#09C05B`, bg `#E1F9EE` | Delta pill, period up |
+| Delta down | text `#D92D20`, bg `#FEE2E2` | Delta pill, period down |
+| Caption | `#A7ACCC` | "vs last month" |
+
 | Spacing & geometry | Value | Notes |
 |---|---|---|
 | Page width | 1440 | Design canvas |
@@ -111,6 +158,32 @@ Inherited from Login + Ticket Detail + Create Ticket. New tokens introduced on t
 | Priority badge width | auto-fit | Same pill style |
 | Empty-state card width | 480px | Centered horizontally inside the content column |
 | Empty-state vertical position | ~y=300 | Upper-third of available list area (not bottom-pushed) |
+
+### Stat-strip geometry (HD-021)
+
+Measured against the reference screenshot; offsets are relative to each card's own left edge.
+
+| Element | Value | Notes |
+|---|---|---|
+| Strip card height | 88px | Every card, Total included |
+| Card widths | 305 · 249 · 240 · 259 · 299px | Unequal — Total widest, Closed second |
+| Card gap | 8px | Between adjacent cards (The reference's four gaps take 33px — 8.25 each) |
+| Breakpoints | 1180px → 3 columns · 760px → 2 columns | Equal columns at both |
+| Icon tile | 52×52, 14px radius | At card+18..70 |
+| Status disc | 25px (r 12.5 on a 30-unit viewBox) | Centred in the tile |
+| Label | Inter 600 at 14px, −0.5px tracking | At card+82; ink card+24..34 (11px cap height) |
+| Number | Inter 700 at 26px, −0.5px tracking | At card+82; ink card+47..65 (19px digit height) |
+| Sparkline | 54×26px | At card+176..230, top-right |
+| Progress bar | 8px tall, not fixed-width | Left edge at card+129, right edge 18px inside the card's border |
+| Sparkline / bar right edge | card width − 14px | Shared by both |
+| Label right bound (status) | card width − 91px | Stops short of the sparkline's box |
+| Label right bound (Total) | card width − 135px | Stops short of the delta pill / caption aside |
+| Value column | Fixed 44px wide, at card+81 | The widest the reference's own value column ever reaches; it keeps the number clear of the progress bar |
+| Sparkline stroke | 0.34 opacity | Over a 0.10 gradient fill → ~0.406 effective |
+| Delta pill | 15px bold, 999px radius | Top-right of the Total card |
+| Caption | 15px, `#A7ACCC` | Bottom-right, under the pill |
+
+**Content column:** the strip's five cards are sized as fractions of a **1384px** strip, which the global `--content-column-width` token (**1448px**) produces — the reference's strip plus the chrome's 64px of gutters. The token used to be overridden to 1408px on this page while the Agent's and Admin's pages used the global 1280px *plus* a second 32px padding layer, so their strips came out at 1152px and the "In Progress" label was clipped. The token is now raised globally and the page-local override removed, so **all three roles render the same 1384px strip** with cards pixel-identical to the reference (305 / 249 / 240 / 259 / 299px).
 
 ### Wireframe-anchored layout coordinates (y-positions on a 900px canvas)
 

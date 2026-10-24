@@ -8,6 +8,17 @@
  *                   only (HD-012 Agent Kanban). Returns
  *                   `{ tickets, count }` like /mine. No filter /
  *                   search params yet — HD-015 will add them.
+ *   GET  /stats  — summary counters + a 14-day daily-created
+ *                   series for the Tickets page stat strip
+ *                   (HD-019). Support Agent + Admin.
+ *   GET  /stats/mine — the same envelope, but scoped to the JWT'd
+ *                   user's OWN tickets (HD-020). Powers the
+ *                   Employee Dashboard stat strip without ever
+ *                   exposing team-wide queue state.
+ *   GET  /list   — list every ticket for Support Agent OR Admin
+ *                   (HD-019 Tickets list page). Same envelope as
+ *                   /queue but a wider role gate, so the Kanban's
+ *                   Agent-only contract stays intact.
  *   POST /        — create a new ticket on behalf of the JWT'd
  *                   user (HD-008). Body: {title, description,
  *                   category?, priority, attachmentId?}.
@@ -44,6 +55,7 @@ import { Router } from 'express';
 import {
   listMine,
   listForQueueHandler,
+  listAllHandler,
   create,
   getById,
   patch,
@@ -52,6 +64,8 @@ import {
   listActivityHandler,
   reopen,
   confirmClose,
+  stats,
+  statsMine,
 } from '../controllers/ticketsController';
 import { authMiddleware } from '../middleware/auth';
 
@@ -64,6 +78,22 @@ const ticketsRouter = Router();
 // order is technically moot, but the placement is the
 // convention every reader expects.
 ticketsRouter.get('/queue', authMiddleware, listForQueueHandler);
+ticketsRouter.get('/stats', authMiddleware, stats);
+// HD-020 — User-scoped stats. Same envelope as /stats above but
+// filtered to the caller's own tickets, so the Employee Dashboard's
+// stat strip can never leak team-wide queue state.
+//
+// Registered AFTER /stats but BEFORE /:id — "/stats/mine" is a
+// two-segment path, so it can never collide with the single-segment
+// "/stats" route or the "/:id" numeric route. Express matches
+// literal segments ahead of params regardless of order, but keeping
+// the static paths together reads better.
+ticketsRouter.get('/stats/mine', authMiddleware, statsMine);
+// HD-019 — Tickets list view. Both Support Agents and Admins
+// land here; User role gets the employee dashboard instead.
+// Static `/list` segment must precede `/:id` for the same
+// routing-collision reason as `/queue` above.
+ticketsRouter.get('/list', authMiddleware, listAllHandler);
 
 ticketsRouter.get('/mine', authMiddleware, listMine);
 ticketsRouter.post('/', authMiddleware, create);

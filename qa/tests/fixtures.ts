@@ -6,17 +6,17 @@ import { test as base, expect, Page } from '@playwright/test';
  * - `loginAs(page, who)` — types credentials, submits, waits
  *   for the resulting dashboard. `who` is one of: 'admin',
  *   'sam' (Support Agent), 'morgan' (Support Agent), 'eli'
- *   (Employee), 'jess' (Employee), 'noah' (Employee),
- *   'priya' (Employee). All seeded users share password
- *   `password123`.
+ *   (Support Agent since HD-019), 'jess' (Employee), 'noah'
+ *   (Employee), 'priya' (Employee). All seeded users share
+ *   password `password123`.
  * - `loginOrFail` — flip `expect.toHaveURL(...)` failures into
  *   useful diagnostics by attaching the response body to the
  *   error.
  *
- * Tests that need an Employee account pick `eli` (the wireframe
- * scenario persona). Tests that need an Agent pick `sam`. Tests
- * that need an Admin pick `admin`. Other seeded accounts exist
- * for coverage of "another agent" / "another employee" paths.
+ * Tests that need an Employee account pick `jess` (or any of the
+ * other Employee personas). Tests that need an Agent pick `sam`
+ * (or `eli`, the persona the user logs in as by hand). Tests that
+ * need an Admin pick `admin`.
  */
 
 type SeededUser =
@@ -43,9 +43,13 @@ const EMAILS: Record<SeededUser, string> = {
 /** Routes the given seeded user lands on after a successful login. */
 const ROLE_HOME: Record<SeededUser, RegExp | string> = {
   admin: /\/admin/,
-  sam: /\/queue/,
-  morgan: /\/queue/,
-  eli: /\/dashboard/,
+  // Agents — including Eli after the HD-019 seed update — land on
+  // the Tickets list page by default (the /queue Kanban board is
+  // still behind its own route for users who want the older view,
+  // but the agent *home* is now the new list page).
+  sam: /\/tickets/,
+  morgan: /\/tickets/,
+  eli: /\/tickets/,
   jess: /\/dashboard/,
   noah: /\/dashboard/,
   priya: /\/dashboard/,

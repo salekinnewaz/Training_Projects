@@ -24,6 +24,7 @@
 
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import {
   ActivatedRoute,
   Router,
@@ -177,7 +178,14 @@ async function bootstrap(queryParams: Record<string, string> = {}): Promise<Harn
     imports: [AgentKanbanPageComponent],
     providers: [
       provideRouter([]),
+      // HD-019: the chrome's bell bootstraps `NotificationsService` on
+      // mount, which fires a GET /notifications through whatever
+      // HttpClient is in the graph. The testing backend keeps that
+      // request in a pending queue instead of opening a real socket,
+      // which matters because the toast specs below run inside
+      // `fakeAsync` — zone.js refuses real XHRs there.
       provideHttpClient(),
+      provideHttpClientTesting(),
       { provide: TicketService, useValue: ticketService },
       { provide: UserService, useValue: userService },
       { provide: AuthService, useValue: authService },

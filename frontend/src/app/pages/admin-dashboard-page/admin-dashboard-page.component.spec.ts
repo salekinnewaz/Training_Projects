@@ -1,24 +1,24 @@
 /**
- * AdminDashboardPageComponent — HD-013.
+ * AdminDashboardPageComponent — HD-013 / WDS-2026.
  *
- * Verifies the Admin Dashboard tab:
- *   - 200 happy path: 4 cards rendered (Open / In Progress / Resolved /
- *     Closed) with the correct counts and rows.
- *   - Closed card is muted and rows do NOT navigate (no routerLink
- *     on the row markup).
- *   - Open / In Progress / Resolved rows navigate via routerLink to
- *     /tickets/:id.
- *   - Card footer "Showing N of M" renders only when total > rows.length.
- *   - Empty status: zero-row bucket renders "Nothing here." marker.
- *   - Loading state: 4 card skeletons render before the data arrives.
- *   - Server error (5xx): inline error message + Retry button.
- *   - 401 redirects (auth interceptor is the gate; we don't assert
- *     the navigation, just that the page doesn't render an error).
- *   - URL hash #users routes to /users (HD-014 placeholder).
- *   - formatRelative: produces "just now" / "Xm ago" / "Xh ago" /
- *     "Xd ago" / "Xmo ago" / "Xy ago".
- *   - linkHref: returns `/tickets/<id>`.
- *   - Window focus refetches when the page is in success state.
+ * Verifies the Admin Dashboard's Tickets tab, which now renders
+ * the SHARED ticket table — the same `<ticket-filter-bar>` and
+ * `<ticket-table>` the User's and the Agent's dashboards render.
+ *
+ * Coverage:
+ *   - The tab switcher (Tickets / Users), its ARIA wiring, and the
+ *     reactive heading.
+ *   - The Tickets tab renders the shared filter bar with its
+ *     search input, its four dropdowns, its sort control and the
+ *     purple "More filters" button.
+ *   - The shared table renders the ten reference columns and the
+ *     pagination footer ("Showing 1–10 of N tickets").
+ *   - Loading state, error state, Retry, and the 401 no-error rule.
+ *   - URL hash #users renders the HD-014 <app-users-tab-page>.
+ *
+ * The Kanban board that used to live here is gone — the WDS-2026
+ * reference layout replaced it with the shared table. Its coverage
+ * now lives in the shared components' own specs.
  */
 
 import { TestBed, ComponentFixture } from '@angular/core/testing';
@@ -28,8 +28,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { BehaviorSubject, type Observable } from 'rxjs';
 
 import { AdminDashboardPageComponent } from './admin-dashboard-page.component';
-import { TicketService } from '../../services/ticket.service';
-import type { AdminDashboardSummary } from '../../services/ticket.service';
+import { TicketService, type TicketStats } from '../../services/ticket.service';
 import { UserService } from '../../services/user.service';
 import { AuthService } from '../../services/auth.service';
 import { ApiError } from '../../services/api-error';
@@ -49,7 +48,7 @@ const baseUser: UserPublic = {
 
 function makeTicket(
   id: number,
-  status: Ticket['status'],
+  status: Ticket['status'] = 'Open',
   title = `Ticket ${id}`,
   daysAgo = 1,
 ): Ticket {
@@ -58,7 +57,7 @@ function makeTicket(
     id,
     number: `HD-${String(id).padStart(3, '0')}`,
     title,
-    description: 'desc',
+    description: `Description for ticket ${id}`,
     category: null,
     priority: 'Medium',
     status,
@@ -71,23 +70,21 @@ function makeTicket(
   };
 }
 
-function makeSummary(overrides: Partial<AdminDashboardSummary> = {}): AdminDashboardSummary {
-  return {
-    open: { rows: [makeTicket(1, 'Open'), makeTicket(2, 'Open')], total: 11 },
-    inProgress: { rows: [makeTicket(3, 'In Progress')], total: 5 },
-    resolved: { rows: [makeTicket(4, 'Resolved')], total: 4 },
-    closed: { rows: [makeTicket(5, 'Closed')], total: 3 },
-    ...overrides,
-  };
-}
-
-describe('AdminDashboardPageComponent (HD-013)', () => {
+describe('AdminDashboardPageComponent (HD-013 / WDS-2026)', () => {
   let fixture: ComponentFixture<AdminDashboardPageComponent>;
   let component: AdminDashboardPageComponent;
-  let ticketService: { adminDashboard: jasmine.Spy };
+  let ticketService: { listAll: jasmine.Spy; stats: jasmine.Spy };
 
   beforeEach(async () => {
-    ticketService = { adminDashboard: jasmine.createSpy('adminDashboard') };
+    ticketService = {
+      listAll: jasmine.createSpy('listAll'),
+      stats: jasmine.createSpy('stats'),
+    };
+    // The stat strip is OPTIONAL — it is fed by an independent
+    // read (GET /api/tickets/stats). The default here is a
+    // rejection so the strip is absent unless a test opts in, which
+    // keeps the pre-existing table assertions unaffected.
+    ticketService.stats.and.rejectWith(new Error('no stats stubbed'));
 
     await TestBed.configureTestingModule({
       imports: [AdminDashboardPageComponent],
@@ -106,234 +103,230 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
     component = fixture.componentInstance;
   });
 
-  it('renders 4 status column headers in success state (Open / In Progress / Resolved / Closed)', async () => {
-    ticketService.adminDashboard.and.resolveTo(makeSummary());
+  /** Resolve + settle, the standard "data has arrived" dance. */
+  async function settle(): Promise<void> {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+  }
+
+  it('renders the shared ticket table in success state', async () => {
+    ticketService.listAll.and.resolveTo([makeTicket(1), makeTicket(2)]);
+    await settle();
 
     expect(component.renderState()).toBe('success');
-    // The redesigned card has a tinted kanban-column-header per
-    // status. 4 column headers should be present in the row.
-    const headers = fixture.nativeElement.querySelectorAll('.card-row .card .kanban-column-header');
-    expect(headers.length).toBe(4);
-    const labels = Array.from(headers).map(
-      (h) => (h as HTMLElement).querySelector('.column-label')?.textContent?.trim(),
+    const table = fixture.nativeElement.querySelector('[data-testid="ticket-table"]');
+    expect(table).toBeTruthy();
+  });
+
+  it('renders the shared filter bar with the reference\'s five controls', async () => {
+    ticketService.listAll.and.resolveTo([makeTicket(1)]);
+    await settle();
+
+    const bar = fixture.nativeElement.querySelector('[data-testid="ticket-filter-bar"]');
+    expect(bar).toBeTruthy();
+
+    // The search input carries the reference's placeholder verbatim.
+    const search = bar.querySelector('[data-testid="ticket-filter-search"]');
+    expect(search.getAttribute('placeholder')).toBe(
+      'Search tickets by ID, title, or keyword...',
     );
-    expect(labels).toEqual(['Open', 'In Progress', 'Resolved', 'Closed']);
+
+    // customer / application / priority / assignee / sort.
+    const selects = bar.querySelectorAll('select');
+    expect(selects.length).toBe(5);
+
+    // The purple "More filters" button is present.
+    const more = bar.querySelector('[data-testid="ticket-filter-more"]');
+    expect(more).toBeTruthy();
+    expect(more.textContent.trim()).toBe('More filters');
   });
 
-  it('shows the right counts in each card top zone (count = bucket.total, not rows.length)', async () => {
-    // Per wireframe admin-dashboard.md §"Card top zone" the count
-    // badge is the bucket total (e.g. "11" for Open even though the
-    // card body only renders 2 rows + the "Showing 2 of 11" footer).
-    // Regressions to rows.length have been the silent failure mode
-    // here — pinning to the totals keeps the wireframe-anchored
-    // contract honest.
-    ticketService.adminDashboard.and.resolveTo(makeSummary());
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+  it('shows the reference\'s default dropdown labels', async () => {
+    ticketService.listAll.and.resolveTo([makeTicket(1)]);
+    await settle();
 
-    const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
-    expect(cards.length).toBe(4);
+    const labels = Array.from(
+      fixture.nativeElement.querySelectorAll('ticket-filter-bar .pill-label'),
+    ).map((el) => (el as HTMLElement).textContent?.trim());
+    expect(labels).toEqual([
+      'All customers',
+      'All applications',
+      'All priorities',
+      'All assignees',
+      'Newest first',
+    ]);
+  });
 
-    const counts = Array.from(cards).map(
-      (card) => (card as HTMLElement).querySelector('.count-badge')?.textContent?.trim(),
+  it('renders the reference\'s table columns', async () => {
+    ticketService.listAll.and.resolveTo([makeTicket(1)]);
+    await settle();
+
+    const headers = Array.from(
+      fixture.nativeElement.querySelectorAll('[data-testid="ticket-table"] thead th'),
+    ).map((el) => (el as HTMLElement).textContent?.trim());
+    // The checkbox, category and actions headers are icon-only and
+    // carry sr-only text — the visible labels are the six the
+    // reference prints.
+    expect(headers).toContain('ID');
+    expect(headers).toContain('Title');
+    expect(headers).toContain('Status');
+    expect(headers).toContain('Priority');
+    expect(headers).toContain('Customer');
+    expect(headers).toContain('Assignee');
+    expect(headers).toContain('Updated');
+  });
+
+  it('renders the pagination footer with the reference\'s copy', async () => {
+    ticketService.listAll.and.resolveTo([
+      makeTicket(1), makeTicket(2), makeTicket(3),
+    ]);
+    await settle();
+
+    const summary = fixture.nativeElement.querySelector(
+      '[data-testid="ticket-table-summary"]',
     );
-    expect(counts).toEqual(['11', '5', '4', '3']);
-  });
+    expect(summary.textContent.trim()).toBe('Showing 1–3 of 3 tickets');
 
-  it('renders Closed card with the muted class and no routerLink on Closed rows', async () => {
-    ticketService.adminDashboard.and.resolveTo(makeSummary());
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    const closedCard = fixture.nativeElement.querySelectorAll('.card-row .card')[3];
-    expect(closedCard.classList.contains('muted')).toBe(true);
-
-    // Closed card's body should NOT contain any `<a class="admin-card-row">` (no
-    // clickable navigation); it uses muted <li> rows instead.
-    const closedRows = closedCard.querySelectorAll('a.admin-card-row');
-    expect(closedRows.length).toBe(0);
-    const closedMutedRows = closedCard.querySelectorAll('.is-muted');
-    expect(closedMutedRows.length).toBeGreaterThan(0);
-  });
-
-  it('renders Open rows with routerLink to /tickets/<id>', async () => {
-    ticketService.adminDashboard.and.resolveTo(makeSummary());
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    const openCard = fixture.nativeElement.querySelectorAll('.card-row .card')[0];
-    const openRows = openCard.querySelectorAll('a.admin-card-row');
-    expect(openRows.length).toBeGreaterThan(0);
-    const href = openRows[0].getAttribute('href');
-    // RouterTestingModule strips the leading slash in some versions;
-    // accept either with or without leading slash.
-    expect(href === '/tickets/1' || href === 'tickets/1').toBe(true);
-  });
-
-  it('renders "Showing N of M" footer when total exceeds rendered rows', async () => {
-    // Open has 2 rows but total 11 → footer renders.
-    ticketService.adminDashboard.and.resolveTo(makeSummary());
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
-    const openFooter = cards[0].querySelector('.admin-card-footer');
-    expect(openFooter).toBeTruthy();
-    // The footer now contains both the "Showing N of M" copy and a
-    // "View all" deep link. We assert both pieces independently so
-    // accidental formatting drift doesn't break the contract.
-    expect(openFooter.textContent).toContain('Showing 2 of 11');
-    const viewAll = openFooter.querySelector('.view-all');
-    expect(viewAll).toBeTruthy();
-    // RouterLink encodes the query string; accept the encoded form.
-    expect(viewAll.getAttribute('href'))
-      .toMatch(/^\/queue(\?|%3F)status(%3D|=)/);
-  });
-
-  it('hides the "Showing N of M" footer when total === rows.length', async () => {
-    ticketService.adminDashboard.and.resolveTo(
-      makeSummary({
-        open: { rows: [makeTicket(1, 'Open')], total: 1 },
-        inProgress: { rows: [], total: 0 },
-        resolved: { rows: [], total: 0 },
-        closed: { rows: [], total: 0 },
-      }),
+    // The page-size picker offers "10 / page" and the numbered
+    // pagination renders.
+    const size = fixture.nativeElement.querySelector(
+      '[data-testid="ticket-table-page-size"]',
     );
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
-    // Open: 1 row, total 1 → no footer.
-    const openFooter = cards[0].querySelector('.admin-card-footer');
-    expect(openFooter).toBeNull();
-    // In Progress: 0 rows, total 0 → no footer.
-    const ipFooter = cards[1].querySelector('.admin-card-footer');
-    expect(ipFooter).toBeNull();
-  });
-
-  it('renders the empty-state marker when a bucket has zero rows', async () => {
-    ticketService.adminDashboard.and.resolveTo(
-      makeSummary({
-        open: { rows: [], total: 0 },
-        inProgress: { rows: [], total: 0 },
-        resolved: { rows: [], total: 0 },
-        closed: { rows: [], total: 0 },
-      }),
+    expect(size).toBeTruthy();
+    const options = Array.from(size.querySelectorAll('option')).map((o) =>
+      (o as HTMLOptionElement).textContent?.trim(),
     );
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    const emptyMarkers = fixture.nativeElement.querySelectorAll('.empty-marker');
-    expect(emptyMarkers.length).toBe(4);
-    expect(emptyMarkers[0].textContent.trim()).toBe('Nothing here.');
+    expect(options).toEqual(['10 / page', '25 / page', '50 / page']);
   });
 
-  it('renders 4 card skeletons during the loading state', async () => {
-    // Never resolve — leave the component in loading state.
-    let resolveFn!: (s: AdminDashboardSummary) => void;
-    ticketService.adminDashboard.and.returnValue(
-      new Promise<AdminDashboardSummary>((r) => { resolveFn = r; }),
+  it('renders the row\'s ticket number, title and description', async () => {
+    ticketService.listAll.and.resolveTo([
+      makeTicket(7, 'Open', 'VPN disconnects nightly'),
+    ]);
+    await settle();
+
+    const row = fixture.nativeElement.querySelector(
+      '[data-testid="ticket-table"] tbody tr',
+    );
+    expect(row.querySelector('.number').textContent.trim()).toBe('HD-007');
+    expect(row.querySelector('.title').textContent.trim()).toBe('VPN disconnects nightly');
+    expect(row.querySelector('.desc').textContent.trim()).toBe(
+      'Description for ticket 7',
+    );
+  });
+
+  it('renders the status and priority pills inside a row', async () => {
+    ticketService.listAll.and.resolveTo([makeTicket(1, 'In Progress')]);
+    await settle();
+
+    const row = fixture.nativeElement.querySelector(
+      '[data-testid="ticket-table"] tbody tr',
+    );
+    expect(row.querySelector('badge-status')).toBeTruthy();
+    expect(row.querySelector('badge-status').textContent.trim()).toBe('In Progress');
+    expect(row.querySelector('badge-priority').textContent.trim()).toBe('Medium');
+  });
+
+  it('renders the category icon for every row', async () => {
+    ticketService.listAll.and.resolveTo([makeTicket(1)]);
+    await settle();
+
+    const row = fixture.nativeElement.querySelector(
+      '[data-testid="ticket-table"] tbody tr',
+    );
+    expect(row.querySelector('ticket-category-icon')).toBeTruthy();
+  });
+
+  it('shows "Unassigned" when the ticket has no owner', async () => {
+    ticketService.listAll.and.resolveTo([makeTicket(1)]);
+    await settle();
+
+    const row = fixture.nativeElement.querySelector(
+      '[data-testid="ticket-table"] tbody tr',
+    );
+    expect(row.querySelector('.person-empty').textContent.trim()).toBe('Unassigned');
+  });
+
+  it('renders a loading skeleton before the data arrives', async () => {
+    let resolveFn!: (t: Ticket[]) => void;
+    ticketService.listAll.and.returnValue(
+      new Promise<Ticket[]>((r) => { resolveFn = r; }),
     );
     fixture.detectChanges();
     fixture.detectChanges();
 
     expect(component.renderState()).toBe('loading');
-    const skeletons = fixture.nativeElement.querySelectorAll('.card-row .card-skel');
-    expect(skeletons.length).toBe(4);
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="admin-table-skeleton"]'),
+    ).toBeTruthy();
 
-    // Resolve to clean up the pending promise.
-    resolveFn(makeSummary());
+    resolveFn([makeTicket(1)]);
   });
 
   it('shows inline error + Retry button on server error', async () => {
-    ticketService.adminDashboard.and.rejectWith(
+    ticketService.listAll.and.rejectWith(
       new ApiError(500, 'internal_server_error', 'boom'),
     );
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await settle();
 
     expect(component.renderState()).toBe('error');
     const errorCard = fixture.nativeElement.querySelector('.admin-error-card');
     expect(errorCard).toBeTruthy();
-    const errorMsg = errorCard.querySelector('.error-message');
-    expect(errorMsg.textContent.trim()).toBe(
+    expect(errorCard.querySelector('.error-message').textContent.trim()).toBe(
       "Couldn't load the queue. Refresh to try again.",
     );
-    const retryBtn = errorCard.querySelector('atom-button');
-    expect(retryBtn).toBeTruthy();
+    expect(errorCard.querySelector('atom-button')).toBeTruthy();
   });
 
   it('does not show the error card on a 401 (auth interceptor redirects)', async () => {
-    ticketService.adminDashboard.and.rejectWith(
+    ticketService.listAll.and.rejectWith(
       new ApiError(401, 'unauthenticated', 'expired'),
     );
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await settle();
 
     expect(component.renderState()).not.toBe('error');
   });
 
   it('Retry button refetches the dashboard', async () => {
     let callCount = 0;
-    ticketService.adminDashboard.and.callFake(() => {
+    ticketService.listAll.and.callFake(() => {
       callCount++;
       if (callCount === 1) {
         return Promise.reject(new ApiError(500, 'internal_server_error', 'boom'));
       }
-      return Promise.resolve(makeSummary());
+      return Promise.resolve([makeTicket(1)]);
     });
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await settle();
     expect(component.renderState()).toBe('error');
 
     component.onRefresh();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await settle();
 
     expect(component.renderState()).toBe('success');
-    expect(ticketService.adminDashboard).toHaveBeenCalledTimes(2);
+    expect(ticketService.listAll).toHaveBeenCalledTimes(2);
   });
 
   it('reactive heading reflects the active tab on initial load (Tickets)', async () => {
-    ticketService.adminDashboard.and.resolveTo(makeSummary());
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    ticketService.listAll.and.resolveTo([makeTicket(1)]);
+    await settle();
 
     const h1 = fixture.nativeElement.querySelector('h1');
     expect(h1?.textContent?.trim()).toBe('Tickets');
   });
 
   it('renders the tablist with role="tablist" and two role="tab" anchors', async () => {
-    ticketService.adminDashboard.and.resolveTo(makeSummary());
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    ticketService.listAll.and.resolveTo([makeTicket(1)]);
+    await settle();
 
     const compiled = fixture.nativeElement as HTMLElement;
-    const tablist = compiled.querySelector('.tabs[role="tablist"]');
-    expect(tablist).toBeTruthy();
-    const tabs = compiled.querySelectorAll('.tab[role="tab"]');
-    expect(tabs.length).toBe(2);
+    expect(compiled.querySelector('.tabs[role="tablist"]')).toBeTruthy();
+    expect(compiled.querySelectorAll('.tab[role="tab"]').length).toBe(2);
   });
 
   it('marks the active tab with aria-selected="true" and the inactive with aria-selected="false"', async () => {
-    ticketService.adminDashboard.and.resolveTo(makeSummary());
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    ticketService.listAll.and.resolveTo([makeTicket(1)]);
+    await settle();
 
     const tabs = fixture.nativeElement.querySelectorAll('.tab[role="tab"]') as NodeListOf<HTMLAnchorElement>;
     const ticketsTab = Array.from(tabs).find((t) => t.textContent?.trim() === 'Tickets')!;
@@ -342,322 +335,243 @@ describe('AdminDashboardPageComponent (HD-013)', () => {
     expect(usersTab.getAttribute('aria-selected')).toBe('false');
   });
 
-  describe('formatRelative', () => {
-    it('produces "just now" for < 60 seconds', () => {
-      const iso = new Date(Date.now() - 5_000).toISOString();
-      expect(component.formatRelative(iso)).toBe('just now');
-    });
-    it('produces "Xm ago" for minutes', () => {
-      const iso = new Date(Date.now() - 5 * 60_000).toISOString();
-      expect(component.formatRelative(iso)).toBe('5m ago');
-    });
-    it('produces "Xh ago" for hours', () => {
-      const iso = new Date(Date.now() - 3 * 60 * 60_000).toISOString();
-      expect(component.formatRelative(iso)).toBe('3h ago');
-    });
-    it('produces "Xd ago" for days', () => {
-      const iso = new Date(Date.now() - 2 * 24 * 60 * 60_000).toISOString();
-      expect(component.formatRelative(iso)).toBe('2d ago');
-    });
-    it('produces "Xmo ago" for months', () => {
-      const iso = new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString();
-      expect(component.formatRelative(iso)).toBe('1mo ago');
-    });
-    it('produces "Xy ago" for years', () => {
-      const iso = new Date(Date.now() - 400 * 24 * 60 * 60_000).toISOString();
-      expect(component.formatRelative(iso)).toBe('1y ago');
-    });
-    it('returns empty string on NaN', () => {
-      expect(component.formatRelative('not-a-date')).toBe('');
-    });
-  });
+  it('renders the redesigned page subtitle below the heading', async () => {
+    ticketService.listAll.and.resolveTo([makeTicket(1)]);
+    await settle();
 
-  it('linkHref returns /tickets/<id>', () => {
-    expect(component.linkHref(42)).toBe('/tickets/42');
+    const subtitle = fixture.nativeElement.querySelector('.page-subtitle');
+    expect(subtitle?.textContent?.trim()).toBe(
+      'Monitor and manage all support tickets across different stages.',
+    );
   });
 
   it('window:focus refetches when in success state', async () => {
-    ticketService.adminDashboard.and.resolveTo(makeSummary());
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    ticketService.listAll.and.resolveTo([makeTicket(1)]);
+    await settle();
 
     expect(component.renderState()).toBe('success');
-    expect(ticketService.adminDashboard).toHaveBeenCalledTimes(1);
+    expect(ticketService.listAll).toHaveBeenCalledTimes(1);
 
     component.onWindowFocus();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await settle();
 
-    expect(ticketService.adminDashboard).toHaveBeenCalledTimes(2);
+    expect(ticketService.listAll).toHaveBeenCalledTimes(2);
   });
 
   it('window:focus does NOT refetch when in loading state', async () => {
-    let resolveFn!: (s: AdminDashboardSummary) => void;
-    ticketService.adminDashboard.and.returnValue(
-      new Promise<AdminDashboardSummary>((r) => { resolveFn = r; }),
+    let resolveFn!: (t: Ticket[]) => void;
+    ticketService.listAll.and.returnValue(
+      new Promise<Ticket[]>((r) => { resolveFn = r; }),
     );
     fixture.detectChanges();
     fixture.detectChanges();
 
     expect(component.renderState()).toBe('loading');
     component.onWindowFocus();
-    expect(ticketService.adminDashboard).toHaveBeenCalledTimes(1);
+    expect(ticketService.listAll).toHaveBeenCalledTimes(1);
 
-    resolveFn(makeSummary());
+    resolveFn([makeTicket(1)]);
   });
 
-  it('buckets computed signal reshapes the summary into the 4-bucket template input', () => {
-    const summary = makeSummary();
-    component['summary'].set(summary);
-    const buckets = component.buckets();
-    expect(buckets.length).toBe(4);
-    expect(buckets[0].key).toBe('Open');
-    expect(buckets[1].key).toBe('In Progress');
-    expect(buckets[2].key).toBe('Resolved');
-    expect(buckets[3].key).toBe('Closed');
-    expect(buckets[0].status).toBe('Open');
-    expect(buckets[0].rows.length).toBe(2);
-    expect(buckets[0].total).toBe(11);
+  it('filters the rows by the shared filter state', async () => {
+    ticketService.listAll.and.resolveTo([
+      makeTicket(1, 'Open', 'Alpha'),
+      makeTicket(2, 'Closed', 'Beta'),
+    ]);
+    await settle();
+
+    component.applyFilters({
+      search: '',
+      customer: 'all',
+      application: 'all',
+      priority: 'all',
+      assignee: 'all',
+      sort: 'newest',
+      status: 'Open',
+    });
+
+    expect(component.filtered().length).toBe(1);
+    expect(component.filtered()[0].title).toBe('Alpha');
   });
 
-  it('buckets returns empty array when summary is null', () => {
-    // Default state — summary not yet set.
-    expect(component.buckets()).toEqual([]);
+  it('resets to page 1 when a filter changes', async () => {
+    ticketService.listAll.and.resolveTo([makeTicket(1)]);
+    await settle();
+
+    component.page.set(3);
+    component.applyFilters({
+      search: 'x',
+      customer: 'all',
+      application: 'all',
+      priority: 'all',
+      assignee: 'all',
+      sort: 'newest',
+      status: 'all',
+    });
+
+    expect(component.page()).toBe(1);
   });
 
-  describe('redesign — kanban-column-header + tinted icon chips', () => {
-    it('applies a tint class to each card matching its status', async () => {
-      ticketService.adminDashboard.and.resolveTo(makeSummary());
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+  it('changes the page size and returns to page 1', async () => {
+    ticketService.listAll.and.resolveTo([makeTicket(1)]);
+    await settle();
 
-      const expected: Array<[string, string]> = [
-        ['Open', 'tint-open'],
-        ['In Progress', 'tint-inprogress'],
-        ['Resolved', 'tint-resolved'],
-        ['Closed', 'tint-closed'],
-      ];
-      const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
-      expected.forEach(([status, tint], i) => {
-        const card = cards[i] as HTMLElement;
-        expect(card.getAttribute('data-status')).toBe(status);
-        expect(card.classList.contains(tint)).toBe(true);
-      });
-    });
+    component.page.set(2);
+    component.onPageSizeChange(25);
 
-    it('renders an icon chip inside each kanban-column-header', async () => {
-      ticketService.adminDashboard.and.resolveTo(makeSummary());
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
-
-      const headers = fixture.nativeElement.querySelectorAll('.card-row .card .kanban-column-header');
-      headers.forEach((h: Element) => {
-        const chip = h.querySelector('.icon-chip');
-        expect(chip).toBeTruthy();
-        // Icon chip carries an SVG glyph (the status icon).
-        const svg = chip?.querySelector('svg');
-        expect(svg).toBeTruthy();
-      });
-    });
-
-    it('renders the redesigned page subtitle below the heading', async () => {
-      ticketService.adminDashboard.and.resolveTo(makeSummary());
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
-
-      const subtitle = fixture.nativeElement.querySelector('.page-subtitle');
-      expect(subtitle?.textContent?.trim()).toBe(
-        'Monitor and manage all support tickets across different stages.',
-      );
-    });
+    expect(component.pageSize()).toBe(25);
+    expect(component.page()).toBe(1);
   });
 
-  describe('redesign — filter strip (WDS-2026)', () => {
-    it('renders the search input + 5 select dropdowns in success state', async () => {
-      ticketService.adminDashboard.and.resolveTo(makeSummary());
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
 
-      const strip = fixture.nativeElement.querySelector('.filter-strip');
-      expect(strip).toBeTruthy();
-      const search = strip.querySelector('input.filter-search-input');
-      expect(search).toBeTruthy();
-      expect(search.getAttribute('placeholder')).toContain('Search');
+  // ── Stat strip (WDS-2026) ─────────────────────────────────────
+  //
+  // The Admin renders the SAME <stat-strip> molecule as the User's
+  // dashboard and the Agent's ticket list. The counts are team-wide
+  // (GET /api/tickets/stats) because the Admin's scope is every
+  // ticket in the system.
 
-      // 5 selects: customers / applications / priorities / assignees / sort
-      const selects = strip.querySelectorAll('select');
-      expect(selects.length).toBe(5);
-    });
-
-    it('shows the friendly default label inside each select wrapper', async () => {
-      ticketService.adminDashboard.and.resolveTo(makeSummary());
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
-
-      const labels = Array.from(
-        fixture.nativeElement.querySelectorAll('.filter-select .filter-select-label'),
-      ).map((el) => (el as HTMLElement).textContent?.trim());
-      // Sort label is first because of the .filter-sort wrapper order in
-      // the template; values are {customer, application, priority,
-      // assignee, sort} = ['All customers', 'All applications', 'All
-      // priorities', 'All assignees', 'Newest first'].
-      expect(labels).toEqual([
-        'All customers',
-        'All applications',
-        'All priorities',
-        'All assignees',
-        'Newest first',
-      ]);
-    });
-
-    it('renders a skeleton filter strip during the loading state', async () => {
-      let resolveFn!: (s: AdminDashboardSummary) => void;
-      ticketService.adminDashboard.and.returnValue(
-        new Promise<AdminDashboardSummary>((r) => { resolveFn = r; }),
-      );
-      fixture.detectChanges();
-      fixture.detectChanges();
-      // Skeleton strip is present.
-      const strip = fixture.nativeElement.querySelector('.filter-strip');
-      expect(strip).toBeTruthy();
-      // 1 search bar + 5 select pills
-      const bars = strip.querySelectorAll('.skel-bar');
-      expect(bars.length).toBe(6);
-      resolveFn(makeSummary());
-    });
-  });
-
-  describe('redesign — priority + category badges inside ticket cards', () => {
-    it('renders the priority pill inside each ticket card row', async () => {
-      ticketService.adminDashboard.and.resolveTo(makeSummary());
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
-
-      const openCard = fixture.nativeElement.querySelectorAll('.card-row .card')[0];
-      const openRow = openCard.querySelector('a.admin-card-row');
-      // Default priority is Medium in makeTicket.
-      const priorityBadge = openRow.querySelector('badge-priority .badge');
-      expect(priorityBadge).toBeTruthy();
-      expect(priorityBadge.textContent.trim()).toBe('Medium');
-    });
-
-    it('does NOT render a category badge when the ticket has no category', async () => {
-      ticketService.adminDashboard.and.resolveTo(makeSummary());
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
-
-      const openCard = fixture.nativeElement.querySelectorAll('.card-row .card')[0];
-      const openRow = openCard.querySelector('a.admin-card-row');
-      const categoryBadge = openRow.querySelector('badge-category .badge');
-      expect(categoryBadge).toBeNull();
-    });
-
-    it('renders the category pill when the ticket has a category', async () => {
-      // makeSummary uses a baseUser, but the ticket factory in this
-      // spec sets category: null. We craft a custom summary with a
-      // category-bearing ticket to exercise the @if branch.
-      const catTicket: Ticket = {
-        ...makeTicket(1, 'Open', 'IT ticket', 1),
-        category: 'IT',
+  describe('the stat strip', () => {
+    /**
+     * A team-wide stats envelope shaped like the backend's.
+     *
+     * The 60-day series is two halves: days 0-29 are the OLDER
+     * window (whose sum the backend sends as `previousPeriod`) and
+     * days 30-59 are the RECENT one (whose sum the frontend
+     * computes for the delta). The default here is 1 per day, so
+     * both halves sum to 30 and the delta is 0%. Tests that want a
+     * specific delta set the halves accordingly — `previousPeriod`
+     * must agree with the first half of the array, exactly as the
+     * backend's previousPeriodTotal() computes it.
+     */
+    function makeStats(overrides: Partial<TicketStats> = {}): TicketStats {
+      return {
+        counts: {
+          total: 30,
+          open: 26,
+          inProgress: 1,
+          resolved: 1,
+          closed: 2,
+        },
+        dailyCreated: new Array(60).fill(1),
+        previousPeriod: 30,
+        ...overrides,
       };
-      ticketService.adminDashboard.and.resolveTo(
-        makeSummary({ open: { rows: [catTicket], total: 1 } }),
-      );
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+    }
 
-      const openCard = fixture.nativeElement.querySelectorAll('.card-row .card')[0];
-      const openRow = openCard.querySelector('a.admin-card-row');
-      const categoryBadge = openRow.querySelector('badge-category .badge');
-      expect(categoryBadge).toBeTruthy();
-      expect(categoryBadge.classList.contains('it')).toBe(true);
-      expect(categoryBadge.textContent.trim()).toBe('IT');
-    });
-  });
+    it('renders the shared stat strip with the team-wide counts', async () => {
+      ticketService.listAll.and.resolveTo([makeTicket(1)]);
+      ticketService.stats.and.resolveTo(makeStats());
+      await settle();
 
-  describe('redesign — 3-line ticket card structure', () => {
-    it('renders the row-content wrapper with 3 sub-lines (number/timestamp, title, badges)', async () => {
-      ticketService.adminDashboard.and.resolveTo(makeSummary());
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+      const strip = fixture.nativeElement.querySelector('[data-testid="stat-strip"]');
+      expect(strip).toBeTruthy();
+      // The molecule itself is mounted (not a copy of the markup).
+      expect(strip.querySelector('stat-strip')).toBeTruthy();
 
-      const openCard = fixture.nativeElement.querySelectorAll('.card-row .card')[0];
-      const openRow = openCard.querySelector('a.admin-card-row');
-      const content = openRow.querySelector('.row-content');
-      expect(content).toBeTruthy();
-      const lines = content.querySelectorAll(':scope > div');
-      expect(lines.length).toBe(3);
-      // Line 1: number + timestamp
-      expect(lines[0].querySelector('.number')).toBeTruthy();
-      expect(lines[0].querySelector('.timestamp')).toBeTruthy();
-      // Line 2: title
-      expect(lines[1].querySelector('.title')).toBeTruthy();
-      // Line 3: badge zone (priority at minimum)
-      expect(lines[2].querySelector('badge-priority')).toBeTruthy();
-    });
-  });
+      // The summary card and the four status cards.
+      expect(strip.querySelector('[data-testid="stat-total-card"]')).toBeTruthy();
+      for (const accent of ['open', 'inProgress', 'resolved', 'closed']) {
+        expect(
+          strip.querySelector(`[data-testid="stat-card-${accent}"]`),
+        ).toBeTruthy();
+      }
 
-  describe('view all footer link', () => {
-    it('viewAllHref returns /queue with encoded status param', () => {
-      expect(component.viewAllHref('Open')).toBe('/queue?status=Open');
-      expect(component.viewAllHref('In Progress')).toBe(
-        '/queue?status=In%20Progress',
-      );
-      expect(component.viewAllHref('Resolved')).toBe(
-        '/queue?status=Resolved',
-      );
-      expect(component.viewAllHref('Closed')).toBe('/queue?status=Closed');
+      // The Total card carries the reference's label and the team-wide
+      // total (30 in the fixture — NOT the User's own count).
+      const total = strip.querySelector('[data-testid="stat-total-card"] .value');
+      expect(total?.textContent?.trim()).toBe('30');
+
+      // Each status card's number matches the team-wide count.
+      const open = strip.querySelector('[data-testid="stat-card-open"] .value');
+      expect(open?.textContent?.trim()).toBe('26');
     });
 
-    it('renders the View all link only when total exceeds rendered rows', async () => {
-      // Open: 2 rows but total 11 → footer renders + View all link.
-      ticketService.adminDashboard.and.resolveTo(makeSummary());
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+    it('reads the team-wide stats endpoint, not the User-scoped one', async () => {
+      ticketService.listAll.and.resolveTo([makeTicket(1)]);
+      ticketService.stats.and.resolveTo(makeStats());
+      await settle();
 
-      const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
-      const openViewAll = cards[0].querySelector('.admin-card-footer .view-all');
-      expect(openViewAll).toBeTruthy();
+      expect(ticketService.stats).toHaveBeenCalledTimes(1);
+      // The User-scoped endpoint must NOT be used — the Admin sees
+      // every ticket, not just their own.
+      expect(
+        (ticketService as unknown as { statsMine?: jasmine.Spy }).statsMine,
+      ).toBeUndefined();
     });
 
-    it('does not render a footer when total equals rows.length', async () => {
-      // Use a custom summary where every bucket has rows.length === total.
-      ticketService.adminDashboard.and.resolveTo(
-        makeSummary({
-          open: { rows: [makeTicket(1, 'Open')], total: 1 },
-          inProgress: { rows: [], total: 0 },
-          resolved: { rows: [], total: 0 },
-          closed: { rows: [], total: 0 },
-        }),
+    it('shows the period-over-period delta on the summary card', async () => {
+      ticketService.listAll.and.resolveTo([makeTicket(1)]);
+      // The older window (days 0-29) is 1 per day = 30; the recent
+      // window (days 30-59) is 2 per day = 60. The delta is
+      // (60 - 30) / 30 = +100%.
+      const series = [
+        ...new Array(30).fill(1),
+        ...new Array(30).fill(2),
+      ];
+      ticketService.stats.and.resolveTo(
+        makeStats({ dailyCreated: series, previousPeriod: 30 }),
       );
-      fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+      await settle();
 
-      const cards = fixture.nativeElement.querySelectorAll('.card-row .card');
-      // Open: 1 row, total 1 → no footer / no view-all.
-      const openViewAll = cards[0].querySelector('.admin-card-footer .view-all');
-      expect(openViewAll).toBeNull();
-      // In Progress: 0 rows, total 0 → no footer.
-      const ipViewAll = cards[1].querySelector('.admin-card-footer .view-all');
-      expect(ipViewAll).toBeNull();
+      const delta = fixture.nativeElement.querySelector(
+        '[data-testid="stat-total-card"] .delta',
+      );
+      expect(delta).toBeTruthy();
+      expect(delta.textContent?.trim()).toContain('100%');
+      // The caption sits under the pill.
+      const caption = fixture.nativeElement.querySelector(
+        '[data-testid="stat-total-card"] .caption',
+      );
+      expect(caption?.textContent?.trim()).toBe('vs last month');
+    });
+
+    it('hides the delta pill when there is no previous period to compare', async () => {
+      ticketService.listAll.and.resolveTo([makeTicket(1)]);
+      ticketService.stats.and.resolveTo(
+        makeStats({ previousPeriod: 0 }),
+      );
+      await settle();
+
+      const delta = fixture.nativeElement.querySelector(
+        '[data-testid="stat-total-card"] .delta',
+      );
+      expect(delta).toBeNull();
+    });
+
+    it('omits the strip when the stats call fails, but keeps the table', async () => {
+      ticketService.listAll.and.resolveTo([makeTicket(1)]);
+      ticketService.stats.and.rejectWith(new Error('stats down'));
+      await settle();
+
+      // The strip is optional — a stats failure degrades it away.
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="stat-strip"]'),
+      ).toBeNull();
+      // But the table — the real content — still renders.
+      expect(component.renderState()).toBe('success');
+      expect(fixture.nativeElement.querySelector('[data-testid="ticket-table"]'))
+        .toBeTruthy();
+    });
+
+    it('keeps the stats when the rows call fails', async () => {
+      ticketService.listAll.and.rejectWith(new Error('rows down'));
+      ticketService.stats.and.resolveTo(makeStats());
+      await settle();
+
+      // The rows failed, so the page shows the error state — but the
+      // stats were fetched independently and are still available.
+      expect(component.renderState()).toBe('error');
+      expect(component.stats()).not.toBeNull();
     });
   });
 });
 
 describe('AdminDashboardPageComponent URL hash routing (HD-013 + HD-014)', () => {
-  let localTicketService: { adminDashboard: jasmine.Spy };
+  let localTicketService: {
+    listAll: jasmine.Spy;
+    stats: jasmine.Spy;
+  };
   let localUserService: { listAll: jasmine.Spy };
   let localAuthService: {
     userSnapshot: jasmine.Spy;
@@ -667,7 +581,14 @@ describe('AdminDashboardPageComponent URL hash routing (HD-013 + HD-014)', () =>
 
   beforeEach(async () => {
     TestBed.resetTestingModule();
-    localTicketService = { adminDashboard: jasmine.createSpy('adminDashboard') };
+    localTicketService = {
+      listAll: jasmine.createSpy('listAll'),
+      stats: jasmine.createSpy('stats'),
+    };
+    localTicketService.listAll.and.resolveTo([]);
+    // The stat strip is optional; a rejected stats read degrades it
+    // away without touching the tab-routing assertions below.
+    localTicketService.stats.and.rejectWith(new Error('no stats stubbed'));
     localUserService = { listAll: jasmine.createSpy('listAll') };
     // Stub listAll() so the embedded UsersTabPageComponent renders
     // its success state synchronously without a real HTTP call.
@@ -721,11 +642,10 @@ describe('AdminDashboardPageComponent URL hash routing (HD-013 + HD-014)', () =>
       expect(newComponent.activeTab()).toBe('users');
 
       // The body renders the HD-014 <app-users-tab-page> in-place.
-      // The Dashboard cards (the previous tab's content) are not
-      // rendered when the Users tab is active.
+      // The table (the previous tab's content) is not rendered when
+      // the Users tab is active.
       const compiled = newFixture.nativeElement as HTMLElement;
-      expect(compiled.querySelector('.users-placeholder')).toBeNull();
-      expect(compiled.querySelectorAll('.card-row .card').length).toBe(0);
+      expect(compiled.querySelector('[data-testid="ticket-table"]')).toBeNull();
       // The UsersTabPageComponent renders <section class="users-page">.
       expect(compiled.querySelector('app-users-tab-page .users-page'))
         .toBeTruthy();
@@ -739,4 +659,5 @@ describe('AdminDashboardPageComponent URL hash routing (HD-013 + HD-014)', () =>
       window.location.hash = originalHash;
     }
   });
+
 });

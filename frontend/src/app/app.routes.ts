@@ -82,6 +82,16 @@ export const routes: Routes = [
   },
 
   {
+    path: 'tickets',
+    canActivate: [authGuard, roleGuard(['Support Agent', 'Admin'])],
+    loadComponent: () =>
+      import('./pages/tickets-list-page/tickets-list-page.component').then(
+        (m) => m.TicketsListPageComponent
+      ),
+    title: 'Tickets · HelpDesk Lite',
+  },
+
+  {
     path: 'tickets/:id',
     canActivate: [authGuard, roleGuard(['User', 'Support Agent', 'Admin'])],
     loadComponent: () =>

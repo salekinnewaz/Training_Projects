@@ -47,3 +47,4 @@ export { CheckCircleComponent } from './check-circle/check-circle.component';
 export type { CheckCircleSize } from './check-circle/check-circle.component';
 export { ChromeAvatarComponent } from './chrome-avatar/chrome-avatar.component';
 export { DividerHrComponent } from './divider-hr/divider-hr.component';
+export { TicketCategoryIconComponent } from './ticket-category-icon/ticket-category-icon.component';

@@ -42,6 +42,38 @@ interface ListForQueueResponse {
   count: number;
 }
 
+/**
+ * Wire shape returned by GET /api/tickets/stats (HD-019).
+ *
+ * `counts` carries the five stat-strip numbers (total plus one
+ * bucket per status). `dailyCreated` is a fixed-length 60-element
+ * series of tickets-created-per-day, oldest-first, **zero-filled** —
+ * days with no tickets are explicit `0`s rather than gaps, so the
+ * sparkline can plot the series positionally without first
+ * normalizing lengths.
+ *
+ * The 60-day window exists so the summary card's delta can compare
+ * the most recent 30 days against the 30 before them ("vs last
+ * month"). `previousPeriod` carries that older half's sum.
+ */
+export interface TicketStats {
+  counts: {
+    total: number;
+    open: number;
+    inProgress: number;
+    resolved: number;
+    closed: number;
+  };
+  dailyCreated: number[];
+  /**
+   * Tickets created in the 30 days before the most recent 30
+   * (HD-021). The stat strip's summary card shows a
+   * period-over-period delta computed from this. Optional because
+   * an older backend response won't carry it.
+   */
+  previousPeriod?: number;
+}
+
 interface CreateResponse {
   ticket: Ticket;
 }
@@ -445,6 +477,93 @@ export class TicketService {
       const res = await firstValueFrom(
         this.http.get<AdminDashboardSummary>(
           `${environment.apiBaseUrl}/admin/dashboard`,
+          { withCredentials: true },
+        ),
+      );
+      return res;
+    } catch (err) {
+      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
+    }
+  }
+
+  // ─── HD-019 — Tickets list page ──────────────────────────────
+
+  /**
+   * GET /api/tickets/list — every ticket, Support Agent + Admin
+   * (HD-019 Tickets list page).
+   *
+   * Returns the same `{ tickets, count }` envelope as
+   * `listForQueue()`. The Tickets list page applies search, filter,
+   * sort, and pagination client-side; HD-015 will lift that to
+   * server-side query params.
+   *
+   * The backend clamps the payload at 500 tickets; pass `limit`
+   * only when a tighter cap is wanted (e.g. initial render before
+   * filters narrow the set).
+   *
+   * Throws `ApiError` on non-2xx. 401 → session-expired (handled
+   * by auth interceptor + roleGuard redirect); 403 → caller is not
+   * an agent/admin (page should never reach this — `roleGuard` is
+   * the primary gate).
+   */
+  async listAll(limit = 500): Promise<Ticket[]> {
+    try {
+      const res = await firstValueFrom(
+        this.http.get<ListForQueueResponse>(
+          `${environment.apiBaseUrl}/tickets/list?limit=${encodeURIComponent(String(limit))}`,
+          { withCredentials: true },
+        ),
+      );
+      return res.tickets;
+    } catch (err) {
+      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
+    }
+  }
+
+  /**
+   * GET /api/tickets/stats — five-bucket counts + a 14-day
+   * tickets-created series for the Tickets stat strip
+   * (HD-019). Support Agent + Admin only; the controller
+   * mirrors `roleGuard(['Support Agent', 'Admin'])` inline as
+   * defense in depth.
+   *
+   * Throws `ApiError` on non-2xx. See `listAll()` for the same
+   * error-mapping rationale.
+   */
+  async stats(): Promise<TicketStats> {
+    try {
+      const res = await firstValueFrom(
+        this.http.get<TicketStats>(
+          `${environment.apiBaseUrl}/tickets/stats`,
+          { withCredentials: true },
+        ),
+      );
+      return res;
+    } catch (err) {
+      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
+    }
+  }
+
+  /**
+   * GET /api/tickets/stats/mine — the caller's OWN ticket summary
+   * (HD-020): the same five counters + 14-day series as `stats()`,
+   * but scoped server-side to tickets the JWT'd user submitted.
+   *
+   * Used by the Employee Dashboard's stat strip. The distinction
+   * from `stats()` matters: `stats()` is team-wide and 403s for the
+   * User role, whereas this one can never leak another user's
+   * tickets because the filter lives in the SQL, not the client.
+   *
+   * Shares the `TicketStats` type with `stats()` so the `stat-card`
+   * and `sparkline` components consume both without branching.
+   *
+   * Throws `ApiError` on non-2xx — same mapping as `stats()`.
+   */
+  async statsMine(): Promise<TicketStats> {
+    try {
+      const res = await firstValueFrom(
+        this.http.get<TicketStats>(
+          `${environment.apiBaseUrl}/tickets/stats/mine`,
           { withCredentials: true },
         ),
       );

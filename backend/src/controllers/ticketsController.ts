@@ -31,7 +31,7 @@
 
 import type { Request, Response } from 'express';
 
-import { Ticket } from '../models';
+import { Ticket, sequelize } from '../models';
 import { asyncHandler } from '../utils/asyncHandler';
 import { HttpError } from '../utils/errors';
 import {
@@ -210,6 +210,228 @@ export const listMine = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/tickets/stats — summary counters + 14-day activity series
+ * (HD-019, for the Tickets list page stat cards + sparklines).
+ *
+ * Support Agent / Admin only — Users get 403 since these counters
+ * are team-wide. The User role gets its own strip on the Employee
+ * Dashboard, served by `statsMine` below, which is scoped to the
+ * caller's own tickets and so never exposes team-wide state.
+ *
+ * Returns:
+ *   {
+ *     counts: { total, open, inProgress, resolved, closed },
+ *     dailyCreated: number[]            // 14 entries, oldest → newest
+ *   }
+ *
+ * `dailyCreated` is a single GROUP BY date_trunc('day', created_at)
+ * over the last 14 days; missing days are zero-filled on the SQL
+ * side so the frontend can plot the array directly without gaps.
+ *
+ * @openapi
+ * /tickets/stats:
+ *   get:
+ *     summary: Ticket summary + 14-day trend
+ *     tags: [Tickets]
+ *     responses:
+ *       200:
+ *         description: Counters + dailyCreated array.
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
+export const stats = asyncHandler(async (req: Request, res: Response) => {
+  const role = req.user!.role;
+  if (role !== 'Support Agent' && role !== 'Admin') {
+    throw new HttpError(
+      403,
+      'forbidden',
+      'Only Support Agents and Admins can view ticket stats.',
+    );
+  }
+
+  const results = await Promise.all([
+    // Five count buckets in a single round-trip; each row is a
+    // `{ status, count }` pair. We coerce to a map below.
+    Ticket.findAll({
+      attributes: [
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+      ],
+      group: ['status'],
+      raw: true,
+    }),
+    // date_trunc returns TIMESTAMPTZ; the cast to ::date lets us GROUP
+    // BY the day. generate_series gives us every day in the window
+    // so missing days show up as zeros in the response — the
+    // sparkline plotting code expects a fixed-length series.
+    sequelize.query(
+      `
+      WITH days AS (
+        SELECT generate_series(
+          (CURRENT_DATE - INTERVAL '59 days')::date,
+          CURRENT_DATE::date,
+          '1 day'::interval
+        )::date AS day
+      )
+      SELECT
+        days.day::text AS day,
+        COALESCE(COUNT(t.id), 0)::int AS count
+      FROM days
+      LEFT JOIN tickets t
+        ON date_trunc('day', t.created_at)::date = days.day
+       AND t.deleted_at IS NULL
+      GROUP BY days.day
+      ORDER BY days.day ASC
+      `,
+      { type: 'SELECT' } as never,
+    ),
+  ]);
+
+  const countRows = results[0] as unknown as Array<{
+    status: string;
+    count: string | number;
+  }>;
+  const dailyRows = results[1] as unknown as Array<{
+    day: string;
+    count: number;
+  }>;
+
+  const counts = { total: 0, open: 0, inProgress: 0, resolved: 0, closed: 0 };
+  for (const row of countRows) {
+    const n = Number(row.count);
+    counts.total += n;
+    if (row.status === 'Open') counts.open = n;
+    else if (row.status === 'In Progress') counts.inProgress = n;
+    else if (row.status === 'Resolved') counts.resolved = n;
+    else if (row.status === 'Closed') counts.closed = n;
+  }
+
+  const dailyCreated = dailyRows.map((row) => Number(row.count));
+
+  res.status(200).json({
+    counts,
+    dailyCreated,
+    previousPeriod: previousPeriodTotal(dailyCreated),
+  });
+});
+
+/**
+ * GET /api/tickets/stats/mine — summary counters + 14-day activity
+ * series scoped to the JWT'd user's OWN tickets (HD-020).
+ *
+ * This is the User-role counterpart to `GET /api/tickets/stats`.
+ * The difference is the only thing that matters: every row is
+ * filtered by `submitter_id = req.user.id`, so the numbers a User
+ * sees are strictly their own. This preserves the intent behind the
+ * original "no summary stats on the employee dashboard" rule — the
+ * User must never learn team-wide queue state — while still giving
+ * them the at-a-glance read of their own request history that the
+ * earlier UX mockup (`02-user-dashboard.html`) called for.
+ *
+ * Returns the same envelope as the global endpoint so the frontend
+ * `stat-card` / `sparkline` components work unchanged:
+ *   {
+ *     counts: { total, open, inProgress, resolved, closed },
+ *     dailyCreated: number[]            // 14 entries, oldest → newest
+ *   }
+ *
+ * Any authenticated role may call this — a Support Agent calling it
+ * gets their own submitted tickets, not the team's. That keeps the
+ * endpoint useful if an Agent ever views their own requests from the
+ * employee dashboard, and it means there is no role check to get
+ * wrong: the data scope is the caller, full stop.
+ *
+ * @openapi
+ * /tickets/stats/mine:
+ *   get:
+ *     summary: Caller's own ticket summary + 14-day trend
+ *     description: |
+ *       Status counters and a 14-day tickets-created series, scoped
+ *       to tickets submitted by the JWT'd user. Never exposes other
+ *       users' tickets or team-wide queue state.
+ *     tags: [Tickets]
+ *     responses:
+ *       200:
+ *         description: Counters + dailyCreated array.
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+export const statsMine = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  const results = await Promise.all([
+    // Status buckets, restricted to this user's tickets. Same shape
+    // as the global endpoint so the two share a frontend type.
+    Ticket.findAll({
+      attributes: [
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+      ],
+      where: { submitterId: userId },
+      group: ['status'],
+      raw: true,
+    }),
+    // 60-day daily-created series, also restricted to this user.
+    // generate_series gives us every day in the window so missing
+    // days show up as zeros rather than gaps — the sparkline plots
+    // the array positionally and expects a fixed length. The window
+    // is 60 days so the summary card's delta can compare the most
+    // recent 30 days against the 30 before them ("vs last month").
+    sequelize.query(
+      `
+      WITH days AS (
+        SELECT generate_series(
+          (CURRENT_DATE - INTERVAL '59 days')::date,
+          CURRENT_DATE::date,
+          '1 day'::interval
+        )::date AS day
+      )
+      SELECT
+        days.day::text AS day,
+        COALESCE(COUNT(t.id), 0)::int AS count
+      FROM days
+      LEFT JOIN tickets t
+        ON date_trunc('day', t.created_at)::date = days.day
+       AND t.deleted_at IS NULL
+       AND t.submitter_id = :userId
+      GROUP BY days.day
+      ORDER BY days.day ASC
+      `,
+      { replacements: { userId }, type: 'SELECT' } as never,
+    ),
+  ]);
+
+  const countRows = results[0] as unknown as Array<{
+    status: string;
+    count: string | number;
+  }>;
+  const dailyRows = results[1] as unknown as Array<{
+    day: string;
+    count: number;
+  }>;
+
+  const counts = { total: 0, open: 0, inProgress: 0, resolved: 0, closed: 0 };
+  for (const row of countRows) {
+    const n = Number(row.count);
+    counts.total += n;
+    if (row.status === 'Open') counts.open = n;
+    else if (row.status === 'In Progress') counts.inProgress = n;
+    else if (row.status === 'Resolved') counts.resolved = n;
+    else if (row.status === 'Closed') counts.closed = n;
+  }
+
+  const dailyCreated = dailyRows.map((row) => Number(row.count));
+
+  res.status(200).json({
+    counts,
+    dailyCreated,
+    previousPeriod: previousPeriodTotal(dailyCreated),
+  });
+});
+
+/**
  * GET /api/tickets/queue — list every ticket in the system
  * (HD-012 Agent Kanban).
  *
@@ -257,6 +479,62 @@ export const listForQueueHandler = asyncHandler(
       );
     }
     const tickets = await listForQueue();
+    const payload = tickets.map(serializeTicket);
+    res.status(200).json({ tickets: payload, count: payload.length });
+  },
+);
+
+/**
+ * GET /api/tickets/list — every ticket, for Support Agents AND
+ * Admins (HD-019 Tickets list page).
+ *
+ * Why a sibling of `/queue` rather than widening `/queue`: HD-012's
+ * contract is pinned by `agent-kanban-page.component.spec.ts` and
+ * by the controller's own 403 message ("Support Agent role
+ * required"). The Kanban board is deliberately Support-Agent-only —
+ * Admins have their own dashboard. The new list view is the shared
+ * agent+admin surface, so it gets its own endpoint and its own role
+ * gate rather than perturbing the existing one.
+ *
+ * Returns the same `{ tickets, count }` envelope as `/queue` so the
+ * Angular service wrapper is byte-identical to `listForQueue()`.
+ *
+ * Filter / search / sort / pagination are applied client-side over
+ * the returned set (HD-015 will lift them server-side). The seeded
+ * demo dataset is single-digit rows, so a full fetch is cheap; a
+ * `limit` query param caps the payload defensively at 500.
+ *
+ * @openapi
+ * /tickets/list:
+ *   get:
+ *     summary: List every ticket (Support Agent + Admin)
+ *     tags: [Tickets]
+ *     responses:
+ *       200:
+ *         description: The full ticket list.
+ *       401:
+ *         description: Not authenticated.
+ *       403:
+ *         description: Caller is neither Support Agent nor Admin.
+ */
+export const listAllHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const role = req.user!.role;
+    if (role !== 'Support Agent' && role !== 'Admin') {
+      throw new HttpError(
+        403,
+        'forbidden',
+        'Only Support Agents and Admins can view the ticket list.',
+      );
+    }
+
+    const rawLimit = Number(req.query.limit);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0
+        ? Math.min(Math.trunc(rawLimit), 500)
+        : 500;
+
+    const tickets = await listForQueue({ limit });
     const payload = tickets.map(serializeTicket);
     res.status(200).json({ tickets: payload, count: payload.length });
   },
@@ -835,3 +1113,27 @@ export const confirmClose = asyncHandler(
     res.status(200).json({ ticket: serializeTicket(updated) });
   },
 );
+/**
+ * Tickets created in the 30 days before the most recent 30 days.
+ *
+ * The stat strip's summary card shows a period-over-period delta
+ * ("+12% vs last month"). The `dailyCreated` series is a fixed
+ * 60-element window ending today, so the previous 30-day period is
+ * simply the first half of it: days 0–29 are the *older* window and
+ * days 30–59 are the *recent* one (oldest-first).
+ *
+ * Returning the raw previous-period count — rather than a
+ * pre-computed percentage — lets the frontend decide how to
+ * phrase the delta (and handle the "no previous period" case
+ * without a divide-by-zero).
+ *
+ * Returns 0 when the series is shorter than 30 elements, which
+ * only happens in tests that stub a short array.
+ */
+function previousPeriodTotal(dailyCreated: number[]): number {
+  const half = Math.floor(dailyCreated.length / 2);
+  if (half === 0) return 0;
+  return dailyCreated
+    .slice(0, half)
+    .reduce((sum, n) => sum + n, 0);
+}

@@ -1,38 +1,36 @@
 # Admin Dashboard Page (organism)
 
 **Category:** Organism
-**Composed of:** [app-header-chrome](../03-molecules/app-header-chrome.md) + heading row + [tab-switcher](../03-molecules/tab-switcher.md) (Dashboard / Users) + Dashboard tab content (4 × [status-summary-card](../03-molecules/status-summary-card.md)) OR Users tab content (Users table)
+**Composed of:** [app-header-chrome](../03-molecules/app-header-chrome.md) + heading row + [tab-switcher](../03-molecules/tab-switcher.md) (Tickets / Users) + Tickets tab content ([stat-strip](../03-molecules/stat-strip.md) + [shared-ticket-table](../03-molecules/shared-ticket-table.md)) OR Users tab content (Users table)
 **Phase 4 source:** Admin Dashboard (`admin-dashboard.md`)
 
 ---
 
 ## Overview
 
-Admin's home page (`/admin`). Two tabs, two distinct jobs: **Dashboard** (cross-status summary view — see the shape of the queue at a glance) and **Users** (role + active management). Admin never sees the Support Agent Kanban (`/queue`); Admin's oversight role is expressed through this dedicated surface.
+Admin's home page (`/admin`). Two tabs, two distinct jobs: **Tickets** (the queue, team-wide) and **Users** (role + active management). Admin never sees the Support Agent Kanban (`/queue`); Admin's oversight role is expressed through this dedicated surface.
 
 The page is Admin's command center for *oversight*, not triage. Admin doesn't move tickets (that's Support Agents' job per the action matrix) and Admin doesn't take new tickets (that's End-Users' job). Admin's two jobs are:
-1. See the queue's shape (Dashboard tab).
+1. See the queue's shape (Tickets tab).
 2. Manage who has access (Users tab).
 
 ## Anatomy (top-down)
 
 1. **App-header chrome strip** (y=0..64) — shared with all post-login pages.
 2. **Heading row** (y=88..128):
-   - **Heading text** (left, x=40, y=108, 24px semibold `#212529`): reflects the active tab. `Dashboard` when the Dashboard tab is active; `Users` when the Users tab is active.
-   - **Tab switcher** (right, x=1000..1160): two tabs, `Dashboard` and `Users`. Active tab: 14px semibold `#212529` with 2px underline at y=124. Inactive: 14px regular `#868e96`, no underline.
+   - **Heading text** (left, x=40, y=108, 24px semibold `#212529`): reflects the active tab. `Tickets` when the Tickets tab is active; `Users` when the Users tab is active.
+   - **Tab switcher** (right, x=1000..1160): two tabs, `Tickets` and `Users`. Active tab: 14px semibold `#212529` with 2px underline at y=124. Inactive: 14px regular `#868e96`, no underline.
 3. **Tab content** (y=144..):
 
-   ### Dashboard tab (default)
+   ### Tickets tab (default)
 
-   Four [status-summary-card](../03-molecules/status-summary-card.md)s in a single horizontal row, each 320px wide:
+   The WDS-2026 layout, shared verbatim with the User's Employee Dashboard and the Support Agent's Tickets page:
 
-   | Open (12) | In Progress (5) | Resolved (3) | Closed (47) |
-   |---|---|---|---|
+   1. **[stat-strip](../03-molecules/stat-strip.md)** — the same five-card band the other two roles render (Total + a card per status, each with a sparkline and a progress bar). The Admin's counts are **team-wide** (`GET /api/tickets/stats`), so the numbers match the Support Agent's exactly.
+   2. **[ticket-filter-bar](../03-molecules/shared-ticket-table.md)** — the shared search field, four dimension dropdowns, the sort control and the purple "More filters" button.
+   3. **[ticket-table](../03-molecules/shared-ticket-table.md)** — the shared ten-column table, with the pagination footer below it.
 
-   Each card (y=144..864, ~720px tall):
-   - **Card top zone** (y=156..200): status badge mini-pill (left) + count (right, 28px semibold).
-   - **Card body** (y=212..840): vertical list of 12–14 [ticket-row](../03-molecules/ticket-row.md) (status-card row variant). 40px row stride.
-   - **Card footer** (y=848..864, only if more than 14 tickets): muted `Showing 14 of 47` text.
+   > **The Phase 4 Admin spec described four tall `status-summary-card`s.** The WDS-2026 redesign replaced them with the shared stat strip and the shared table — the same two surfaces the User and the Agent see, differing only in data scope (team-wide). The `status-summary-card` molecule still exists in the library but no page renders it.
 
    ### Users tab
 
@@ -53,42 +51,37 @@ The page is Admin's command center for *oversight*, not triage. Admin doesn't mo
 
 ### Tab switching
 
-- **Click on inactive tab:** content swaps; URL hash updates (`#dashboard` / `#users`); active tab styling updates.
-- **Direct-arrival to `/admin#dashboard` or `/admin#users`:** serves the requested tab active.
-- **Direct-arrival to `/admin#anything-else`:** defaults to Dashboard tab.
+- **Click on inactive tab:** content swaps; URL hash updates (`#tickets` / `#users`); active tab styling updates.
+- **Direct-arrival to `/admin#tickets` or `/admin#users`:** serves the requested tab active.
+- **Direct-arrival to `/admin#anything-else`:** defaults to the Tickets tab.
 - **Keyboard:** `Tab` to tab switcher; `←` / `→` to move between tabs; `Enter` activates.
 
-### Row click lifecycle (Dashboard tab)
+### Row click lifecycle (Tickets tab)
 
-- **Click on a row in Open / In Progress / Resolved:** routes to `/tickets/:id`.
-- **Click on a row in Closed:** no-op (cursor `default`, not `pointer`).
-- **Hover on Open / In Progress / Resolved:** row background `#f1f3f5`. Hover on Closed: no tint.
+- **Click on a table row:** routes to `/tickets/:id` — every role's shared table behaves the same way.
+- **Row hover:** a background tint, per the shared table's row styles.
+- **Kebab menu:** resolve / close, as the Agent's table offers.
 
-### Card interactions
+### Stat-strip interactions
 
-- **Click on card header (status badge / count):** no action in MVP (display-only).
-- **Click on card footer "Show all N →":** out of scope in MVP (muted and non-interactive).
+- The strip is **display-only** — no drill-down from a card to a filtered table. The "More filters" button in the filter bar is how a user narrows by status.
 
 ## Layout dimensions
 
-- Page width: 1440
+- Page width: 1448 (the global `--content-column-width` token, with the chrome's 32px gutters giving a 1384px content area)
 - Heading row height: 40px
 - Tab switcher right edge: x=1160
-- Card width: 320px each
-- Card gap: 16px
-- Card height: ~720px (fits up to 14 rows + top zone + footer)
-- Row height (card body): 40px
-- Status badge mini-pill: 18px tall
-- Count font size: 28px semibold
+- Stat strip card height: 88px, gap 8px, five unequal tracks (22.56 / 18.42 / 17.75 / 19.16 / 22.12fr)
+- Table row height: 64px
 - App-header chrome strip height: 64px
 
 ## States (cross-reference)
 
-- **Default (Dashboard tab)** — heading + tab switcher + 4 status cards.
+- **Default (Tickets tab)** — heading + tab switcher + stat strip + filter bar + table.
 - **Default (Users tab)** — heading + tab switcher + user list table.
-- **Loading (Dashboard tab)** — heading + tab switcher + 4 card skeletons.
+- **Loading (Tickets tab)** — heading + tab switcher + stat-strip skeleton + table skeleton.
 - **Loading (Users tab)** — heading + tab switcher + row skeletons.
-- **Server error (Dashboard tab)** — inline error above the cards: "Couldn't load the queue. Refresh to try again."
+- **Server error (Tickets tab)** — inline error above the table: "Couldn't load the queue. Refresh to try again."
 - **Server error (Users tab)** — inline error above the table: "Couldn't load users. Refresh to try again."
 - **Permission denied (non-Admin direct arrival)** — centered card: "You don't have access to this page. Back to Dashboard."
 - **Session expired** — redirect to `/login?return_to=/admin`.
@@ -99,11 +92,11 @@ The page is Admin's command center for *oversight*, not triage. Admin doesn't mo
 
 - All app-header-chrome tokens
 - All [tab-switcher](../03-molecules/tab-switcher.md) tokens
-- All [status-summary-card](../03-molecules/status-summary-card.md) tokens
+- All [stat-strip](../03-molecules/stat-strip.md) tokens
+- All [shared-ticket-table](../03-molecules/shared-ticket-table.md) tokens
 - All [self-row-table](../03-molecules/self-row-table.md) tokens (when Users tab is active)
 - All [dialog-modal](../03-molecules/dialog-modal.md) tokens (for Admin demotion / deactivation)
-- All [badge-status](../02-atoms/badge-status.md) tokens (mini-pill in card top)
-- All [ticket-row](../03-molecules/ticket-row.md) tokens (status-card row variant)
+- All [badge-status](../02-atoms/badge-status.md) tokens (status pill in the table rows)
 - `color-page-bg` (`#f8f9fa`)
 - `space-tab-switcher-right` (x=1160)
 
@@ -114,8 +107,9 @@ The page is Admin's command center for *oversight*, not triage. Admin doesn't mo
 ## See also
 
 - [app-header-chrome](../03-molecules/app-header-chrome.md) — persistent strip.
-- [tab-switcher](../03-molecules/tab-switcher.md) — Dashboard / Users tab pair.
-- [status-summary-card](../03-molecules/status-summary-card.md) — the four cards on Dashboard tab.
+- [tab-switcher](../03-molecules/tab-switcher.md) — Tickets / Users tab pair.
+- [stat-strip](../03-molecules/stat-strip.md) — the five-card band above the table.
+- [shared-ticket-table](../03-molecules/shared-ticket-table.md) — the filter bar + ten-column table + pagination footer.
 - [users-table-page](users-table-page.md) — Users tab content (same as `/users`).
 - [role-aware-action-matrix](../05-patterns/role-aware-action-matrix.md) — Admin = Agent on tickets.
 - [confirmation-dialog](../05-patterns/confirmation-dialog.md) — Admin demotion / deactivation dialogs.

@@ -18,7 +18,7 @@ This folder is the **consolidated component library and design tokens** for Help
 ```
 00-design-system.md            ← you are here (index + scope)
 01-design-tokens.md            ← colors, typography, spacing, shadows, radii, borders
-02-atoms/                      ← 13 basic building blocks
+02-atoms/                      ← 15 basic building blocks
 03-molecules/                  ← 11 atoms combined
 04-organisms/                  ← 6 page-level compositions
 05-patterns/                   ← 7 cross-page behavior patterns
@@ -51,7 +51,7 @@ README.md                      ← handoff quick-start for Phase 6 (Mimir)
 
 ## Component inventory
 
-### Atoms (13)
+### Atoms (14)
 
 | Atom | Purpose | Used in |
 |---|---|---|
@@ -68,14 +68,18 @@ README.md                      ← handoff quick-start for Phase 6 (Mimir)
 | [divider](02-atoms/divider.md) | Horizontal hairline | Header dropdown panel, table rows, app-header bottom |
 | [check-circle](02-atoms/check-circle.md) | Submission confirmation glyph | Submission Confirmation |
 | [caret](02-atoms/caret.md) | Dropdown indicator (▾) | Header trigger, all `<select>` elements |
+| [sparkline](02-atoms/sparkline.md) | Inline-SVG trend line with a gradient fill | Stat strip (Employee Dashboard, Agent Tickets, Admin Tickets), ticket stat cards |
+| [ticket-category-icon](02-atoms/ticket-category-icon.md) | Tinted tile with a per-category glyph — colour **and** shape | Shared ticket table (Employee Dashboard, Agent Tickets, Admin Tickets) |
 
-### Molecules (11)
+### Molecules (12)
 
 | Molecule | Purpose | Used in |
 |---|---|---|
 | [form-field](03-molecules/form-field.md) | Label + required/optional micro-label + input + helper text + error | Login, Create Ticket, Ticket Detail composer |
 | [form-field-dropdown](03-molecules/form-field-dropdown.md) | Label + dropdown control | Create Ticket (Category, Priority) |
 | [ticket-row](03-molecules/ticket-row.md) | Mono number + title + status badge + priority badge + timestamp | Employee Dashboard |
+| [stat-strip](03-molecules/stat-strip.md) | Five-card summary band: Total with a delta pill + four status cards with sparklines and progress bars | Employee Dashboard, Agent Tickets, Admin Tickets |
+| [shared-ticket-table](03-molecules/shared-ticket-table.md) | The WDS-2026 filter bar + ten-column table + pagination footer, shared verbatim by all three roles | Employee Dashboard, Agent Tickets, Admin Tickets |
 | [kanban-card](03-molecules/kanban-card.md) | Title + meta row (number / priority / owner) | Agent Kanban |
 | [status-summary-card](03-molecules/status-summary-card.md) | Status badge + count + recent-tickets list | Admin Dashboard |
 | [self-row-table](03-molecules/self-row-table.md) | Table row with disabled controls + micro-label | Users tab (only) |

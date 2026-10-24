@@ -141,13 +141,15 @@ export class AuthService {
 
   /**
    * Role-correct dashboard route — used by the chrome's brand mark.
-   * Employees land on /dashboard, Support Agents on /queue, Admins
-   * on /admin. Unauthenticated → /login.
+   * Employees land on /dashboard, Support Agents on /tickets (the
+   * HD-019 list page is the new agent landing — /queue's Kanban
+   * board is still reachable but no longer the default), Admins on
+   * /admin. Unauthenticated → /login.
    */
   roleHomePath(): string {
     const role = this.userSubject.value?.role;
     if (role === 'Admin') return '/admin';
-    if (role === 'Support Agent') return '/queue';
+    if (role === 'Support Agent') return '/tickets';
     if (role === 'User') return '/dashboard';
     return '/login';
   }

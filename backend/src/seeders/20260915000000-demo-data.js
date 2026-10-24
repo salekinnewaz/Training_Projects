@@ -85,10 +85,20 @@ module.exports = {
               updated_at: t(45),
             },
             {
+              // Eli is the persona the user logs in as when
+              // hand-running the app, per the HD-019 visual-verification
+              // instructions. Earlier seeds created him as a regular
+              // User, but the actual HD-019 work made /tickets (the
+              // agent-only Tickets list page) the agent home and gave
+              // Eli agent access to support the new flow. The QA
+              // fixtures (`roleHomePath`, ROLE_HOME) and
+              // `qa/scripts/visual-tickets-check.mjs` already target an
+              // agent Eli; promoting him here keeps code + DB + QA in
+              // sync.
               email: 'eli@company.com',
               password_hash: passwordHash,
               display_name: 'Eli Tanaka',
-              role: 'User',
+              role: 'Support Agent',
               is_active: true,
               last_active_at: t(30),
               created_at: t(60 * 24 * 60),

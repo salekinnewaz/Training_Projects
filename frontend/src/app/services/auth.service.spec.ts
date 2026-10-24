@@ -287,12 +287,15 @@ describe('AuthService', () => {
       });
     });
 
-    it('returns /queue for a Support Agent snapshot', () => {
+    it('returns /tickets for a Support Agent snapshot', () => {
+      // HD-019 made /tickets the agent landing page (the /queue Kanban
+      // is still reachable but no longer the default). Other role-home
+      // assertions above remain unchanged.
       const p = service.refreshUser();
       const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/me`);
       req.flush({ user: baseUser({ role: 'Support Agent' }) });
       return p.then(() => {
-        expect(service.roleHomePath()).toBe('/queue');
+        expect(service.roleHomePath()).toBe('/tickets');
       });
     });
 

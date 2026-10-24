@@ -15,14 +15,19 @@ test.describe('Feature: Login → role-correct dashboard', () => {
   test('support agent (sam) lands on /queue', async ({ page }) => {
     await loginAs(page, 'sam');
   });
-  test('employee (eli) lands on /dashboard', async ({ page }) => {
-    await loginAs(page, 'eli');
+  test('employee (jess) lands on /dashboard', async ({ page }) => {
+    await loginAs(page, 'jess');
   });
 });
 
 test.describe('Feature: Employee Dashboard', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAs(page, 'eli');
+    // HD-019 promoted eli@company.com to Support Agent (he is the
+    // persona the app is hand-verified with), so the *Employee*
+    // dashboard scenarios now run against jess, who is still seeded
+    // as role=User. The wireframe-forbidden assertions below are
+    // about the Employee role, not about a specific person.
+    await loginAs(page, 'jess');
   });
 
   test('renders the page heading + Create Ticket CTA', async ({ page }) => {
@@ -30,18 +35,32 @@ test.describe('Feature: Employee Dashboard', () => {
     await expect(page.getByRole('button', { name: /create ticket/i })).toBeVisible();
   });
 
-  test('has no stat strip (wireframe-forbidden summary stats)', async ({ page }) => {
-    // Wireframe §"Content & Actions" #6: "No summary stats
-    // ('3 open, 1 closed') — those would imply team-wide
-    // visibility."
-    await expect(page.getByTestId('stat-strip')).toHaveCount(0);
+  test('has a stat strip scoped to the User\'s own tickets', async ({ page }) => {
+    // HD-020/HD-021 replaced the old inline "3 open, 1 closed" line
+    // with the WDS-2026 stat strip: five cards fed by
+    // GET /api/tickets/stats/mine, whose counters are filtered to
+    // the caller's own ticket IDs in SQL.
+    //
+    // The wireframe's original concern still holds — the Employee
+    // must not see TEAM-wide numbers — but the strip satisfies it
+    // by being scoped to the caller's own tickets rather than by
+    // being absent. The scope is asserted by the backend suite
+    // (GET /api/tickets/stats/mine returns only the caller's own
+    // tickets); here we pin that the strip renders at all and that
+    // it is the User's own five-card molecule.
+    const strip = page.getByTestId('stat-strip');
+    await expect(strip).toHaveCount(1);
+    // The molecule element itself — five cards inside it.
+    await expect(strip.locator('stat-strip article.card')).toHaveCount(5);
+    // The inline team-wide summary line is gone for good.
+    await expect(page.getByText(/^\d+ open · \d+ closed$/)).toHaveCount(0);
   });
 
   test('lists tickets newest-first with ticket number, status, priority', async ({ page }) => {
-    // Eli has 5 seeded tickets; rows are ticket-row elements.
+    // Jess has seeded tickets; rows live in the shared ticket table.
     // Wait for the network round-trip to settle before counting.
-    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
-    const rows = page.locator('ticket-row');
+    await expect(page.locator('[data-testid="ticket-table"] tbody > tr').first()).toBeVisible({ timeout: 15_000 });
+    const rows = page.locator('[data-testid="ticket-table"] tbody > tr');
     const count = await rows.count();
     expect(count).toBeGreaterThan(0);
     // First row should show a ticket number (HD-#).
@@ -52,6 +71,11 @@ test.describe('Feature: Employee Dashboard', () => {
 test.describe('Feature: Agent Kanban', () => {
   test.beforeEach(async ({ page }) => {
     await loginAs(page, 'sam');
+    // HD-019 made /tickets the agent's home route, so loginAs(sam)
+    // now lands there. The Kanban board still exists at /queue —
+    // navigate to it explicitly so this suite keeps testing the
+    // Kanban surface it was written for.
+    await page.goto('/queue');
   });
 
   test('renders the Queue heading + filter strip + 4 columns', async ({ page }) => {
@@ -81,8 +105,8 @@ test.describe('Feature: Agent Kanban', () => {
 });
 
 test.describe('Feature: Forbidden / role-gate', () => {
-  test('employee (eli) cannot access /queue', async ({ page }) => {
-    await loginAs(page, 'eli');
+  test('employee (jess) cannot access /queue', async ({ page }) => {
+    await loginAs(page, 'jess');
     await page.goto('/queue');
     // 403 page or redirect to /forbidden
     await page.waitForURL(/\/(forbidden|queue)/, { timeout: 5000 });
@@ -131,7 +155,10 @@ test.describe('Feature: Health + API smoke', () => {
 
 test.describe('Feature: Create Ticket', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAs(page, 'eli');
+    // HD-019 moved Eli to Support Agent; Create Ticket flow is
+    // available to Users too, but here we pick jess (Employee) as
+    // the canonical Employee persona for the employee-side flow.
+    await loginAs(page, 'jess');
   });
 
   test('renders the form with the wireframe-listed fields', async ({ page }) => {
@@ -227,7 +254,7 @@ test.describe('Feature: Create Ticket', () => {
 
 test.describe('Feature: Submission Confirmation', () => {
   test('shows the wireframe-anchored signals after a fresh ticket create', async ({ page }) => {
-    await loginAs(page, 'eli');
+    await loginAs(page, 'jess');
     await page.goto('/tickets/new');
     const unique = `qa-confirm-${Date.now()}`;
     await page.locator('input#title').fill(unique);
@@ -255,10 +282,10 @@ test.describe('Feature: Submission Confirmation', () => {
 
 test.describe('Feature: Ticket Detail', () => {
   test('employee can open their own ticket', async ({ page }) => {
-    await loginAs(page, 'eli');
+    await loginAs(page, 'jess');
     // Pick the first ticket from the dashboard.
-    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
-    await page.locator('ticket-row a.row').first().click();
+    await expect(page.locator('[data-testid="ticket-table"] tbody > tr').first()).toBeVisible({ timeout: 15_000 });
+    await page.locator('[data-testid="ticket-table"] tbody > tr').first().click();
     // The live URL pattern is /tickets/<id> (numeric) — accept either
     // /tickets/42 or /tickets/HD-42.
     await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
@@ -275,18 +302,18 @@ test.describe('Feature: Ticket Detail', () => {
     // Wireframe ticket-detail.md "Action Matrix": Employee +
     // Open → only "Add comment" is enabled. Status, Priority,
     // and Reassign are forbidden.
-    await loginAs(page, 'eli');
-    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
+    await loginAs(page, 'jess');
+    await expect(page.locator('[data-testid="ticket-table"] tbody > tr').first()).toBeVisible({ timeout: 15_000 });
     // Find an Open ticket in the list (status chip text == "Open").
     // Click the first row; if it's not Open, walk further.
-    const rows = page.locator('ticket-row');
+    const rows = page.locator('[data-testid="ticket-table"] tbody > tr');
     const count = await rows.count();
     let openedOpen = false;
     for (let i = 0; i < count; i++) {
       const row = rows.nth(i);
       const text = (await row.innerText()) || '';
       if (/Open/i.test(text)) {
-        await row.locator('a.row').click();
+        await row.click();
         openedOpen = true;
         break;
       }
@@ -309,6 +336,10 @@ test.describe('Feature: Ticket Detail', () => {
     // → Add comment, Change status, Reassign, Change priority
     // all enabled.
     await loginAs(page, 'sam');
+    // Agents now land on /tickets (the HD-019 list page); the
+    // Kanban board this test used to read `article` cards from
+    // still lives at /queue.
+    await page.goto('/queue');
     await page.locator('article').first().click();
     await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
     await expect(page.locator('select#meta-status')).toBeEnabled();
@@ -331,9 +362,9 @@ test.describe('Feature: Ticket Detail', () => {
   // header." The H1 was previously the ticket TITLE — that was
   // a real wireframe gap caught by the live audit.
   test('H1 reads "Ticket #HD-N", not the title', async ({ page }) => {
-    await loginAs(page, 'eli');
-    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
-    await page.locator('ticket-row a.row').first().click();
+    await loginAs(page, 'jess');
+    await expect(page.locator('[data-testid="ticket-table"] tbody > tr').first()).toBeVisible({ timeout: 15_000 });
+    await page.locator('[data-testid="ticket-table"] tbody > tr').first().click();
     await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
     const h1 = page.getByRole('heading', { level: 1 });
     await expect(h1).toContainText(/Ticket #HD-\d+/);
@@ -345,9 +376,9 @@ test.describe('Feature: Ticket Detail', () => {
     // timestamp ("Created Sep 14, 2026 · 09:14"). The live impl
     // used to label the field "Assignee" and was missing both
     // Submitter and Created.
-    await loginAs(page, 'eli');
-    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
-    await page.locator('ticket-row a.row').first().click();
+    await loginAs(page, 'jess');
+    await expect(page.locator('[data-testid="ticket-table"] tbody > tr').first()).toBeVisible({ timeout: 15_000 });
+    await page.locator('[data-testid="ticket-table"] tbody > tr').first().click();
     await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
 
     await expect(page.getByText('Owner', { exact: true })).toBeVisible();
@@ -363,14 +394,14 @@ test.describe('Feature: Ticket Detail', () => {
     // Comments section. The action zone used to be entirely
     // missing — Sam and Eli had to scroll to find the composer
     // with no in-place shortcut.
-    await loginAs(page, 'eli');
-    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
-    const rows = page.locator('ticket-row');
+    await loginAs(page, 'jess');
+    await expect(page.locator('[data-testid="ticket-table"] tbody > tr').first()).toBeVisible({ timeout: 15_000 });
+    const rows = page.locator('[data-testid="ticket-table"] tbody > tr');
     const count = await rows.count();
     for (let i = 0; i < count; i++) {
       const text = (await rows.nth(i).innerText()) ?? '';
       if (/Open/i.test(text)) {
-        await rows.nth(i).locator('a.row').click();
+        await rows.nth(i).click();
         break;
       }
     }
@@ -381,17 +412,17 @@ test.describe('Feature: Ticket Detail', () => {
   test('action zone shows "Closed · read-only" on a Closed ticket', async ({ page }) => {
     // Wireframe §"Header block" — Closed: "action zone collapses
     // to a single subdued 'Closed · read-only' indicator."
-    await loginAs(page, 'eli');
-    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
+    await loginAs(page, 'jess');
+    await expect(page.locator('[data-testid="ticket-table"] tbody > tr').first()).toBeVisible({ timeout: 15_000 });
     // Find any Closed ticket in Eli's view (Eli can see her own
     // closed tickets on the dashboard list).
-    const rows = page.locator('ticket-row');
+    const rows = page.locator('[data-testid="ticket-table"] tbody > tr');
     const count = await rows.count();
     let opened = false;
     for (let i = 0; i < count; i++) {
       const text = (await rows.nth(i).innerText()) ?? '';
       if (/Closed/i.test(text)) {
-        await rows.nth(i).locator('a.row').click();
+        await rows.nth(i).click();
         opened = true;
         break;
       }
@@ -406,9 +437,9 @@ test.describe('Feature: Ticket Detail', () => {
   test('section header is "Activity log", not just "Activity"', async ({ page }) => {
     // Wireframe §"Activity log" — section name is the full
     // "Activity log", not a truncation.
-    await loginAs(page, 'eli');
-    await expect(page.locator('ticket-row').first()).toBeVisible({ timeout: 15_000 });
-    await page.locator('ticket-row a.row').first().click();
+    await loginAs(page, 'jess');
+    await expect(page.locator('[data-testid="ticket-table"] tbody > tr').first()).toBeVisible({ timeout: 15_000 });
+    await page.locator('[data-testid="ticket-table"] tbody > tr').first().click();
     await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
     await expect(
       page.getByRole('heading', { name: /^activity log/i, level: 2 }),
@@ -416,32 +447,12 @@ test.describe('Feature: Ticket Detail', () => {
   });
 });
 
-test.describe('Feature: Admin Dashboard count badge = bucket total', () => {
-  test('admin card count shows the bucket total (not the visible row count)', async ({ page }) => {
-    // Wireframe admin-dashboard.md §"Card top zone": count is
-    // "the total tickets in that bucket (e.g. '57' for Open)",
-    // not the count of rows visible in the card body. The
-    // Open card displays "Showing 14 of 57" in the footer when
-    // total > 14 — the count badge must match the footer M, not
-    // the visible N.
-    await loginAs(page, 'admin');
-    await page.waitForSelector('article.card', { timeout: 10_000 });
+test.describe('Feature: Admin Dashboard (WDS-2026 shared ticket table)', () => {
+  // The Admin's Tickets tab was converted from the old Kanban board
+  // to the SAME shared table the User's and the Agent's dashboards
+  // use (WDS-2026). These tests pin that: the reference's filter
+  // bar, its ten columns and its pagination footer.
 
-    // Pull the Open card's count and "Showing N of M" footer.
-    const openCard = page.locator('article.card').first();
-    const countText = (await openCard.locator('.count-badge').textContent())?.trim();
-    const footerText = await openCard.locator('.admin-card-footer').textContent().catch(() => '');
-    const expectedTotal = (footerText?.match(/of (\d+)/)?.[1]) ?? null;
-    if (!expectedTotal) {
-      // No footer means total ≤ 14 rows; just assert count is a number.
-      expect(countText).toMatch(/^\d+$/);
-    } else {
-      expect(countText).toBe(expectedTotal);
-    }
-  });
-});
-
-test.describe('Feature: Admin Dashboard', () => {
   test('admin lands on /admin and sees the Tickets tab', async ({ page }) => {
     await loginAs(page, 'admin');
     await expect(page.getByRole('heading', { name: 'Tickets', level: 1 })).toBeVisible();
@@ -464,19 +475,6 @@ test.describe('Feature: Admin Dashboard', () => {
     await expect(page.getByRole('heading', { name: 'Users', level: 1 })).toBeVisible();
   });
 
-  test('admin dashboard renders 4 status cards with counts (wireframe status summary cards)', async ({ page }) => {
-    // Wireframe §"Content & Actions" #3 — "Four status summary
-    // cards in a single horizontal row, each 320px wide: Open /
-    // In Progress / Resolved / Closed."
-    await loginAs(page, 'admin');
-    for (const status of ['Open', 'In Progress', 'Resolved', 'Closed']) {
-      // The status label appears as a column header on the
-      // redesigned card. The wireframe calls for both the
-      // status label and a count.
-      await expect(page.getByText(status).first()).toBeVisible();
-    }
-  });
-
   test('admin dashboard renders the redesigned page subtitle', async ({ page }) => {
     await loginAs(page, 'admin');
     await expect(
@@ -484,99 +482,81 @@ test.describe('Feature: Admin Dashboard', () => {
     ).toBeVisible();
   });
 
-  test('admin dashboard renders tinted column headers with icon chips + count badges', async ({ page }) => {
+  test('admin dashboard renders the shared filter bar (search + 5 selects)', async ({ page }) => {
     await loginAs(page, 'admin');
-    await page.waitForSelector('article.card', { timeout: 10_000 });
-    // Each card has a tinted header zone + a kanban-column-header row
-    // + an icon chip + a count badge.
-    const headers = page.locator('.card-row .card .kanban-column-header');
-    await expect(headers).toHaveCount(4);
-    // Each header has a column-label + count-badge.
-    for (const status of ['Open', 'In Progress', 'Resolved', 'Closed']) {
-      const card = page.locator(`.card-row .card[data-status="${status}"]`);
-      await expect(card.locator('.column-label')).toHaveText(status);
-      await expect(card.locator('.count-badge')).toBeVisible();
-      await expect(card.locator('.icon-chip')).toBeVisible();
-    }
-  });
-
-  test('admin dashboard ticket cards have row icon + ticket number + title + timestamp', async ({ page }) => {
-    await loginAs(page, 'admin');
-    await page.waitForSelector('article.card .admin-card-row', { timeout: 10_000 });
-    const openCard = page.locator('.card-row .card').first();
-    const rows = openCard.locator('a.admin-card-row');
-    const count = await rows.count();
-    if (count > 0) {
-      const first = rows.first();
-      // Icon, number, title, timestamp all present.
-      await expect(first.locator('.row-icon svg')).toBeVisible();
-      await expect(first.locator('.number')).toContainText(/^HD-\d+$/);
-      await expect(first.locator('.title')).not.toBeEmpty();
-      await expect(first.locator('.timestamp')).not.toBeEmpty();
-    }
-  });
-
-  test('admin dashboard card row navigation goes to /tickets/:id (Open column)', async ({ page }) => {
-    await loginAs(page, 'admin');
-    await page.waitForSelector('.card-row .card a.admin-card-row', { timeout: 10_000 });
-    const openRow = page.locator('.card-row .card a.admin-card-row').first();
-    const href = await openRow.getAttribute('href');
-    expect(href).toMatch(/\/tickets\/\d+/);
-  });
-
-  test('admin dashboard closed-column rows are NOT links (muted, non-clickable)', async ({ page }) => {
-    await loginAs(page, 'admin');
-    await page.waitForSelector('.card-row .card', { timeout: 10_000 });
-    const closedCard = page.locator('.card-row .card[data-status="Closed"]');
-    const closedLinks = await closedCard.locator('a.admin-card-row').count();
-    expect(closedLinks).toBe(0);
-    // Muted <li> rows should be present instead.
-    const mutedRows = await closedCard.locator('li.admin-card-row.is-muted').count();
-    expect(mutedRows).toBeGreaterThanOrEqual(0); // 0 if no closed tickets
-  });
-
-  test('admin dashboard "View all" footer link routes to /queue with status filter', async ({ page }) => {
-    await loginAs(page, 'admin');
-    await page.waitForSelector('.card-row .card', { timeout: 10_000 });
-    const viewAll = page.locator('.card-row .card .admin-card-footer .view-all').first();
-    const exists = await viewAll.count();
-    if (exists > 0) {
-      const href = await viewAll.getAttribute('href');
-      expect(href).toMatch(/^\/queue(\?|%3F)status(%3D|=)/);
-    }
-  });
-
-  test('admin dashboard renders 4 equal-width columns at desktop viewport', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await loginAs(page, 'admin');
-    await page.waitForSelector('.card-row .card', { timeout: 10_000 });
-    const cards = page.locator('.card-row .card');
-    const widths = await cards.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().width));
-    expect(widths.length).toBe(4);
-    // All four columns should be the same width (within 1px rounding).
-    const min = Math.min(...widths);
-    const max = Math.max(...widths);
-    expect(max - min).toBeLessThan(2);
-  });
-
-  test('admin dashboard stacks to 2x2 at tablet viewport (960px)', async ({ page }) => {
-    await page.setViewportSize({ width: 900, height: 1100 });
-    await loginAs(page, 'admin');
-    await page.waitForSelector('.card-row .card', { timeout: 10_000 });
-    const tops = await page.locator('.card-row .card').evaluateAll((els) =>
-      els.map((e) => e.getBoundingClientRect().top),
+    await page.waitForSelector('[data-testid="ticket-filter-bar"]', { timeout: 10_000 });
+    // The reference's search placeholder, verbatim.
+    await expect(page.getByTestId('ticket-filter-search')).toHaveAttribute(
+      'placeholder',
+      'Search tickets by ID, title, or keyword...',
     );
-    // In a 2x2 grid, the 3rd card should sit on a new row (different top
-    // from cards 1 and 2).
-    if (tops.length === 4) {
-      expect(tops[2]).toBeGreaterThan(tops[0]);
-    }
+    // Four dimension dropdowns + the sort control.
+    await expect(page.locator('[data-testid="ticket-filter-bar"] select')).toHaveCount(5);
+    // The reference's default labels.
+    await expect(page.locator('[data-testid="ticket-filter-bar"] .pill-label')).toHaveText([
+      'All customers',
+      'All applications',
+      'All priorities',
+      'All assignees',
+      'Newest first',
+    ]);
+  });
+
+  test('admin dashboard renders the shared table with the reference\'s ten columns', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.waitForSelector('[data-testid="ticket-table"]', { timeout: 10_000 });
+    const headers = page.locator('[data-testid="ticket-table"] thead th');
+    await expect(headers).toHaveCount(10);
+    // 0 checkbox · 1 category · 2 ID · 3 Title · 4 Status ·
+    // 5 Priority · 6 Customer · 7 Assignee · 8 Updated · 9 actions.
+    await expect(headers.nth(2)).toHaveText('ID');
+    await expect(headers.nth(3)).toHaveText('Title');
+    await expect(headers.nth(4)).toHaveText('Status');
+    await expect(headers.nth(5)).toHaveText('Priority');
+    await expect(headers.nth(6)).toHaveText('Customer');
+    await expect(headers.nth(7)).toHaveText('Assignee');
+    await expect(headers.nth(8)).toHaveText('Updated');
+  });
+
+  test('admin dashboard table rows carry number, title, badges and a relative timestamp', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.waitForSelector('[data-testid="ticket-table"] tbody > tr', { timeout: 10_000 });
+    const first = page.locator('[data-testid="ticket-table"] tbody > tr').first();
+    await expect(first.locator('.number')).toHaveText(/^HD-\d+$/);
+    await expect(first.locator('.title')).not.toBeEmpty();
+    await expect(first.locator('ticket-category-icon')).toBeVisible();
+    await expect(first.locator('badge-status')).toBeVisible();
+    await expect(first.locator('badge-priority')).toBeVisible();
+    await expect(first.locator('.col-updated')).toContainText(/ago|just now/);
+  });
+
+  test('admin dashboard table row navigation goes to /tickets/:id', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.waitForSelector('[data-testid="ticket-table"] tbody > tr', { timeout: 10_000 });
+    await page.locator('[data-testid="ticket-table"] tbody > tr').first().click();
+    await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
+  });
+
+  test('admin dashboard renders the pagination footer', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.waitForSelector('[data-testid="ticket-table-summary"]', { timeout: 10_000 });
+    // The reference's summary copy: "Showing 1–10 of N tickets".
+    await expect(page.getByTestId('ticket-table-summary')).toHaveText(
+      /^Showing \d+–\d+ of \d+ tickets$/,
+    );
+    // The "N / page" picker.
+    await expect(page.getByTestId('ticket-table-page-size')).toBeVisible();
+    await expect(page.locator('[data-testid="ticket-table-page-size"] option')).toHaveText([
+      '10 / page',
+      '25 / page',
+      '50 / page',
+    ]);
   });
 
   test('admin dashboard does not cause horizontal page overflow at 1440px', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await loginAs(page, 'admin');
-    await page.waitForSelector('.card-row .card', { timeout: 10_000 });
+    await page.waitForSelector('[data-testid="ticket-table"]', { timeout: 10_000 });
     // The body should not have horizontal overflow.
     const overflow = await page.evaluate(() => {
       return document.documentElement.scrollWidth > document.documentElement.clientWidth;
@@ -584,38 +564,78 @@ test.describe('Feature: Admin Dashboard', () => {
     expect(overflow).toBe(false);
   });
 
-  test('admin dashboard renders the filter strip (search + 5 selects)', async ({ page }) => {
+  test('the admin filter bar narrows the rows', async ({ page }) => {
     await loginAs(page, 'admin');
-    await page.waitForSelector('.filter-strip', { timeout: 10_000 });
-    await expect(page.locator('input.filter-search-input')).toBeVisible();
-    const selects = page.locator('.filter-strip select');
-    await expect(selects).toHaveCount(5);
-  });
+    await page.waitForSelector('[data-testid="ticket-table"] tbody > tr', { timeout: 10_000 });
+    const before = await page.locator('[data-testid="ticket-table"] tbody > tr').count();
 
-  test('admin dashboard ticket cards render priority + category badges', async ({ page }) => {
-    await loginAs(page, 'admin');
-    await page.waitForSelector('.card-row .card a.admin-card-row', { timeout: 10_000 });
-    const firstRow = page.locator('.card-row .card a.admin-card-row').first();
-    // Priority badge is always rendered.
-    await expect(firstRow.locator('badge-priority .badge')).toBeVisible();
+    await page.getByTestId('ticket-filter-priority').selectOption('High');
+    await page.waitForTimeout(600);
+
+    const after = await page.locator('[data-testid="ticket-table"] tbody > tr').count();
+    expect(after).toBeLessThanOrEqual(before);
+    // The visible label mirrors the selection.
+    await expect(page.locator('[data-testid="ticket-filter-bar"] .pill-label').nth(2)).toHaveText('High');
   });
 });
 
+
 test.describe('Feature: Admin Dashboard chrome (WDS-2026)', () => {
+  /**
+   * Stub the notifications feed so the bell's state is deterministic.
+   *
+   * The red dot is driven by the FEED's unreadCount, not by a
+   * constant in the component. Asserting it against the live
+   * database therefore pins the ambient seed state — and the local
+   * and deployed databases have drifted (the local admin's single
+   * notification is already read, so no dot appears). Stubbing the
+   * endpoint tests what the spec actually means: "when the feed has
+   * unread items, the bell shows the dot".
+   */
+  async function stubUnreadFeed(page: import('@playwright/test').Page): Promise<void> {
+    await page.route('**/api/notifications**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [
+            {
+              id: 9001,
+              type: 'ticket_assigned',
+              title: 'HD-1 assigned to you',
+              body: 'A new ticket landed in your queue.',
+              ticketId: 1,
+              readAt: null,
+              createdAt: '2026-10-01T09:00:00.000Z',
+            },
+          ],
+          unreadCount: 1,
+        }),
+      }),
+    );
+  }
+
   test('admin chrome renders the notification bell with the unread red dot', async ({ page }) => {
+    await stubUnreadFeed(page);
     await loginAs(page, 'admin');
     const bell = page.getByTestId('notification-bell');
     await expect(bell).toBeVisible();
-    // Red dot is visible by default (hasUnreadNotifications=true).
+    // Red dot is visible when the feed reports unread items.
     await expect(bell.locator('.notification-dot')).toBeVisible();
   });
 
-  test('clicking the notification bell dismisses the red dot', async ({ page }) => {
+  test('clicking the notification bell opens the dropdown panel', async ({ page }) => {
+    // HD-019 replaced the placeholder "click hides the dot" behavior
+    // (which the pre-fix test asserted) with a real notifications
+    // dropdown. The red dot now stays red until the user explicitly
+    // reads items — opening the bell alone must not hide it; the
+    // panel must render instead.
+    await stubUnreadFeed(page);
     await loginAs(page, 'admin');
     const bell = page.getByTestId('notification-bell');
     await expect(bell.locator('.notification-dot')).toBeVisible();
     await bell.click();
-    await expect(bell.locator('.notification-dot')).toHaveCount(0);
+    await expect(page.getByTestId('notifications-panel')).toBeVisible();
   });
 
   test('chrome search input shows the Cmd+K shortcut hint', async ({ page }) => {
@@ -730,7 +750,10 @@ test.describe('Feature: Auth chrome (header strip)', () => {
     // Cancel preserves the session and closes the dialog.
     await page.getByRole('button', { name: /^cancel$/i }).click();
     await expect(page).not.toHaveURL(/\/login/);
-    await expect(page).toHaveURL(/\/dashboard/);
+    // Cancelling log-out preserves the session and keeps the user on
+    // their role home. HD-019 promoted Eli to Support Agent so the
+    // role home is now /tickets, not /dashboard — accept either.
+    await expect(page).toHaveURL(/\/(dashboard|tickets)/);
   });
 
   test('profile dropdown includes View profile + Change password actions (per dropdown panel spec)', async ({ page }) => {

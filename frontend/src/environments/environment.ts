@@ -14,7 +14,13 @@
 
 export const environment = {
   production: false,
-  apiBaseUrl: 'http://127.0.0.1:3000/api',
+  // `localhost` (not `127.0.0.1`) so the page origin and the API
+  // origin match — same-origin (same scheme + hostname + port)
+  // is the only way the browser will echo the HttpOnly auth cookie
+  // back on cross-port requests with `SameSite=Lax`. Mismatching
+  // them (`localhost:4200` page → `127.0.0.1:3000` API) makes the
+  // browser treat the calls as cross-site and withhold the cookie.
+  apiBaseUrl: 'http://localhost:3000/api',
 } as const;
 
 export type Environment = typeof environment;
