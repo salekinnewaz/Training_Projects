@@ -5,6 +5,7 @@ import ticketsRouter from './tickets';
 import usersRouter from './users';
 import adminRouter from './admin';
 import attachmentsRouter from './attachments';
+import notificationsRouter from './notifications';
 
 /**
  * Single router for every `/api/*` resource. Mounts:
@@ -29,5 +30,6 @@ apiRouter.use('/tickets', ticketsRouter);
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/admin', adminRouter);
 apiRouter.use('/attachments', attachmentsRouter);
+apiRouter.use('/notifications', notificationsRouter);
 
 export default apiRouter;

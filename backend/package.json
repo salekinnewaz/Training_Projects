@@ -15,8 +15,9 @@
     "db:seed": "sequelize db:seed:all",
     "db:reset": "sequelize db:seed:undo:all && sequelize db:migrate:undo:all && sequelize db:migrate && sequelize db:seed:all",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
-    "test": "jest --passWithNoTests",
-    "test:integration": "jest --selectProjects integration"
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "jest --selectProjects unit --passWithNoTests",
+    "test:integration": "jest --selectProjects integration --runInBand"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

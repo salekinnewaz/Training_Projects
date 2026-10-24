@@ -89,6 +89,21 @@ The chrome is the **only persistent UI** across every post-login page. It has th
 **Why one right-side link, not two?**
 - Prior specs / wireframes had two right-side links (`My Profile` + `Logout`). The current spec consolidates identity display and logout action into a single dropdown to reduce visual chrome and create a cleaner header. The trade-off: one extra click to log out (open dropdown → click Logout → confirm). The confirmation dialog adds friction deliberately to prevent accidental logout.
 
+## Responsive behavior
+
+The chrome's content (brand + nav + bell + profile trigger) is intrinsically wider than a phone. Rather than let it overflow sideways, the chrome **degrades in a fixed order**, dropping the genuinely-optional content first and keeping the identity affordance alive:
+
+| Width | What is dropped |
+|---|---|
+| ≤ 640px | the profile trigger's **display name**, then the chrome's duplicate search form |
+| ≤ 440px | the **wordmark** — the brand **mark** stays, because it is the home button |
+
+**The avatar never disappears.** The profile trigger's grid track is `minmax(0, auto)`, so it *can* shrink — but a track that shrinks to zero takes the 28px avatar with it, leaving the user with an unidentifiable button. The media queries above drop the optional name instead, so the avatar always survives.
+
+> **The automatic minimum size is the root cause of most chrome overflow.** A grid or flex item's default `min-width: auto` is its **min-content** width, and that propagates *upward* — an item that refuses to shrink widens its whole ancestor chain. Two fixes are in play here: `min-width: 0` on the search form (so it can shrink into its track) and `minmax(0, …)` on the track itself. Neither alone is sufficient: `min-width: 0` alone squeezes the trigger's track to zero and clips the avatar; the media query alone leaves the overflow at 640–440px.
+
+The ⌘K shortcut falls back to the page-level filter bar's search field when the chrome's own search input is hidden, so it never becomes a silent no-op.
+
 ## Accessibility
 
 - **Brand mark group:** wrapped in a single focusable element with `aria-label="HelpDesk Lite — go to dashboard"`.

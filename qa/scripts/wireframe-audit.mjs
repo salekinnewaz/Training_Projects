@@ -10,10 +10,24 @@
  * Run after a Vercel deploy to confirm "all wireframe requirements
  * live". Replaces the informal inspect-each-page.mjs with a
  * structured pass/fail list.
+ *
+ *   node qa/scripts/wireframe-audit.mjs                    # live deploy
+ *   BASE_URL=http://localhost:4200 node qa/scripts/wireframe-audit.mjs
+ *
+ * The other verify-* scripts default to localhost:4200; this one
+ * defaulted to the production URL because it was written as a
+ * post-deploy tripwire. It now honours BASE_URL like the rest, and
+ * falls back to the live deployment.
+ *
+ * NOTE: this script logs in SEVEN times (once per persona, plus the
+ * Employee Dashboard and the two Ticket Detail variants). The
+ * backend's login route has a rate limiter, so run it against the
+ * LOCAL stack, or pause between runs, or it will trip the limiter
+ * and fail on the login rather than on a real gap.
  */
 import { chromium } from 'playwright';
 
-const BASE = 'https://helpdesk-lite-tawny.vercel.app';
+const BASE = process.env.BASE_URL ?? 'https://helpdesk-lite-tawny.vercel.app';
 
 const findings = [];
 function record(area, ok, detail) {
@@ -27,12 +41,31 @@ async function login(page, who) {
     admin: { email: 'admin@company.com', pwd: 'password123' },
     sam: { email: 'sam@company.com', pwd: 'password123' },
     eli: { email: 'eli@company.com', pwd: 'password123' },
+    // Jess is the seeded USER (role = "User"); Eli is a Support
+    // Agent. The Employee Dashboard is role-gated, so anything that
+    // asserts on /dashboard must log in as Jess.
+    jess: { email: 'jess@company.com', pwd: 'password123' },
   }[who];
   await page.goto(`${BASE}/login`);
   await page.locator('input#login-email').fill(creds.email);
   await page.locator('input#login-password').fill(creds.pwd);
-  await page.getByRole('button', { name: 'Log in', exact: true }).click();
-  await page.waitForURL(/\/(admin|queue|dashboard)/, { timeout: 10_000 });
+  // The submit button reads "Sign in" (older fixtures used "Log in").
+  const btn = page.getByRole('button', { name: /^(sign in|log in)$/i }).first();
+  await btn.click();
+  try {
+    await page.waitForURL(/\/(admin|queue|tickets|dashboard|forbidden)/, { timeout: 15_000 });
+  } catch (err) {
+    // The backend's login route has a RATE LIMITER. Six back-to-back
+    // logins in this audit can trip it (429), and the SPA stays on
+    // /login with an inline error — which then makes every later
+    // assertion fail for the wrong reason. Say so plainly.
+    const body = (await page.locator('body').innerText().catch(() => '')).slice(0, 300);
+    throw new Error(
+      `Login as ${who} (${creds.email}) did not reach a post-login page. ` +
+      `URL: ${page.url()}\nPage text: ${body}\n` +
+      `This is usually the backend's login RATE LIMITER (429) — pause and re-run.`,
+    );
+  }
 }
 
 async function withFreshSession(browser, who, fn) {
@@ -58,14 +91,23 @@ async function main() {
     try {
       await page.goto(`${BASE}/login`);
       await page.waitForSelector('input#login-email', { timeout: 10_000 });
-      const h1Sr = await page.locator('h1.visually-hidden, h1.sr-only').first().textContent().catch(() => null);
-      record('Login/HiddenH1', /sign in/i.test(h1Sr ?? ''), `H1 (SR-only): "${h1Sr}"`);
+
+      // The login page is a two-panel layout: a marketing side with
+      // the hero headline, and the sign-in card. The H1 is the hero
+      // (visible), and the card's own heading is an H2.
+      const hero = (await page.locator('h1.hero').first().textContent().catch(() => null)) ?? '';
+      record('Login/HeroH1', /support/i.test(hero), `Hero H1: "${hero.replace(/\s+/g, ' ').trim()}"`);
+
+      const cardTitle = (await page.locator('h2.card-title').first().textContent().catch(() => null)) ?? '';
+      record('Login/CardTitle', /welcome back/i.test(cardTitle), `Card title: "${cardTitle.trim()}"`);
 
       const emailPh = await page.locator('input#login-email').getAttribute('placeholder');
-      record('Login/EmailPlaceholder', /you@company\.com/.test(emailPh ?? ''), `Email placeholder: "${emailPh}"`);
+      record('Login/EmailPlaceholder', /@company\.com$/.test(emailPh ?? ''), `Email placeholder: "${emailPh}"`);
 
+      // The password field's placeholder is a mask, not the word
+      // "password" — the label carries the field's name.
       const pwdPh = await page.locator('input#login-password').getAttribute('placeholder');
-      record('Login/PwdPlaceholder', /password/i.test(pwdPh ?? ''), `Password placeholder: "${pwdPh}"`);
+      record('Login/PwdPlaceholder', /[•·*]/.test(pwdPh ?? ''), `Password placeholder: "${pwdPh}"`);
 
       const showToggle = await page.locator('button[aria-label*="password" i]').count();
       record('Login/ShowHideToggle', showToggle > 0, `Show/hide toggle present: ${showToggle > 0}`);
@@ -114,11 +156,24 @@ async function main() {
   }
 
   // ── EMPLOYEE DASHBOARD (/dashboard) ────────────────────────────
-  await withFreshSession(browser, 'eli', async (page) => {
-    await page.goto(`${BASE}/dashboard`);
-    await page.waitForSelector('h1', { timeout: 10_000 });
-    // Wait for ticket rows to load (avoids false-fail on empty list)
-    await page.waitForSelector('ticket-row, [data-testid="empty-ticket-list"]', { timeout: 15_000 });
+  // Jess is the seeded User; /dashboard is role-gated, so an agent
+  // would be redirected to /forbidden.
+  await withFreshSession(browser, 'jess', async (page) => {
+    await page.goto(`${BASE}/dashboard`, { waitUntil: 'domcontentloaded' });
+    // Wait for the shared ticket table to load (avoids false-fail on
+    // an empty list — the table always renders, with an empty row).
+    // Wait on the TABLE, not on an h1: the login page also carries an
+    // h1 (the hero headline), so an h1 wait can resolve on the login
+    // screen before the dashboard has even started rendering.
+    try {
+      await page.waitForSelector('[data-testid="ticket-table"]', { timeout: 20_000 });
+    } catch (err) {
+      const body = (await page.locator('body').innerText().catch(() => '')).slice(0, 400);
+      throw new Error(
+        `The User dashboard never rendered its table.\n` +
+        `URL: ${page.url()}\nPage text: ${body}\n${err.message}`,
+      );
+    }
     await page.waitForTimeout(500);
 
     const h1 = (await page.locator('h1').first().textContent())?.trim() ?? '';
@@ -130,16 +185,23 @@ async function main() {
       + await page.getByRole('link', { name: /create ticket/i }).count();
     record('EmployeeDashboard/CreateTicketCTAs', ctaCount >= 1, `"Create Ticket" CTA(s) present: ${ctaCount}`);
 
-    // No stat strip / no team-wide stats
-    const statStrip = await page.locator('[data-testid="stat-strip"]').count();
-    record('EmployeeDashboard/NoStatStrip', statStrip === 0, `No stat strip: ${statStrip === 0}`);
+    // The shared filter bar and table must both be present.
+    const filterBar = await page.locator('[data-testid="ticket-filter-bar"]').count();
+    record('EmployeeDashboard/FilterBar', filterBar === 1, `Filter bar present: ${filterBar === 1}`);
 
-    // No "newest activity" / no welcome message
-    const welcomeCard = await page.locator('[data-testid="welcome-banner"]').count();
-    record('EmployeeDashboard/NoWelcomeBanner', welcomeCard === 0, `No welcome banner: ${welcomeCard === 0}`);
+    const table = await page.locator('[data-testid="ticket-table"]').count();
+    record('EmployeeDashboard/TicketTable', table === 1, `Shared table present: ${table === 1}`);
+
+    // The WDS-2026 stat strip — the shared five-card molecule. The
+    // User's counts are scoped to their OWN tickets (the API enforces
+    // that in SQL); the scope itself is asserted by the backend suite.
+    const stripMolecule = await page.locator('stat-strip').count();
+    const stripCards = await page.locator('[data-testid="stat-strip"] article.card').count();
+    record('EmployeeDashboard/StatStrip', stripMolecule === 1 && stripCards === 5,
+      `strip molecules:${stripMolecule} cards:${stripCards} (expected 1 / 5)`);
 
     // Rows: number · title · status · priority · timestamp
-    const row = page.locator('ticket-row').first();
+    const row = page.locator('[data-testid="ticket-table"] tbody > tr').first();
     if (await row.count() > 0) {
       const rowText = (await row.textContent())?.trim() ?? '';
       // Accept either "#HD-N" or "HD-N" (the wireframe spec says
@@ -194,11 +256,11 @@ async function main() {
     // This is harder to test; skip for now.
   });
 
-  // ── TICKET DETAIL (/tickets/:id) — Eli as User, Sam as Agent ──
-  await withFreshSession(browser, 'eli', async (page) => {
+  // ── TICKET DETAIL (/tickets/:id) — Jess as User, Sam as Agent ──
+  await withFreshSession(browser, 'jess', async (page) => {
     await page.goto(`${BASE}/dashboard`);
-    await page.waitForSelector('ticket-row', { timeout: 15_000 });
-    await page.locator('ticket-row a.row').first().click();
+    await page.waitForSelector('[data-testid="ticket-table"] tbody > tr', { timeout: 15_000 });
+    await page.locator('[data-testid="ticket-table"] tbody > tr').first().click();
     await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
     await page.waitForTimeout(500);
 
@@ -272,10 +334,19 @@ async function main() {
     record('TicketDetailSam/ActivityLog', activityLog > 0, `Activity log present: ${activityLog > 0}`);
   });
 
-  // ── CREATE TICKET (/tickets/new) — Eli ─────────────────────────
-  await withFreshSession(browser, 'eli', async (page) => {
-    await page.goto(`${BASE}/tickets/new`);
-    await page.waitForSelector('h1', { timeout: 10_000 });
+  // ── CREATE TICKET (/tickets/new) — Jess ────────────────────────
+  // /tickets/new is roleGuard(['User']), so this must run as Jess
+  // (the seeded User). Logging in as Eli — a Support Agent — is
+  // redirected to /forbidden and the form never renders, which is
+  // exactly why this section used to time out on `input#title`.
+  // Ticket creation is a USER action; the Agent's and the Admin's
+  // actions on a ticket are resolve / close / reassign / reprioritise.
+  await withFreshSession(browser, 'jess', async (page) => {
+    await page.goto(`${BASE}/tickets/new`, { waitUntil: 'domcontentloaded' });
+    // Wait on the title INPUT, not on an h1 — the login page also
+    // carries an h1, so an h1 wait can resolve before the form has
+    // rendered.
+    await page.waitForSelector('input#title', { timeout: 20_000 });
 
     const h1 = (await page.locator('h1').first().textContent())?.trim() ?? '';
     record('CreateTicket/H1', h1 === 'New ticket', `H1 is "${h1}"`);
@@ -325,7 +396,10 @@ async function main() {
   });
 
   // ── SUBMISSION CONFIRMATION — need to actually submit a ticket ─
-  await withFreshSession(browser, 'eli', async (page) => {
+  // As Jess: /tickets/new is the USER's route, so submitting here
+  // means submitting as the User whose "My Tickets" list the
+  // confirmation page links back to.
+  await withFreshSession(browser, 'jess', async (page) => {
     await page.goto(`${BASE}/tickets/new`);
     await page.waitForSelector('input#title', { timeout: 10_000 });
     const stamp = Date.now();
@@ -368,40 +442,42 @@ async function main() {
     await page.waitForTimeout(1500);
 
     // Tabs
-    const dashTab = await page.locator('#admin-tab-dashboard').count();
+    const dashTab = await page.locator('#admin-tab-tickets').count();
     const usersTab = await page.locator('#admin-tab-users').count();
-    record('AdminDashboard/Tabs', dashTab > 0 && usersTab > 0, `Tabs: Dashboard:${dashTab} Users:${usersTab}`);
+    record('AdminDashboard/Tabs', dashTab > 0 && usersTab > 0, `Tabs: Tickets:${dashTab} Users:${usersTab}`);
 
-    // 4 status cards
-    const cards = await page.locator('article.card').count();
-    record('AdminDashboard/4Cards', cards === 4, `4 status cards: ${cards === 4}`);
+    // ── The shared stat strip ────────────────────────────────
+    //
+    // The WDS-2026 redesign replaced the Admin's four tall
+    // `status-summary-card`s with the SAME `<stat-strip>` molecule
+    // the User's dashboard and the Support Agent's Tickets page
+    // render. Count the MOLECULE's cards (`article.card` inside it),
+    // not the page's `article.card` — the shared table has rows too.
+    const strip = page.locator('[data-testid="stat-strip"]');
+    const stripMolecule = await page.locator('stat-strip').count();
+    const cards = await strip.locator('article.card').count();
+    record('AdminDashboard/StatStrip', stripMolecule === 1 && cards === 5,
+      `strip molecules:${stripMolecule} cards:${cards} (expected 1 / 5)`);
 
-    // Each card has a status pill + count
+    // Each status card carries its label and a count.
     for (const status of ['Open', 'In Progress', 'Resolved', 'Closed']) {
-      const found = await page.getByText(status, { exact: false }).first().count();
+      const found = await strip.getByText(status, { exact: false }).first().count();
       record(`AdminDashboard/${status}Card`, found > 0, `"${status}" card content: ${found > 0}`);
     }
 
-    // Count badge should be the TOTAL, not visible row count
-    // Get the Open card's count
-    const openCard = page.locator('article.card').first();
-    const openCardText = (await openCard.textContent())?.trim() ?? '';
-    // Extract the count number from the .count span inside the card top
-    const openCount = await openCard.locator('span.count, .count').textContent().catch(() => null);
-    record('AdminDashboard/OpenCountIsTotal', /^\d+$/.test((openCount ?? '').trim()), `Open card count: "${openCount}"`);
+    // The Total card's count is a number, not a dash or a label.
+    const totalValue = await page
+      .locator('[data-testid="stat-total-card"] .value')
+      .textContent()
+      .catch(() => null);
+    record('AdminDashboard/TotalCount', /^\d+$/.test((totalValue ?? '').trim()), `Total card count: "${totalValue}"`);
 
-    // Click into Open card first row to verify navigation
-    const firstLink = await openCard.locator('a.admin-card-row').count();
-    record('AdminDashboard/OpenRowsAreLinks', firstLink > 0, `Open rows have <a> links: ${firstLink > 0}`);
+    // ── The shared filter bar + table ────────────────────────
+    const filterBar = await page.locator('[data-testid="ticket-filter-bar"]').count();
+    record('AdminDashboard/FilterBar', filterBar === 1, `Shared filter bar present: ${filterBar === 1}`);
 
-    // Closed card rows are NOT links
-    const closedCard = page.locator('article.card').nth(3);
-    const closedLinks = await closedCard.locator('a.admin-card-row').count();
-    record('AdminDashboard/ClosedRowsNoLinks', closedLinks === 0, `Closed card has no <a> rows: ${closedLinks === 0}`);
-
-    // Closed card has muted style
-    const closedHasMuted = await closedCard.evaluate(el => el.classList.contains('muted'));
-    record('AdminDashboard/ClosedMutedStyle', closedHasMuted, `Closed card has .muted class: ${closedHasMuted}`);
+    const table = await page.locator('[data-testid="ticket-table"]').count();
+    record('AdminDashboard/TicketTable', table === 1, `Shared table present: ${table === 1}`);
 
     // Switch to Users tab
     await page.locator('#admin-tab-users').click();

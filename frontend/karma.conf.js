@@ -28,7 +28,7 @@ module.exports = function (config) {
     colors: true,
     logLevel: config.LOG_INFO,
     autoWatch: true,
-    browsers: ['ChromeHeadlessNoSandbox'],
+    browsers: ['ChromeHeadlessDesktop'],
     customLaunchers: {
       ChromeHeadlessNoSandbox: {
         base: 'ChromeHeadless',
@@ -36,7 +36,26 @@ module.exports = function (config) {
           '--no-sandbox',
           '--disable-gpu',
           '--disable-dev-shm-usage',
-          '--headless',
+          '--headless=new',
+          // A desktop-width viewport. ChromeHeadless otherwise
+          // starts at ~741px, which is narrow enough to trip the
+          // app's own responsive breakpoints — so a layout spec
+          // asserting the DESKTOP arrangement would silently be
+          // measuring the mobile one. Pinning the window size
+          // makes the viewport deterministic across machines.
+          '--window-size=1440,900',
+        ],
+      },
+      // The same desktop viewport, but under the conventional name
+      // so `--browsers=ChromeHeadless` and `npm test` both get it.
+      ChromeHeadlessDesktop: {
+        base: 'ChromeHeadless',
+        flags: [
+          '--no-sandbox',
+          '--disable-gpu',
+          '--disable-dev-shm-usage',
+          '--headless=new',
+          '--window-size=1440,900',
         ],
       },
     },

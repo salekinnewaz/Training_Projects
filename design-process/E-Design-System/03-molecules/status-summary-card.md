@@ -4,6 +4,16 @@
 **Composed of:** [badge-status](../02-atoms/badge-status.md) (mini-pill variant) + typography tokens + [ticket-row](ticket-row.md) (status-card row variant)
 **Phase 4 source:** Admin Dashboard (the four cards on the Dashboard tab)
 
+> **⚠️ Superseded — no page renders this.** The WDS-2026 redesign
+> replaced the Admin's four `status-summary-card`s with the shared
+> [stat-strip](stat-strip.md) and the shared
+> [ticket table](shared-ticket-table.md) — the same two surfaces the
+> User and the Support Agent see. The molecule is kept in the
+> library as a reusable summary column, but nothing in the app
+> currently imports it. See the [Admin dashboard
+> organism](../04-organisms/admin-dashboard-page.md) for the current
+> shape.
+
 ---
 
 ## Overview

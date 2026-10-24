@@ -716,3 +716,60 @@ from iteration 11:
   ticket-detail owner/submitter/created rows, attachment
   micro-label.
 
+---
+
+## Iteration 14 — 2026-10-24 — WDS-2026 stat strip on all three roles
+
+**This supersedes the Iteration 3 / Iteration 4 decision to strip the
+stat strip from the Employee Dashboard.** The WDS-2026 mockup defines
+a five-card stat strip as part of the reference layout, so the strip
+was **reinstated** — and then given to all three roles.
+
+**What changed:**
+
+- **User (`/dashboard`)** — unchanged. The reference-accurate
+  `<stat-strip>` was already there, scoped to the caller's own
+  tickets (`GET /api/tickets/stats/mine`).
+- **Support Agent (`/tickets`)** — the page's own band of five
+  `<stat-card>` elements (169px tall, equal-width cards, outline
+  glyphs) was **replaced** by the shared `<stat-strip>`. That band
+  did not match the reference. Counts are team-wide
+  (`GET /api/tickets/stats`).
+- **Admin (`/admin`)** — had **no** strip. Now renders the shared
+  `<stat-strip>`, also team-wide. The Admin's numbers are identical
+  to the Agent's, because both see the whole queue.
+
+**The invariant:** there is **one** stat strip in the app. The
+geometry, the anatomy and the behaviour are identical everywhere —
+only the **data scope** differs. The Agent's page had diverged; the
+Admin had none; now neither has its own.
+
+**Verification** — six QA gates, all green:
+
+| Gate | Result |
+|---|---|
+| `verify-ref-measurements.js` | 97/97 |
+| `verify-strip.js` | 149/149 |
+| `verify-scenarios.js` | 46/46 |
+| `verify-shared-table.js` | 67/67 |
+| `verify-stat-strip-roles.js` | 45/45 — **new** |
+| `verify-header-narrow.js` | 62/62 — **new** |
+
+Plus 599/599 Angular unit tests, 146 + 8 backend tests, 71 Playwright
+tests passing (1 skipped), and a clean `tsc --noEmit` / `ng build`.
+
+**Note on the Iteration 3 tripwire.** The `feature.spec.ts`
+assertion *"Employee Dashboard must NOT have a stat strip"* was
+written against the old wireframe, which forbade summary stats on the
+User's page ("no team-wide visibility"). The WDS-2026 reference
+supersedes that wireframe. The tripwire is now inverted — the User's
+dashboard **must** carry the strip — and the new
+`verify-stat-strip-roles.js` covers all three roles together.
+
+**Also in this iteration:** the shared `header-chrome` no longer
+overflows sideways on a phone. It degrades in a fixed order — the
+profile trigger's display name and the duplicate search form below
+640px, the wordmark below 440px — and the 28px avatar always
+survives. The ⌘K shortcut falls back to the page-level filter bar's
+search field when the chrome's own input is hidden.
+

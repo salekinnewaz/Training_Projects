@@ -9,8 +9,8 @@ This folder is the **single source of truth** for HelpDesk Lite's design system.
 1. **Start with [`00-design-system.md`](00-design-system.md)** — index, scope, and how this folder is organized.
 2. **Then [`01-design-tokens.md`](01-design-tokens.md)** — every visual token (color, type, spacing, shadow, radius, border, focus ring) in one place. Cross-referenced from every component.
 3. **Atoms, molecules, organisms, patterns** — the component library, organized by atomic-design tier:
-   - [`02-atoms/`](02-atoms/) — 13 basic building blocks (button, input, badge, avatar, etc.).
-   - [`03-molecules/`](03-molecules/) — 11 composed components (form field, kanban card, status card, etc.).
+   - [`02-atoms/`](02-atoms/) — 15 basic building blocks (button, input, badge, avatar, ticket-category-icon, etc.).
+   - [`03-molecules/`](03-molecules/) — 13 composed components (form field, kanban card, status card, shared ticket table, etc.).
    - [`04-organisms/`](04-organisms/) — 6 page-level compositions (Login form, Ticket Detail, Kanban board, etc.).
    - [`05-patterns/`](05-patterns/) — 7 cross-page behavior patterns (app chrome, confirmation dialog, role-aware action matrix, etc.).
 4. **Phase 4 specs** in `design-process/D-UX-Design/` — the source of truth for each component's context, behavior, and acceptance criteria. Each component doc in this folder cross-references its source spec(s).
@@ -27,9 +27,9 @@ Every component and pattern in this folder traces back to one or more Phase 4 sp
 | [`D-UX-Design/ticket-detail.md`](../D-UX-Design/ticket-detail.md) | [ticket-detail-page](04-organisms/ticket-detail-page.md), [comment composer variant of form-field](03-molecules/form-field.md), [role-aware-action-matrix](05-patterns/role-aware-action-matrix.md), [confirmation-dialog](05-patterns/confirmation-dialog.md), [inline-error](05-patterns/inline-error.md) |
 | [`D-UX-Design/submission-confirmation.md`](../D-UX-Design/submission-confirmation.md) | [check-circle](../02-atoms/check-circle.md), [button](../02-atoms/button.md), [link](../02-atoms/link.md) |
 | [`D-UX-Design/create-ticket.md`](../D-UX-Design/create-ticket.md) | [create-ticket-form](04-organisms/create-ticket-form.md), [form-field](03-molecules/form-field.md), [form-field-dropdown](03-molecules/form-field-dropdown.md), [inline-error](05-patterns/inline-error.md), [server-error-state](05-patterns/server-error-state.md) |
-| [`D-UX-Design/employee-dashboard.md`](../D-UX-Design/employee-dashboard.md) | [ticket-row](03-molecules/ticket-row.md), [empty-state](03-molecules/empty-state.md), [loading-skeleton](05-patterns/loading-skeleton.md), [server-error-state](05-patterns/server-error-state.md) |
-| [`D-UX-Design/agent-kanban.md`](../D-UX-Design/agent-kanban.md) | [kanban-board](04-organisms/kanban-board.md), [kanban-card](03-molecules/kanban-card.md), [form-field-dropdown](03-molecules/form-field-dropdown.md), [role-aware-action-matrix](05-patterns/role-aware-action-matrix.md) |
-| [`D-UX-Design/admin-dashboard.md`](../D-UX-Design/admin-dashboard.md) | [admin-dashboard-page](04-organisms/admin-dashboard-page.md), [status-summary-card](03-molecules/status-summary-card.md), [tab-switcher](03-molecules/tab-switcher.md) |
+| [`D-UX-Design/employee-dashboard.md`](../D-UX-Design/employee-dashboard.md) | [shared-ticket-table](03-molecules/shared-ticket-table.md), [stat-strip](03-molecules/stat-strip.md), [ticket-category-icon](../02-atoms/ticket-category-icon.md), [sparkline](../02-atoms/sparkline.md), [empty-state](03-molecules/empty-state.md), [loading-skeleton](05-patterns/loading-skeleton.md), [server-error-state](05-patterns/server-error-state.md) |
+| [`D-UX-Design/agent-kanban.md`](../D-UX-Design/agent-kanban.md) | [kanban-board](04-organisms/kanban-board.md), [kanban-card](03-molecules/kanban-card.md), [shared-ticket-table](03-molecules/shared-ticket-table.md), [form-field-dropdown](03-molecules/form-field-dropdown.md), [role-aware-action-matrix](05-patterns/role-aware-action-matrix.md) |
+| [`D-UX-Design/admin-dashboard.md`](../D-UX-Design/admin-dashboard.md) | [admin-dashboard-page](04-organisms/admin-dashboard-page.md), [shared-ticket-table](03-molecules/shared-ticket-table.md), [stat-strip](03-molecules/stat-strip.md), [status-summary-card](03-molecules/status-summary-card.md), [tab-switcher](03-molecules/tab-switcher.md) |
 | [`D-UX-Design/users-tab.md`](../D-UX-Design/users-tab.md) | [users-table-page](04-organisms/users-table-page.md), [self-row-table](03-molecules/self-row-table.md), [form-field-dropdown](03-molecules/form-field-dropdown.md), [confirmation-dialog](05-patterns/confirmation-dialog.md) |
 | [`D-UX-Design/header-profile-logout.md`](../D-UX-Design/header-profile-logout.md) | [app-header-chrome](03-molecules/app-header-chrome.md), [dropdown-panel](03-molecules/dropdown-panel.md), [dialog-modal](03-molecules/dialog-modal.md), [app-chrome](05-patterns/app-chrome.md) |
 
@@ -39,8 +39,8 @@ Every component and pattern in this folder traces back to one or more Phase 4 sp
 
 ### In MVP
 
-- 13 atom components (button, input-text, textarea, select, label, badge-status, badge-priority, badge-role, avatar, link, divider, check-circle, caret).
-- 11 molecule components (form-field, form-field-dropdown, ticket-row, kanban-card, status-summary-card, self-row-table, app-header-chrome, tab-switcher, dropdown-panel, dialog-modal, empty-state).
+- 15 atom components (button, input-text, textarea, select, label, badge-status, badge-priority, badge-role, avatar, link, divider, check-circle, caret, sparkline, ticket-category-icon).
+- 13 molecule components (form-field, form-field-dropdown, ticket-row, stat-strip, shared-ticket-table, ticket-filter-bar, kanban-card, status-summary-card, self-row-table, app-header-chrome, tab-switcher, dropdown-panel, dialog-modal, empty-state, pagination).
 - 6 organisms (login-form, ticket-detail-page, kanban-board, admin-dashboard-page, users-table-page, create-ticket-form).
 - 7 patterns (app-chrome, confirmation-dialog, role-aware-action-matrix, empty-state, loading-skeleton, server-error-state, inline-error).
 - Consolidated visual tokens (colors, typography, spacing, shadows, radii, borders, focus ring).

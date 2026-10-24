@@ -101,6 +101,54 @@
   --status-closed-text: #475569;
   --status-closed-dot: #94A3B8;
 
+  /* ── Colors ─ stat-strip card accents ───────────────────────────
+     The stat strip's five cards use a RICHER, more saturated accent
+     family than the status pills and the Kanban dots — the
+     reference's Open disc is a pure blue, not the pill's indigo,
+     and its Closed disc is a slate BLUE, not a neutral grey.
+
+     These are deliberately separate from --status-*-dot, which the
+     Ticket Detail pills and the Kanban columns also read; changing
+     those would shift the rest of the app.
+
+     Every value below is measured from the reference screenshot
+     (the disc's dominant pixel):
+       Total      disc #7433FE   tile #FDF8FE
+       Open       disc #0674FE   tile #EAF2FE
+       InProgress disc #FEAF11   tile #FEF4E0
+       Resolved   disc #08D076   tile #E1F9EE
+       Closed     disc #5D749D   tile #EBEEF6 */
+  --stat-accent-total: #7433FE;
+  --stat-accent-open: #0674FE;
+  --stat-accent-in-progress: #FEAF11;
+  --stat-accent-resolved: #08D076;
+  --stat-accent-closed: #5D749D;
+
+  --stat-tile-total: #F0EAFE;
+  --stat-tile-open: #EAF2FE;
+  --stat-tile-in-progress: #FEF4E0;
+  --stat-tile-resolved: #E1F9EE;
+  --stat-tile-closed: #EBEEF6;
+
+  /* ── Colors ─ stat-strip sparklines ──────────────────────────────
+     The WDS-2026 reference draws its stat-card sparklines in the
+     card's own accent, EXCEPT for the In Progress card, whose curve
+     is a pale periwinkle rather than the amber accent — so the amber
+     bar below it stays the card's only warm element. The Resolved
+     card's curve is likewise greener than its emerald accent.
+
+     Each value is solved from the reference's measured stroke peak
+     at the strip's ~0.406 effective alpha (stroke 0.34 over fill
+     0.10 on white):
+       Open       peak #C3C9FD  <- #6366F1
+       InProgress peak #E1E5F7  <- #B4BEEB
+       Resolved   peak #98E9C6  <- #02C878
+       Closed     peak #CFD9EC  <- #87A0D0 */
+  --stat-spark-open: #6366F1;
+  --stat-spark-in-progress: #B4BEEB;
+  --stat-spark-resolved: #02C878;
+  --stat-spark-closed: #87A0D0;
+
   /* ── Colors ─ priority pills ───────────────────────────────────── */
   --priority-low-bg: #F1F5F9;
   --priority-low-text: #475569;
@@ -128,7 +176,21 @@
   --button-md-height: 40px;        /* HD-007: header CTAs */
   --button-lg-height: 48px;        /* HD-007: empty-state CTA */
   --button-radius: 10px;           /* modern softer radius */
-  --content-column-width: 1280px;
+  /* The WDS-2026 reference's content column. The stat strip's five
+     cards are sized as fractions of this width (22.56 / 18.42 /
+     17.75 / 19.16 / 22.12 fr), and the reference's own strip is
+     1352px wide — so a narrower column squeezes the cards and the
+     "In Progress" label ends up under its own sparkline.
+
+     This was 1280px, which produced a 1152px strip: the five cards
+     came out 253 / 206 / 199 / 215 / 248 instead of the reference's
+     305 / 249 / 240 / 259 / 299, and the Agent's and the Admin's
+     labels collided with their sparklines and progress bars. The
+     Employee Dashboard already overrode this to 1408px for exactly
+     that reason; the override now lives here, so all three roles
+     that render the shared <stat-strip> get the reference's
+     geometry. */
+  --content-column-width: 1448px;
   --form-max-width: 480px;
 
   /* ── Geometry ─ chrome ────────────────────────────────────────── */

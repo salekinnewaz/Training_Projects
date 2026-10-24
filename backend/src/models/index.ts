@@ -19,6 +19,7 @@ import Comment from './Comment';
 import ActivityLog from './ActivityLog';
 import Attachment from './Attachment';
 import Counter from './Counter';
+import Notification from './Notification';
 
 export type ActivityEventPayload =
   | { eventType: 'Created' }
@@ -114,6 +115,29 @@ function defineAssociations(): void {
     as: 'uploadedBy',
     foreignKey: 'uploadedById',
   });
+
+  // HD-019 — Notification feed. Each notification is addressed to
+  // exactly one user (`userId`); CASCADE on delete so removing a
+  // user cleans up their feed. The `actor` and `ticket` associations
+  // are nullable (system events, non-ticket notifications) and use
+  // SET NULL / CASCADE matching the FK constraints.
+  User.hasMany(Notification, {
+    as: 'notifications',
+    foreignKey: 'userId',
+    onDelete: 'CASCADE',
+  });
+  Notification.belongsTo(User, {
+    as: 'recipient',
+    foreignKey: 'userId',
+  });
+  Notification.belongsTo(User, {
+    as: 'actor',
+    foreignKey: 'actorId',
+  });
+  Notification.belongsTo(Ticket, {
+    as: 'ticket',
+    foreignKey: 'ticketId',
+  });
 }
 
 defineAssociations();
@@ -126,4 +150,5 @@ export {
   ActivityLog,
   Attachment,
   Counter,
+  Notification,
 };

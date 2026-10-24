@@ -158,7 +158,7 @@ Used for role borders / role badges.
 | `column-width-kanban` | 320px | Kanban column width |
 | `column-gap-kanban` | 16px | Gap between Kanban columns |
 | `form-column-width` | 720px | Create Ticket form column |
-| `content-column-width` | 880px | Employee Dashboard, Users table content column |
+| `content-column-width` | 1448px | The post-login content column (all three roles). The chrome's 32px gutters leave a 1384px content area — the width the WDS-2026 stat strip is measured against. |
 | `form-column-width-login` | 400px | Login form column |
 
 ---

@@ -30,13 +30,53 @@
  */
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { computed, signal } from '@angular/core';
 import { provideRouter, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 
 import { ApiError } from '../../../services/api-error';
 import { AuthService } from '../../../services/auth.service';
+import { NotificationsService } from '../../../services/notifications.service';
 import type { UserPublic } from '../../../models/user';
 import { HeaderChromeComponent } from './header-chrome.component';
+
+/**
+ * Minimal NotificationsService stand-in. The chrome reads
+ * `hasUnread` / `panelOpen` and calls `togglePanel` / `closePanel`.
+ * When the panel opens, `<notifications-panel>` renders and reads
+ * `loading` / `items` / `unreadCount` off the same instance, so the
+ * stub carries those signals too (all empty / zero). Hand-rolled so
+ * the suite avoids the HttpClient + setInterval machinery the real
+ * service pulls in.
+ */
+function makeNotificationsStub(): unknown {
+  const unread = signal(0);
+  const panelOpen = signal(false);
+  const items = signal<unknown[]>([]);
+  const loading = signal(false);
+  return {
+    hasUnread: computed(() => unread() > 0),
+    unreadCount: unread.asReadonly(),
+    items: items.asReadonly(),
+    loading: loading.asReadonly(),
+    error: signal<string | null>(null).asReadonly(),
+    panelOpen,
+    togglePanel: jasmine.createSpy('togglePanel').and.callFake(async () => {
+      panelOpen.update((v: boolean) => !v);
+    }),
+    closePanel: jasmine.createSpy('closePanel').and.callFake(() => {
+      panelOpen.set(false);
+    }),
+    markRead: jasmine.createSpy('markRead').and.resolveTo(),
+    markAllRead: jasmine.createSpy('markAllRead').and.resolveTo(),
+    // startPolling is a no-op in the stub — the chrome lazily calls
+    // it on first bell click so the spec doesn't have to manage a
+    // real setInterval.
+    startPolling: jasmine.createSpy('startPolling').and.callFake(() => {}),
+    // Test hook: flip the unread count to drive the red dot.
+    __setUnread: (n: number) => unread.set(n),
+  };
+}
 
 function makeUser(overrides: Partial<UserPublic> = {}): UserPublic {
   return {
@@ -91,6 +131,7 @@ describe('HeaderChromeComponent', () => {
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: authService },
+        { provide: NotificationsService, useValue: makeNotificationsStub() },
       ],
     }).compileComponents();
 
@@ -167,13 +208,16 @@ describe('HeaderChromeComponent', () => {
     expect(usersLink.getAttribute('href')).toBe('/users');
   });
 
-  it('targets the "Tickets" link to /queue for support agents', () => {
+  it('targets the "Tickets" link to /tickets for support agents (HD-019)', () => {
     seedUser(makeUser({ role: 'Support Agent' }));
     fixture = TestBed.createComponent(HeaderChromeComponent);
     fixture.detectChanges();
 
     const link = fixture.nativeElement.querySelector('.nav-link') as HTMLAnchorElement;
-    expect(link.getAttribute('href')).toBe('/queue');
+    // HD-019: the agent/admin landing is the new Tickets list page
+    // (WDS-2026 reference layout). The Kanban at /queue is still
+    // routable but no longer the chrome's primary "Tickets" CTA.
+    expect(link.getAttribute('href')).toBe('/tickets');
   });
 
   it('does not render the search input for the user role', () => {
@@ -197,7 +241,7 @@ describe('HeaderChromeComponent', () => {
     expect(input.placeholder).toContain('Search');
   });
 
-  it('routes to /queue with q param when the search form is submitted', () => {
+  it('routes to /tickets with q param when the search form is submitted', () => {
     seedUser(makeUser({ role: 'Support Agent' }));
     fixture = TestBed.createComponent(HeaderChromeComponent);
     fixture.detectChanges();
@@ -210,7 +254,7 @@ describe('HeaderChromeComponent', () => {
     form.dispatchEvent(new Event('submit', { cancelable: true }));
     fixture.detectChanges();
 
-    expect(routerNavigateSpy).toHaveBeenCalledWith(['/queue'], {
+    expect(routerNavigateSpy).toHaveBeenCalledWith(['/tickets'], {
       queryParams: { q: 'vpn' },
     });
   });
@@ -446,29 +490,48 @@ describe('HeaderChromeComponent', () => {
   it('renders the notification bell trigger with the unread red dot', () => {
     seedUser(makeUser());
     fixture = TestBed.createComponent(HeaderChromeComponent);
+    // Set the stub's unread count to > 0 so the red dot renders.
+    (TestBed.inject(NotificationsService) as unknown as {
+      __setUnread: (n: number) => void;
+    }).__setUnread(3);
     fixture.detectChanges();
 
     const bell = fixture.nativeElement.querySelector('.notification-trigger') as HTMLButtonElement;
     expect(bell).not.toBeNull();
     // SVG glyph is present.
     expect(bell.querySelector('svg')).not.toBeNull();
-    // Red dot renders by default (hasUnreadNotifications is true).
+    // Red dot renders when the stub has unread > 0.
     expect(bell.querySelector('.notification-dot')).not.toBeNull();
     // aria-label mentions unread so screen-reader users get the affordance.
     expect(bell.getAttribute('aria-label')?.toLowerCase()).toContain('unread');
   });
 
-  it('clicking the notification bell dismisses the unread dot', () => {
+  it('clicking the notification bell toggles the dropdown panel and lazily starts polling', () => {
     seedUser(makeUser());
     fixture = TestBed.createComponent(HeaderChromeComponent);
     fixture.detectChanges();
 
     const bell = fixture.nativeElement.querySelector('.notification-trigger') as HTMLButtonElement;
-    expect(bell.querySelector('.notification-dot')).not.toBeNull();
     bell.click();
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.notification-dot')).toBeNull();
-    expect(fixture.componentInstance.hasUnreadNotifications()).toBe(false);
+    // Service's togglePanel was invoked; the chrome delegates the
+    // opening logic to the service rather than re-implementing it.
+    // The first click also kicks off the 30s polling loop so the
+    // red dot stays live while the panel is closed.
+    const svc = TestBed.inject(NotificationsService) as jasmine.SpyObj<NotificationsService>;
+    expect(svc.togglePanel).toHaveBeenCalled();
+    expect(svc.startPolling).toHaveBeenCalled();
+  });
+
+  it('does not render the red dot when the feed has no unread', () => {
+    seedUser(makeUser());
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const bell = fixture.nativeElement.querySelector('.notification-trigger') as HTMLButtonElement;
+    expect(bell.querySelector('.notification-dot')).toBeNull();
+    // aria-label flips to the plain "Notifications" copy.
+    expect(bell.getAttribute('aria-label')).toBe('Notifications');
   });
 
   it('renders the Cmd+K kbd shortcut hint inside the search input', () => {
@@ -561,5 +624,120 @@ describe('HeaderChromeComponent', () => {
     // The textarea retains focus; chrome search is NOT focused.
     expect(document.activeElement).toBe(ta);
     document.body.removeChild(ta);
+  });
+
+  // ── Narrow-viewport chrome contract ────────────────────────
+  //
+  // The chrome is rendered above EVERY post-login page, so a
+  // horizontal overflow there is a page-wide bug on all three
+  // roles. The live proof is qa/scripts/verify-header-narrow.js
+  // (62 checks, all three personas x eight widths). These specs
+  // pin the CSS that makes it work, so a future edit that drops
+  // one of the load-bearing rules fails here rather than silently
+  // regressing the phone layout.
+
+  it('cuts the automatic minimum size on the profile trigger and its name', () => {
+    seedUser(makeUser());
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    // A grid track sized "auto" is sized to its content's MIN-CONTENT
+    // width. The trigger's intrinsic 137px pushed the header past
+    // the viewport on a phone, so both the track and the items
+    // inside it must be allowed to shrink.
+    const trigger = fixture.nativeElement.querySelector('.profile-trigger') as HTMLElement;
+    const name = fixture.nativeElement.querySelector('.profile-name') as HTMLElement;
+
+    expect(getComputedStyle(trigger).minWidth).toBe('0px');
+    expect(getComputedStyle(name).minWidth).toBe('0px');
+    // The name truncates rather than pushing the trigger wider.
+    expect(getComputedStyle(name).textOverflow).toBe('ellipsis');
+    expect(getComputedStyle(name).whiteSpace).toBe('nowrap');
+  });
+
+  it('gives the profile trigger a grid track that can shrink to zero', () => {
+    seedUser(makeUser());
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const chrome = fixture.nativeElement.querySelector('.chrome') as HTMLElement;
+    const tracks = getComputedStyle(chrome).gridTemplateColumns;
+    // The last track must be a minmax(0, …) track — a plain "auto"
+    // track is sized to its content's min-content width and would
+    // re-introduce the overflow.
+    expect(tracks.split(' ').length).toBe(5);
+    expect(tracks.trim().endsWith('px')).toBe(true);
+    // The computed value cannot distinguish minmax(0, auto) from
+    // auto, so assert on the source instead.
+    const source = (HeaderChromeComponent as unknown as {
+      ɵcmp: { styles: string[] };
+    }).ɵcmp.styles.join('\n');
+    expect(source).toContain('grid-template-columns: auto auto 1fr auto minmax(0, auto)');
+  });
+
+  it('cuts the automatic minimum size on the chrome search form', () => {
+    seedUser(makeUser({ role: 'Support Agent' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    // The search form's min-content width (input + icon + kbd chip)
+    // refused to shrink and pushed the bell and the profile trigger
+    // past the viewport. It must be allowed to shrink.
+    const search = fixture.nativeElement.querySelector('.chrome-search') as HTMLElement;
+    expect(getComputedStyle(search).minWidth).toBe('0px');
+    // The input inside it is the other half of the contract.
+    const input = fixture.nativeElement.querySelector('input.search-input') as HTMLInputElement;
+    expect(getComputedStyle(input).minWidth).toBe('0px');
+  });
+
+  it('drops the optional chrome content in the documented order below 640px', () => {
+    seedUser(makeUser({ role: 'Support Agent' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    const source = (HeaderChromeComponent as unknown as {
+      ɵcmp: { styles: string[] };
+    }).ɵcmp.styles.join('\n');
+
+    // Below 640px: the display name and the chrome's duplicate
+    // search form go. The ticket lists carry their own search field
+    // in the filter bar.
+    expect(source).toContain('@media (max-width: 640px)');
+    // Angular scopes the compiled stylesheet with attribute
+    // selectors (".profile-name[_ngcontent-%COMP%]"), so the
+    // selector is matched loosely — the attribute suffix sits
+    // between the class name and the brace.
+    expect(source).toMatch(/\.profile-name[^{]*\{\s*display:\s*none;/);
+    expect(source).toMatch(/\.chrome-search[^{]*\{\s*display:\s*none;/);
+    // Below 440px: the wordmark goes too, but the brand MARK stays
+    // (it is the home button and the app's identity).
+    expect(source).toContain('@media (max-width: 440px)');
+    expect(source).toMatch(/\.brand-wordmark[^{]*\{\s*display:\s*none;/);
+  });
+
+  it('falls back to the page filter bar search when the chrome search is hidden', () => {
+    // The user role has no chrome search at all, so Cmd+K has to
+    // land somewhere else: the ticket list's own filter-bar search.
+    seedUser(makeUser({ role: 'User' }));
+    fixture = TestBed.createComponent(HeaderChromeComponent);
+    fixture.detectChanges();
+
+    // Stand in for the filter bar's search field.
+    const fallback = document.createElement('input');
+    fallback.setAttribute('data-testid', 'ticket-filter-search');
+    document.body.appendChild(fallback);
+
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'k',
+        metaKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(fallback);
+    document.body.removeChild(fallback);
   });
 });

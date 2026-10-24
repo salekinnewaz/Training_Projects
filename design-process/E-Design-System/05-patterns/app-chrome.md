@@ -7,12 +7,16 @@
 
 ## Overview
 
-The persistent UI across every authenticated page in HelpDesk Lite. Three responsibilities, one strip:
+The persistent UI across every authenticated page in HelpDesk Lite. One strip, four responsibilities:
 1. **Brand mark** (left) — "this is HelpDesk Lite," one-click return to role-correct Dashboard.
-2. **Identity affordance** (right) — single "My Profile ▾" trigger that opens a dropdown panel showing the user's avatar, name, role, and the Logout action.
-3. **Logout** — accessed only via the dropdown panel, protected by a confirmation dialog before clearing the session.
+2. **Global search** — a search field with a ⌘K shortcut, submitting to the role's ticket list.
+3. **Notifications** — a bell affordance.
+4. **Identity affordance** (right) — single "My Profile ▾" trigger that opens a dropdown panel showing the user's avatar, name, role, and the Logout action. Logout is accessed only via that panel, protected by a confirmation dialog before clearing the session.
 
 The pattern is intentionally minimal. The chrome is the most-shared surface in the app; every other post-login page renders it as the top strip. Its only job is to be invisible when the user is doing their work and reliably accessible when they need to identify themselves or leave the session.
+
+> **The chrome never overflows sideways.** Because it is the most-shared surface in the app, a horizontal overflow in it is a page-wide bug on all three roles. The chrome's content is intrinsically wider than a phone, so it **degrades in a documented order** rather than overflowing: the profile trigger's display name and the duplicate search form go below 640px, and the wordmark goes below 440px (the brand **mark** stays — it is the home button). The avatar is never dropped. See the
+> [app-header-chrome](../03-molecules/app-header-chrome.md) molecule for the full ladder and the ⌘K fallback.
 
 ## What the pattern enforces
 

@@ -13,7 +13,8 @@
  *      and "Users" (admin only). Active route gets the brand color
  *      + tinted background (routerLinkActive). Tickets links to
  *      the role-correct tickets landing (`roleHomePath()` for the
- *      current role, i.e. /dashboard for users, /queue for agents).
+ *      current role, i.e. /dashboard for users, /tickets for
+ *      agents and admins — see `ticketsLink()` below).
  *   3. Search input (center, agent/admin only) — debounced 200ms
  *      search across ID, title, and description. Out-of-scope for
  *      the user role per EXPERIENCE.md line 153.
@@ -45,6 +46,7 @@ import {
   Component,
   ElementRef,
   HostListener,
+  OnInit,
   computed,
   effect,
   inject,
@@ -58,12 +60,14 @@ import { toSignal } from '@angular/core/rxjs-interop';
 
 import { AuthService } from '../../../services/auth.service';
 import { ApiError } from '../../../services/api-error';
+import { NotificationsService } from '../../../services/notifications.service';
 import { BadgeRoleComponent } from '../../atoms/badge-role/badge-role.component';
 import { CaretDownComponent } from '../../atoms/caret-down/caret-down.component';
 import { ChromeAvatarComponent } from '../../atoms/chrome-avatar/chrome-avatar.component';
 import { DividerHrComponent } from '../../atoms/divider-hr/divider-hr.component';
 import { DialogModalComponent } from '../dialog-modal/dialog-modal.component';
 import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.component';
+import { NotificationsPanelComponent } from '../notifications-panel/notifications-panel.component';
 
 @Component({
   selector: 'header-chrome',
@@ -80,6 +84,7 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
     DialogModalComponent,
     DividerHrComponent,
     DropdownPanelComponent,
+    NotificationsPanelComponent,
   ],
   template: `
     <header class="chrome" role="banner">
@@ -140,10 +145,14 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
         }
 
         <button
+          #notifTrigger
           type="button"
           class="notification-trigger"
           (click)="onNotificationClick()"
           [attr.aria-label]="notificationLabel()"
+          [attr.aria-expanded]="notifications.panelOpen()"
+          aria-haspopup="menu"
+          aria-controls="notifications-menu"
           data-testid="notification-bell"
         >
           <svg viewBox="0 0 20 20" width="18" height="18" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -154,6 +163,15 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
             <span class="notification-dot" aria-hidden="true"></span>
           }
         </button>
+
+        @if (notifications.panelOpen() && notifTrigger) {
+          <dropdown-panel
+            id="notifications-menu"
+            [anchor]="notifTrigger"
+          >
+            <notifications-panel />
+          </dropdown-panel>
+        }
 
         <button
           #trigger
@@ -226,7 +244,16 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
     .chrome {
       height: var(--chrome-height);
       display: grid;
-      grid-template-columns: auto auto 1fr auto auto;
+      /* The last track holds the profile trigger. An "auto" track is
+         sized to its content's MIN-CONTENT width, so the trigger's
+         intrinsic 137px pushed the header past the right edge on a
+         phone (472px of content in a 420px viewport). minmax(0, auto)
+         lets the track shrink to zero — but a track that shrinks to
+         zero takes the AVATAR with it, which is worse than the
+         overflow it replaces. The narrow-width media query below
+         hides the display name instead, so the trigger keeps its
+         avatar and the track has room to hold it. */
+      grid-template-columns: auto auto 1fr auto minmax(0, auto);
       align-items: center;
       column-gap: 16px;
       padding: 0 32px;
@@ -306,6 +333,13 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
       border: 1px solid var(--color-card-border);
       border-radius: 10px;
       color: var(--color-text-secondary);
+      /* The form sits in the chrome's flexible grid track. Its
+         automatic minimum size is its min-content width (the input's
+         default 20ch plus the icon and the kbd chip), which refused
+         to shrink and pushed the bell and the profile trigger past
+         the viewport on a phone. Cutting the minimum lets the form
+         shrink; the input inside it already has min-width: 0. */
+      min-width: 0;
       transition: border-color var(--duration-fast) var(--ease-out),
         box-shadow var(--duration-fast) var(--ease-out),
         background-color var(--duration-fast) var(--ease-out);
@@ -411,6 +445,13 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
       height: 40px;
       border-radius: 10px;
       transition: background-color var(--duration-fast) var(--ease-out);
+      /* The trigger is a flex item in the header's last grid track.
+         Its automatic minimum size is its content's min-content
+         width, so on a narrow screen it refused to shrink and pushed
+         the header past the viewport. Cut it and let the name
+         ellipsise. */
+      min-width: 0;
+      overflow: hidden;
     }
     .profile-trigger:hover {
       background: var(--color-page-bg);
@@ -430,6 +471,10 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
       text-overflow: ellipsis;
       white-space: nowrap;
       font-weight: 500;
+      /* A flex item's automatic minimum size is its content's
+         min-content width — without this the name would keep the
+         trigger at its full width instead of truncating. */
+      min-width: 0;
     }
     .profile-meta {
       display: flex;
@@ -469,12 +514,57 @@ import { DropdownPanelComponent } from '../dropdown-panel/dropdown-panel.compone
       background: var(--color-primary-soft);
       color: var(--color-primary);
     }
+
+    /* ── Narrow-viewport chrome ────────────────────────────────
+       The chrome's content (brand + nav + bell + profile) is
+       intrinsically wider than a phone. The profile trigger's
+       display name is the only part that is genuinely optional —
+       the avatar identifies the signed-in user, and the dropdown
+       panel carries the full name anyway. So the name is dropped
+       first, then the wordmark, then the horizontal padding is
+       trimmed. Each step is a discrete breakpoint so the header
+       degrades predictably instead of squeezing the avatar to
+       zero. */
+    @media (max-width: 640px) {
+      .chrome {
+        column-gap: 12px;
+        padding: 0 20px;
+      }
+      .profile-name {
+        display: none;
+      }
+      .profile-trigger {
+        gap: 6px;
+      }
+      /* The search form cannot fit beside the brand, the nav, the
+         bell and the profile trigger on a phone. The ticket lists
+         carry their own search field in the filter bar, so the
+         chrome's duplicate is dropped rather than squeezed. The
+         Cmd+K shortcut still works and focuses the page-level
+         search instead. */
+      .chrome-search {
+        display: none;
+      }
+    }
+    @media (max-width: 440px) {
+      .chrome {
+        column-gap: 10px;
+        padding: 0 14px;
+      }
+      .brand-wordmark {
+        display: none;
+      }
+      .nav-link {
+        padding: 6px 10px;
+      }
+    }
   `],
 })
-export class HeaderChromeComponent {
+export class HeaderChromeComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly hostEl = inject(ElementRef<HTMLElement>);
+  readonly notifications = inject(NotificationsService);
 
   readonly user = toSignal(this.auth.user$, { initialValue: null });
 
@@ -483,12 +573,10 @@ export class HeaderChromeComponent {
   readonly logoutError = signal<string | null>(null);
   readonly searchValue = signal('');
   /**
-   * Notification bell unread state. Always true in this slice
-   * (the panel is out of scope) so the red dot is visible per the
-   * WDS-2026 mockup. Future work will subscribe to a real
-   * notifications feed.
+   * Derived from the live notifications service so the bell's red
+   * dot and dropdown panel can never disagree.
    */
-  readonly hasUnreadNotifications = signal(true);
+  readonly hasUnreadNotifications = computed(() => this.notifications.hasUnread());
   readonly notificationLabel = computed(() =>
     this.hasUnreadNotifications()
       ? 'Notifications — you have unread notifications'
@@ -496,6 +584,7 @@ export class HeaderChromeComponent {
   );
 
   readonly trigger = viewChild<ElementRef<HTMLButtonElement>>('trigger');
+  readonly notifTrigger = viewChild<ElementRef<HTMLButtonElement>>('notifTrigger');
   readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   readonly canShowProfile = computed(() => this.user() !== null);
@@ -507,15 +596,20 @@ export class HeaderChromeComponent {
 
   /**
    * Role-correct landing for the "Tickets" nav link.
-   *  - User         → /dashboard (their own list)
-   *  - Support Agent → /queue    (the kanban)
-   *  - Admin        → /queue    (admins share the agent view)
+   *  - User         → /dashboard   (their own list)
+   *  - Support Agent → /tickets    (the list view, HD-019)
+   *  - Admin        → /tickets    (admins share the agent view)
+   *
+   * `/queue` (the Kanban) is still routable but no longer the
+   * primary destination for the chrome's nav. It's reachable via
+   * deep-link and via the "Switch to Kanban" affordance on the
+   * Tickets page (out of scope for HD-019).
    */
   readonly ticketsLink = computed<string>(() => {
     const u = this.user();
     if (!u) return '/dashboard';
     if (u.role === 'User') return '/dashboard';
-    return '/queue';
+    return '/tickets';
   });
 
   constructor() {
@@ -525,11 +619,35 @@ export class HeaderChromeComponent {
     // bounce unauthenticated users to /login before they see this.
     effect(() => {
       if (this.user() === null) {
-        this.auth.refreshUser().catch(() => {
-          /* swallow — AuthService already mapped 401 → null */
-        });
+        // Guard: some page specs stub AuthService without refreshUser.
+        // Only the real AuthService instance has this method.
+        if (typeof this.auth.refreshUser === 'function') {
+          this.auth.refreshUser().catch(() => {
+            /* swallow — AuthService already mapped 401 → null */
+          });
+        }
       }
     });
+  }
+
+  /** Bootstrap the bell on mount so the red dot is accurate from the
+   * first paint, not only after the user clicks it.
+   *
+   * Specs that stub `NotificationsService` instead of the real thing
+   * (like this component's own spec) get a guard above and skip the
+   * call entirely. Page specs that provide the real service but no
+   * `HttpClient` will throw synchronously when the service resolves
+   * it — that surfaces as a console warning, not a test failure. */
+  ngOnInit(): void {
+    const svc = this.notifications as unknown as { refresh?: () => Promise<void> };
+    if (typeof svc.refresh === 'function') {
+      // Swallow the rejection — failing to load notifications on
+      // mount never blocks the chrome; the bell simply stays in
+      // its last-known state until the user clicks it.
+      Promise.resolve(svc.refresh()).catch(() => {
+        /* no bell data available (no HttpClient / offline) */
+      });
+    }
   }
 
   goHome(): void {
@@ -579,33 +697,59 @@ export class HeaderChromeComponent {
   onSearchSubmit(event: Event): void {
     event.preventDefault();
     const q = this.searchValue().trim();
-    void this.router.navigate(['/queue'], {
+    void this.router.navigate(['/tickets'], {
       queryParams: q ? { q } : {},
     });
   }
 
   /**
-   * Notification bell click. The notification panel is out of
-   * scope for this slice; clicking dismisses the dot for
-   * immediate visual feedback (the red badge goes away) and is
-   * a no-op for navigation. When a real notifications surface
-   * ships, this becomes the panel-open trigger.
+   * Notification bell click. Toggles the dropdown panel via the
+   * NotificationsService, which performs its own immediate
+   * refresh on open so freshly-arrived items appear without
+   * waiting for the next 30s tick.
+   *
+   * First click also starts the polling loop — startPolling is
+   * idempotent, so subsequent clicks are harmless. Lazy
+   * start-on-first-interaction keeps the service free of timers
+   * during page-spec setup, where an HttpClient-required side
+   * effect would cascade-fail the suite.
    */
   onNotificationClick(): void {
-    this.hasUnreadNotifications.set(false);
+    if (this.dropdownOpen()) this.dropdownOpen.set(false);
+    const svc = this.notifications as unknown as { startPolling?: () => void };
+    if (typeof svc.startPolling === 'function') {
+      svc.startPolling();
+    }
+    void this.notifications.togglePanel();
   }
 
   /**
    * Focus the chrome search input. Used by the Cmd+K / Ctrl+K
    * shortcut — wired via @HostListener('document:keydown') below.
-   * Safe no-op when the user role is logged in (the search input
-   * is hidden behind @if (canSearch()) so the viewChild is null).
+   *
+   * Two fallbacks, in order:
+   *   1. The chrome's own search input (the user role has no search
+   *      at all, so this is skipped).
+   *   2. The page-level filter bar's search field. Below the 640px
+   *      breakpoint the chrome's search form is hidden — it cannot
+   *      fit beside the brand, nav, bell and profile trigger on a
+   *      phone — but the ticket lists carry their own search field
+   *      in the filter bar, and the shortcut should still land on a
+   *      search box rather than doing nothing.
    */
   focusSearchInput(): void {
     const input = this.searchInput()?.nativeElement;
     if (input) {
       input.focus();
       input.select();
+      return;
+    }
+    const fallback = document.querySelector<HTMLInputElement>(
+      '[data-testid="ticket-filter-search"]',
+    );
+    if (fallback) {
+      fallback.focus();
+      fallback.select();
     }
   }
 
@@ -629,6 +773,8 @@ export class HeaderChromeComponent {
   onEscape(): void {
     if (this.logoutDialogOpen()) {
       this.closeLogoutDialog();
+    } else if (this.notifications.panelOpen()) {
+      this.notifications.closePanel();
     } else if (this.dropdownOpen()) {
       this.dropdownOpen.set(false);
     }
@@ -662,14 +808,15 @@ export class HeaderChromeComponent {
 
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {
-    if (!this.dropdownOpen()) return;
     const target = event.target as Node | null;
     if (!target) return;
     const host = this.hostEl.nativeElement;
-    if (host.contains(target)) return;
-    // Outside-click dismiss. The panel is portaled via dropdown-panel's
-    // absolute positioning under the chrome host, so host.contains
-    // already covers it.
-    this.dropdownOpen.set(false);
+    const inside = host.contains(target);
+    if (this.dropdownOpen() && !inside) {
+      this.dropdownOpen.set(false);
+    }
+    if (this.notifications.panelOpen() && !inside) {
+      this.notifications.closePanel();
+    }
   }
 }

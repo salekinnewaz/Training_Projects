@@ -65,6 +65,7 @@ import {
   ActivityLog,
   Attachment,
   Counter,
+  Notification,
 } from '../../src/models';
 
 // ── 3. Connectivity probe — fail fast with a clear message ──
@@ -149,6 +150,7 @@ export async function resetTestDb(
  */
 export async function truncateAllTables(): Promise<void> {
   const tables = [
+    'notifications',
     'comments',
     'activity_logs',
     'attachments',
@@ -168,5 +170,14 @@ export async function truncateAllTables(): Promise<void> {
   }
 }
 
-export { sequelize, User, Ticket, Comment, ActivityLog, Attachment, Counter };
+export {
+  sequelize,
+  User,
+  Ticket,
+  Comment,
+  ActivityLog,
+  Attachment,
+  Counter,
+  Notification,
+};
 export type { Sequelize };

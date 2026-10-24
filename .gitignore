@@ -83,3 +83,16 @@ postgres-data/
 .qa-tmp/
 test-results/
 qa/test-results/
+
+# The HTML report Playwright writes on every run — regenerable.
+qa/playwright-report/
+
+# The QA screenshots are debug scratch EXCEPT the reference PNG.
+# `qa/screenshots/local-view/ref-full.png` is the WDS-2026 mockup
+# crop that every number in `qa/scripts/ref-measurements.js` is
+# derived from, so it is tracked; everything else in the folder is
+# a scratch capture.
+qa/screenshots/*
+!qa/screenshots/local-view/
+qa/screenshots/local-view/*
+!qa/screenshots/local-view/ref-full.png
