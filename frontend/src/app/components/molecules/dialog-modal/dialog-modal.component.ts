@@ -12,6 +12,12 @@
  *   - Confirm button click → confirm.emit()
  *   - Cancel button click → cancel.emit()
  *
+ * Because the scrim + modal are physically re-parented into
+ * `document.body` (outside Angular's view), destroying the host does
+ * NOT remove them. `ngOnDestroy` explicitly removes the portalled
+ * nodes — otherwise a dismissed dialog leaked into the DOM and
+ * lingered as an inert overlay.
+ *
  * Initial focus lands on the confirm button per the UX spec.
  *
  * D7 replaced the hand-rolled `.btn` / `.btn-primary` /
@@ -30,6 +36,7 @@ import {
   Component,
   ElementRef,
   HostListener,
+  OnDestroy,
   Renderer2,
   effect,
   inject,
@@ -146,7 +153,7 @@ import { ButtonComponent } from '../../atoms/button/button.component';
     }
   `],
 })
-export class DialogModalComponent implements AfterViewInit {
+export class DialogModalComponent implements AfterViewInit, OnDestroy {
   private readonly renderer = inject(Renderer2);
   private readonly hostEl = inject(ElementRef<HTMLElement>);
 
@@ -169,6 +176,23 @@ export class DialogModalComponent implements AfterViewInit {
 
   private readonly appendedToBody = signal(false);
 
+  /**
+   * The nodes this component moved into `document.body`.
+   *
+   * Angular destroys the `<dialog-modal>` HOST when the parent
+   * stops rendering it (e.g. `confirmCtx.set(null)`), but the
+   * children were physically re-parented into `<body>` — outside
+   * Angular's view, so destroying the host does NOT remove them.
+   * Without this list the scrim + modal stayed in the DOM forever:
+   * a leaked, un-dismissable dialog whose Cancel / Confirm buttons
+   * no longer had a live component behind them.
+   *
+   * We keep a reference so `ngOnDestroy` can remove exactly what
+   * we added, and only if it is still ours (a re-parented node
+   * could have been moved elsewhere in the meantime).
+   */
+  private readonly portalNodes: HTMLElement[] = [];
+
   constructor() {
     // After first render, move the host's children (scrim + modal) to
     // document.body so fixed positioning is independent of any
@@ -186,12 +210,33 @@ export class DialogModalComponent implements AfterViewInit {
         // because we used inline template above, the children of the
         // host element ARE the scrim + modal. Append each to body.
         while (el.firstChild) {
-          this.renderer.appendChild(document.body, el.firstChild);
+          const child = el.firstChild as HTMLElement;
+          this.renderer.appendChild(document.body, child);
+          this.portalNodes.push(child);
         }
         this.appendedToBody.set(true);
       },
       { allowSignalWrites: true },
     );
+  }
+
+  /**
+   * Remove the portalled nodes from `<body>`.
+   *
+   * Without this the dialog leaked: the host was destroyed but the
+   * scrim + modal it had moved into `<body>` survived, leaving an
+   * inert dialog overlay on the page for the rest of the session.
+   */
+  ngOnDestroy(): void {
+    for (const node of this.portalNodes) {
+      // Only remove the node if it is still a direct child of
+      // `<body>` — if something else has re-parented it, leave it
+      // alone rather than yanking it out of a new owner.
+      if (node.parentNode === document.body) {
+        this.renderer.removeChild(document.body, node);
+      }
+    }
+    this.portalNodes.length = 0;
   }
 
   ngAfterViewInit(): void {

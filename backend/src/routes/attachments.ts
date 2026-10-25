@@ -20,21 +20,25 @@
 import { Router } from 'express';
 
 import {
+  attachmentUploadMiddleware,
   downloadHandler,
   uploadHandler,
-  uploadMiddleware,
 } from '../controllers/attachmentsController';
 import { authMiddleware } from '../middleware/auth';
 
 const attachmentsRouter = Router();
 
-// POST: auth + multer first, then the handler. The handler
-// re-runs multer in a try/catch (via `runUpload`) so it can
-// translate `MulterError` codes into typed HttpError envelopes.
+// POST: auth first, then the TRANSLATING multer wrapper, then the
+// handler. The wrapper (`attachmentUploadMiddleware`) is used rather
+// than multer's raw `.single('file')` so that `MulterError` codes
+// (`LIMIT_FILE_SIZE`, `LIMIT_UNEXPECTED_FILE`) are translated into
+// typed 413 / 415 envelopes. With the raw middleware wired here,
+// multer threw straight out of this route-level middleware and the
+// client received an opaque 500 instead.
 attachmentsRouter.post(
   '/',
   authMiddleware,
-  uploadMiddleware,
+  attachmentUploadMiddleware,
   uploadHandler,
 );
 

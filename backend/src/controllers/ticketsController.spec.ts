@@ -719,7 +719,7 @@ describe('ticketsController.patch (HD-010)', () => {
     expect(statusMock.mock.calls[0][0]).toBe(200);
   });
 
-  it('returns 400 validation_error when a User attempts to change status', async () => {
+  it('returns 403 forbidden when a User attempts to change status', async () => {
     const { HttpError } = require('../utils/errors');
     const fake = makeResolvedTicket();
     (ticketService.getById as jest.Mock).mockResolvedValueOnce(fake);
@@ -745,8 +745,12 @@ describe('ticketsController.patch (HD-010)', () => {
     expect(next).toHaveBeenCalledTimes(1);
     const err = (next as jest.Mock).mock.calls[0][0];
     expect(err).toBeInstanceOf(HttpError);
-    expect(err.status).toBe(400);
-    expect(err.errorCode).toBe('validation_error');
+    // A role-based permission denial is 403 `forbidden` — matching
+    // the service-layer gate and the UX spec ("Eli cannot
+    // transition statuses at all"). It is NOT a 400 field
+    // validation error, which is reserved for malformed input.
+    expect(err.status).toBe(403);
+    expect(err.errorCode).toBe('forbidden');
     expect(ticketService.updateTicket).not.toHaveBeenCalled();
   });
 

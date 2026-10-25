@@ -10,6 +10,9 @@
  *   (e) [confirming] disables both action buttons (loading state)
  *   (f) Children are portaled to document.body on mount so the
  *       modal escapes any ancestor stacking context
+ *   (g) The portalled children are removed from document.body when
+ *       the component is destroyed (they live outside Angular's
+ *       view, so destroying the host does not remove them)
  *
  * The host can verify (f) by inspecting document.body after
  * detectChanges; the scrim + modal are appended there rather
@@ -170,5 +173,31 @@ describe('DialogModalComponent', () => {
     ) as NodeListOf<HTMLButtonElement>;
     expect(buttons[0]?.disabled).toBeTrue();
     expect(buttons[1]?.disabled).toBeTrue();
+  });
+
+  /**
+   * (g) The portalled nodes are removed when the component is
+   *     destroyed.
+   *
+   * The scrim + modal are physically re-parented into
+   * `document.body`, OUTSIDE Angular's view — destroying the host
+   * does not remove them. `ngOnDestroy` has to do it explicitly.
+   *
+   * The bug this guards against: cancelling a dialog left the scrim
+   * + modal in `<body>` forever — an inert overlay that could
+   * neither be dismissed nor let the user reach the page beneath it.
+   */
+  it('removes the portalled scrim + modal from document.body when destroyed', async () => {
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(document.body.querySelector('.scrim')).not.toBeNull();
+
+    fixture.destroy();
+    await fixture.whenStable();
+
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.body.querySelector('.scrim')).toBeNull();
   });
 });

@@ -63,12 +63,25 @@ const admin: UserPublic = baseUser(1, {
 function makeUserList(): UserPublic[] {
   return [
     admin,
-    baseUser(2, { displayName: 'Eli Chen', role: 'User' }),
-    baseUser(3, { displayName: 'Jordan', role: 'Support Agent' }),
-    baseUser(4, { displayName: 'Morgan', role: 'User', isActive: false }),
+    baseUser(2, { displayName: 'Eli Chen', role: 'User', ticketCount: 3 }),
+    baseUser(3, {
+      displayName: 'Jordan',
+      role: 'Support Agent',
+      ticketCount: 34,
+    }),
+    baseUser(4, {
+      displayName: 'Morgan',
+      role: 'User',
+      isActive: false,
+      ticketCount: 2,
+    }),
     // Sam Patel is a second Admin so the Admin-demote / Admin-
     // deactivate flows have a real target that isn't the viewer.
-    baseUser(5, { displayName: 'Sam Patel', role: 'Admin' }),
+    baseUser(5, {
+      displayName: 'Sam Patel',
+      role: 'Admin',
+      ticketCount: 8,
+    }),
   ];
 }
 
@@ -132,7 +145,7 @@ describe('UsersTabPageComponent (HD-014)', () => {
     document.body.innerHTML = '';
   });
 
-  it('renders the heading + active-count + 5 rows in success state', async () => {
+  it('renders the stat summary + 5 rows in success state', async () => {
     const list = makeUserList();
     userService.listAll.and.resolveTo(list);
     fixture.detectChanges();
@@ -142,9 +155,23 @@ describe('UsersTabPageComponent (HD-014)', () => {
     expect(component.renderState()).toBe('success');
 
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent?.trim()).toBe('Users');
-    expect(compiled.querySelector('.users-count')?.textContent?.trim())
-      .toBe('5 users · 4 active · 1 inactive');
+
+    // The list component is CONTENT-ONLY. It does NOT render an
+    // <h1> — the host owns the heading (the shell for /users, the
+    // Admin dashboard for the /admin#users tab). Rendering one
+    // here produced two "Users" headings on the Admin tab.
+    expect(compiled.querySelector('h1')).toBeNull();
+    // Nor does it render its own app chrome (which would double
+    // the header strip and the profile trigger).
+    expect(compiled.querySelector('header-chrome')).toBeNull();
+
+    // The stat summary row replaces the old single micro-label.
+    const statRow = compiled.querySelector('[data-testid="users-stat-row"]');
+    expect(statRow).not.toBeNull();
+    const statValues = Array.from(
+      statRow!.querySelectorAll('.stat-card__value'),
+    ).map((n) => n.textContent?.trim());
+    expect(statValues).toEqual(['5', '4', '1', '2', '1']);
 
     const rows = compiled.querySelectorAll('.user-row');
     expect(rows.length).toBe(5);
@@ -154,6 +181,145 @@ describe('UsersTabPageComponent (HD-014)', () => {
         r.querySelector('.user-row__display-name')?.textContent?.trim(),
       ),
     ).toEqual(['Avery', 'Eli Chen', 'Jordan', 'Morgan', 'Sam Patel']);
+  });
+
+  it('renders the Option A column headers', async () => {
+    userService.listAll.and.resolveTo(makeUserList());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const headers = Array.from(
+      compiled.querySelectorAll('.users-table-header [role="columnheader"]'),
+    ).map((n) => n.textContent?.trim());
+    // USER (identity) / ROLE / STATUS / TICKETS / LAST ACTIVE,
+    // plus a trailing empty cell for the hover-revealed actions.
+    expect(headers).toEqual([
+      'USER',
+      'ROLE',
+      'STATUS',
+      'TICKETS',
+      'LAST ACTIVE',
+      '',
+    ]);
+  });
+
+  it('renders each row\'s ticket count', async () => {
+    userService.listAll.and.resolveTo(makeUserList());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const counts = Array.from(
+      compiled.querySelectorAll('.user-row__tickets'),
+    ).map((n) => n.textContent?.trim());
+    // Avery has no ticketCount in the fixture → renders 0, and
+    // the rest carry their real counts.
+    expect(counts).toEqual(['0', '3', '34', '2', '8']);
+  });
+
+  it('keeps the existing ticket count when a role change patches the row', async () => {
+    userService.listAll.and.resolveTo(makeUserList());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // The PUT /users/:id/role response does NOT carry a ticket
+    // count — it sends 0. The page must keep the count it had.
+    userService.updateRole.and.resolveTo(
+      baseUser(2, {
+        displayName: 'Eli Chen',
+        role: 'Support Agent',
+        ticketCount: 0,
+      }),
+    );
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const eliRow = compiled.querySelector('[data-user-id="2"]') as HTMLElement;
+    const select = eliRow.querySelector(
+      'atom-select select',
+    ) as HTMLSelectElement;
+    select.value = 'Support Agent';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const patched = compiled.querySelector('[data-user-id="2"]') as HTMLElement;
+    expect(patched.querySelector('.user-row__tickets')?.textContent?.trim())
+      .toBe('3');
+  });
+
+  it('filters rows by the search term (name or email)', async () => {
+    const list = makeUserList();
+    userService.listAll.and.resolveTo(list);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const input = compiled.querySelector(
+      '[data-testid="users-search"]',
+    ) as HTMLInputElement;
+
+    input.value = 'eli';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(
+      Array.from(compiled.querySelectorAll('.user-row__display-name')).map(
+        (n) => n.textContent?.trim(),
+      ),
+    ).toEqual(['Eli Chen']);
+
+    // Email matches too.
+    input.value = 'morgan';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(compiled.querySelectorAll('.user-row').length).toBe(1);
+
+    // No match → empty state, not a blank table.
+    input.value = 'zzzz';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(compiled.querySelector('[data-testid="users-empty"]')).not.toBeNull();
+    expect(compiled.querySelectorAll('.user-row').length).toBe(0);
+  });
+
+  it('filters rows by role via the role chips', async () => {
+    const list = makeUserList();
+    userService.listAll.and.resolveTo(list);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    (compiled.querySelector('[data-testid="role-filter-admin"]') as HTMLElement)
+      .click();
+    fixture.detectChanges();
+    expect(
+      Array.from(compiled.querySelectorAll('.user-row__display-name')).map(
+        (n) => n.textContent?.trim(),
+      ),
+    ).toEqual(['Avery', 'Sam Patel']);
+
+    (compiled.querySelector('[data-testid="role-filter-support-agent"]') as HTMLElement)
+      .click();
+    fixture.detectChanges();
+    expect(
+      Array.from(compiled.querySelectorAll('.user-row__display-name')).map(
+        (n) => n.textContent?.trim(),
+      ),
+    ).toEqual(['Jordan']);
+
+    // Clicking the active chip again clears the filter.
+    (compiled.querySelector('[data-testid="role-filter-support-agent"]') as HTMLElement)
+      .click();
+    fixture.detectChanges();
+    expect(compiled.querySelectorAll('.user-row').length).toBe(5);
   });
 
   it('renders 5 row skeletons during the loading state', async () => {

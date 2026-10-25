@@ -1,48 +1,72 @@
 /**
- * UsersTabPageComponent — HD-014.
+ * UsersTabPageComponent — HD-014 + admin redesign.
  *
- * The /users route AND the Users tab content on /admin. Mounted
- * by both `app.routes.ts` (path: 'users') and
- * `AdminDashboardPageComponent`'s `users-placeholder` branch.
+ * This is a PURE CONTENT component: it renders the users list and
+ * nothing else. It deliberately does NOT wrap itself in
+ * `<app-chrome>` and does NOT render its own `<h1>`.
  *
- * Layout (per design-process/D-UX-Design/users-tab.md):
- *   ┌──────────────────────────────────────────────────────────┐
- *   │  Users                                                   │
- *   │  6 users · 5 active · 1 inactive                          │
- *   │  ─────────────────────────────────────────────────────── │
- *   │  NAME      EMAIL         ROLE        STATUS   LAST ACTIVE│
- *   │  [avatar]  Eli Chen      [select]   ● Active  2d ago    │
- *   │  Avery     admin@ex.com  [select]   ● Active  just now   │  ← self row
- *   │  Sam Patel sam@ex.com    [select]   ● Active  3d ago     │
- *   │  ...                                                      │
- *   └──────────────────────────────────────────────────────────┘
+ * WHY
+ * ───
+ * The component is mounted in TWO places:
  *
- * Self-row protection:
- *   - The row whose `user.id === currentUser.id` renders with a
- *     3px primary left border, disabled role select, disabled
- *     status toggle, and a muted micro-label "You cannot change
- *     your own role." The server enforces the same constraint
- *     (defense in depth) — a direct API call to change own
- *     role/active returns 400.
+ *   1. The standalone `/users` route.
+ *   2. The Users tab on `/admin` (as `<app-users-tab-page />`).
  *
- * Inline action lifecycle:
+ * When it rendered its own `<app-chrome>` (which itself renders
+ * `<header-chrome>`) AND its own `<h1>Users</h1>`, mounting it
+ * inside the Admin dashboard produced:
+ *
+ *   - 2× the header chrome strip (brand, nav, bell, profile)
+ *   - 2× the "Users" `<h1>` (the dashboard's own heading + the
+ *     component's heading)
+ *   - 2× the nav links, because the dashboard ALSO renders a
+ *     "Tickets | Users" tab switcher next to its heading, and
+ *     the chrome renders "Tickets | Users" too.
+ *
+ * The fix is to let the HOST own the chrome and the heading, and
+ * keep this component focused on the list. The standalone route
+ * gets a thin shell component that supplies the chrome + heading
+ * (see `users-page-shell.component.ts`); the Admin dashboard
+ * supplies its own.
+ *
+ * LAYOUT (Option A — "Command Center")
+ * ────────────────────────────────────
+ *   ┌────────────────────────────────────────────────────────┐
+ *   │ [8 Total] [7 Active] [1 Inactive] [1 Admins] [3 Agents]│
+ *   │ [ Search… ]  [All][Employee][Support Agent][Admin]     │
+ *   │ ────────────────────────────────────────────────────── │
+ *   │ USER                  ROLE      STATUS  TICKETS  LAST…  │
+ *   │ [AP] Avery Patel      [Admin]  ● Active     12  2m ago  │
+ *   │      admin@company.com                                  │
+ *   └────────────────────────────────────────────────────────┘
+ *
+ * The identity is ONE cell — avatar, name and email stacked — so
+ * the table reads as a roster rather than a spreadsheet, and the
+ * reclaimed width goes to the Tickets column (the workload signal
+ * an Admin actually scans for).
+ *
+ * The role is shown as a coloured BADGE (reusing the existing
+ * `<badge-role>` atom) rather than as a bare dropdown, so the
+ * list is scannable at a glance. The role dropdown stays
+ * available on the row — it is the same control, styled to
+ * read as a badge-backed select.
+ *
+ * Inline action lifecycle (unchanged from HD-014):
  *   - Role change (non-demotion): dropdown selection → PATCH
  *     immediately, no dialog. On error: dropdown reverts, inline
  *     row error.
- *   - Role change (Admin → Support Agent / User): dialog "Demote
- *     <name> from Admin to <new role>? They will lose admin
- *     access immediately." Cancel reverts, Save Demote applies.
+ *   - Role change (Admin → Support Agent / User): dialog
+ *     "Demote <name> from Admin to <new role>? They will lose
+ *     admin access immediately." Cancel reverts, Save applies.
  *   - Active toggle (non-Admin target): click → PATCH immediately.
- *   - Active toggle (Admin target → inactive): dialog "Deactivate
- *     <name>? They will be logged out and unable to log in."
- *     Cancel reverts, Deactivate applies.
+ *   - Active toggle (Admin target → inactive): dialog
+ *     "Deactivate <name>? They will be logged out and unable to
+ *     log in." Cancel reverts, Deactivate applies.
  *
  * Render states (mutually exclusive @switch):
- *   loading → heading + active-count + 5 row skeletons
+ *   loading → stat skeleton + row skeletons
  *   error   → inline error card + Retry
- *   success → the table
- *
- * Window focus refetches the list (mirrors admin-dashboard).
+ *   success → the stat row + toolbar + table
  */
 
 import {
@@ -61,12 +85,16 @@ import { AuthService } from '../../services/auth.service';
 import { UserService } from '../../services/user.service';
 import type { UserPublic } from '../../models/user';
 import type { UserRole } from '../../models/enums';
-import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
 import { ButtonComponent } from '../../components/atoms/button/button.component';
 import { DialogModalComponent } from '../../components/molecules/dialog-modal/dialog-modal.component';
 import { UserRowComponent } from '../../components/molecules/user-row/user-row.component';
 
 type RenderState = 'loading' | 'error' | 'success';
+
+/** The role filter's sentinel value — "no filter", not a real role. */
+const ALL_ROLES = 'all';
+
+type RoleFilter = typeof ALL_ROLES | UserRole;
 
 interface ConfirmContext {
   readonly kind: 'role-demote' | 'admin-deactivate';
@@ -79,67 +107,151 @@ interface ConfirmContext {
 const GENERIC_LOAD_ERROR = "Couldn't load users. Refresh to try again.";
 const GENERIC_UPDATE_ERROR = "Couldn't update. Try again.";
 
+/**
+ * Turns a role value into a `data-testid`-friendly slug.
+ *
+ * The raw role contains a space ("Support Agent"), which makes
+ * attribute selectors awkward (`[data-testid="role-filter-Support
+ * Agent"]`). The slug keeps the testid readable AND selectable.
+ */
+function slugifyRole(role: string): string {
+  return role.toLowerCase().replace(/\s+/g, '-');
+}
+
 @Component({
   selector: 'app-users-tab-page',
   standalone: true,
-  imports: [
-    AppChromeComponent,
-    ButtonComponent,
-    DialogModalComponent,
-    UserRowComponent,
-  ],
+  imports: [ButtonComponent, DialogModalComponent, UserRowComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <app-chrome>
-      <section class="users-page">
-        <header class="users-header">
-          <h1>Users</h1>
-          <p class="users-count">{{ activeCountLabel() }}</p>
-        </header>
-
-        @switch (renderState()) {
-          @case ('loading') {
-            <div class="users-table-wrap" aria-busy="true" aria-label="Loading users">
-              <div class="users-table-header" aria-hidden="true">
-                <span>NAME</span>
-                <span>EMAIL</span>
-                <span>ROLE</span>
-                <span>STATUS</span>
-                <span>LAST ACTIVE</span>
+    <section class="users-page">
+      @switch (renderState()) {
+        @case ('loading') {
+          <div class="users-stat-row" aria-hidden="true">
+            @for (_ of skeletonArray(); track $index) {
+              <div class="stat-card stat-card--skel">
+                <div class="bar bar-stat-value"></div>
+                <div class="bar bar-stat-label"></div>
               </div>
-              <ul class="users-table">
-                @for (_ of skeletonArray(); track $index) {
-                  <li class="user-row-skel" aria-hidden="true">
-                    <div class="bar bar-avatar"></div>
-                    <div class="bar bar-name"></div>
-                    <div class="bar bar-email"></div>
-                    <div class="bar bar-role"></div>
-                    <div class="bar bar-status"></div>
-                    <div class="bar bar-time"></div>
-                  </li>
-                }
-              </ul>
+            }
+          </div>
+          <div class="users-table-wrap" aria-busy="true" aria-label="Loading users">
+            <div class="users-table-header" aria-hidden="true">
+              <span>USER</span>
+              <span>ROLE</span>
+              <span>STATUS</span>
+              <span>TICKETS</span>
+              <span>LAST ACTIVE</span>
+              <span></span>
             </div>
-          }
-          @case ('error') {
-            <div class="users-error-card" role="alert">
-              <p class="error-message">{{ errorMessage() }}</p>
-              <atom-button variant="primary" size="md" (pressed)="onRefresh()">
-                Retry
+            <ul class="users-table">
+              @for (_ of skeletonArray(); track $index) {
+                <li class="user-row-skel" aria-hidden="true">
+                  <div class="bar bar-avatar"></div>
+                  <div class="bar bar-name"></div>
+                  <div class="bar bar-role"></div>
+                  <div class="bar bar-status"></div>
+                  <div class="bar bar-tickets"></div>
+                  <div class="bar bar-time"></div>
+                </li>
+              }
+            </ul>
+          </div>
+        }
+        @case ('error') {
+          <div class="users-error-card" role="alert">
+            <p class="error-message">{{ errorMessage() }}</p>
+            <atom-button variant="primary" size="md" (pressed)="onRefresh()">
+              Retry
+            </atom-button>
+          </div>
+        }
+        @case ('success') {
+          <!-- ── Stat summary row ──────────────────────────────
+               Five at-a-glance counts. Each card is a filter
+               shortcut: clicking "Agents" filters the table to
+               Support Agents. The active filter is reflected on
+               the card itself, so the current view is always
+               obvious. -->
+          <div class="users-stat-row" data-testid="users-stat-row">
+            @for (card of statCards(); track card.key) {
+              <button
+                type="button"
+                class="stat-card"
+                [class.stat-card--ok]="card.tone === 'ok'"
+                [class.stat-card--off]="card.tone === 'off'"
+                [class.stat-card--adm]="card.tone === 'adm'"
+                [class.stat-card--agt]="card.tone === 'agt'"
+                [class.stat-card--active]="isFilterActive(card.filter)"
+                [attr.data-testid]="'stat-' + card.key"
+                [attr.aria-pressed]="isFilterActive(card.filter)"
+                (click)="toggleRoleFilter(card.filter)"
+              >
+                <span class="stat-card__value">{{ card.value }}</span>
+                <span class="stat-card__label">{{ card.label }}</span>
+              </button>
+            }
+          </div>
+
+          <!-- ── Toolbar: search + role filter ────────────────── -->
+          <div class="users-toolbar">
+            <div class="users-search">
+              <span class="users-search__icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="15" height="15" focusable="false">
+                  <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6" />
+                  <path d="M11 11 L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                </svg>
+              </span>
+              <input
+                type="search"
+                class="users-search__input"
+                placeholder="Search by name or email…"
+                [value]="searchQuery()"
+                (input)="onSearchInput($event)"
+                aria-label="Search users by name or email"
+                data-testid="users-search"
+              />
+            </div>
+
+            <div class="users-filter-group" role="group" aria-label="Filter by role">
+              @for (opt of roleFilterOptions; track opt.value) {
+                <button
+                  type="button"
+                  class="filter-chip"
+                  [class.filter-chip--active]="roleFilter() === opt.value"
+                  [attr.aria-pressed]="roleFilter() === opt.value"
+                  [attr.data-testid]="'role-filter-' + slugifyRole(opt.value)"
+                  (click)="setRoleFilter(opt.value)"
+                >
+                  {{ opt.label }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- ── Table ─────────────────────────────────────────── -->
+          @if (filteredUsers().length === 0) {
+            <div class="users-empty" data-testid="users-empty">
+              <p class="users-empty__title">No users match</p>
+              <p class="users-empty__body">
+                Try a different search term or clear the role filter.
+              </p>
+              <atom-button variant="secondary" size="md" (pressed)="clearFilters()">
+                Clear filters
               </atom-button>
             </div>
-          }
-          @case ('success') {
+          } @else {
             <div class="users-table-wrap">
               <div class="users-table-header" role="row">
-                <span role="columnheader">NAME</span>
-                <span role="columnheader">EMAIL</span>
+                <span role="columnheader">USER</span>
                 <span role="columnheader">ROLE</span>
                 <span role="columnheader">STATUS</span>
+                <span role="columnheader">TICKETS</span>
                 <span role="columnheader">LAST ACTIVE</span>
+                <span role="columnheader"></span>
               </div>
               <ul class="users-table" role="rowgroup">
-                @for (u of users(); track u.id) {
+                @for (u of filteredUsers(); track u.id) {
                   <user-row
                     [user]="u"
                     [isSelf]="u.id === currentUserId()"
@@ -154,8 +266,8 @@ const GENERIC_UPDATE_ERROR = "Couldn't update. Try again.";
             </div>
           }
         }
-      </section>
-    </app-chrome>
+      }
+    </section>
 
     @if (confirmCtx(); as ctx) {
       <dialog-modal
@@ -171,10 +283,11 @@ const GENERIC_UPDATE_ERROR = "Couldn't update. Try again.";
     :host {
       display: block;
     }
-    /* All users-page rules (header, table chrome, row geometry,
-       active toggle, self-row border, error card) are owned by
-       styles.css. Mirrors the HD-011 / HD-012 / HD-013 pattern
-       so this component's inline style budget stays under 2kB. */
+    /* All users-page rules (stat row, toolbar, table chrome, row
+       geometry, active toggle, self-row border, error card, empty
+       state) are owned by styles.css. Mirrors the HD-011 / HD-012 /
+       HD-013 pattern so this component's inline style budget stays
+       under 2kB. */
   `],
 })
 export class UsersTabPageComponent implements OnInit {
@@ -188,6 +301,12 @@ export class UsersTabPageComponent implements OnInit {
   readonly updatingIds = signal<Set<number>>(new Set());
   readonly rowErrors = signal<Record<number, string>>({});
   readonly confirmCtx = signal<ConfirmContext | null>(null);
+
+  /** The live search term. Bound to the toolbar's search input. */
+  readonly searchQuery = signal('');
+
+  /** The live role filter. `ALL_ROLES` means "no filter". */
+  readonly roleFilter = signal<RoleFilter>(ALL_ROLES);
 
   /**
    * The current user's id. Used to compute `isSelf` for each row.
@@ -214,6 +333,100 @@ export class UsersTabPageComponent implements OnInit {
     return `${total} users · ${active} active · ${inactive} inactive`;
   });
 
+  /**
+   * The role filter's chip options. `All roles` is the no-filter
+   * sentinel; the three real roles follow.
+   */
+  readonly roleFilterOptions: { value: RoleFilter; label: string }[] = [
+    { value: ALL_ROLES, label: 'All roles' },
+    { value: 'User', label: 'Employee' },
+    { value: 'Support Agent', label: 'Support Agent' },
+    { value: 'Admin', label: 'Admin' },
+  ];
+
+  /** Exposed to the template so each filter chip gets a slugified
+   *  `data-testid` (the raw role contains a space). */
+  readonly slugifyRole = slugifyRole;
+
+  /**
+   * The five stat cards. Each carries the counts for the whole
+   * team (not the filtered view) so the summary stays stable
+   * while the Admin narrows the list — the filtered count is
+   * reported separately in the toolbar.
+   */
+  readonly statCards = computed<{
+    key: string;
+    label: string;
+    value: number;
+    filter: RoleFilter | 'none' | 'active' | 'inactive';
+    /**
+     * The colour accent for the tile's number. Option A colours
+     * the value so each tile reads at a glance: green = healthy,
+     * grey = inactive, amber = Admin, indigo = Support Agent.
+     */
+    tone: 'plain' | 'ok' | 'off' | 'adm' | 'agt';
+  }[]>(() => {
+    const list = this.users();
+    return [
+      {
+        key: 'total',
+        label: 'Total users',
+        value: list.length,
+        filter: 'none',
+        tone: 'plain',
+      },
+      {
+        key: 'active',
+        label: 'Active',
+        value: list.filter((u) => u.isActive).length,
+        filter: 'active',
+        tone: 'ok',
+      },
+      {
+        key: 'inactive',
+        label: 'Inactive',
+        value: list.filter((u) => !u.isActive).length,
+        filter: 'inactive',
+        tone: 'off',
+      },
+      {
+        key: 'admins',
+        label: 'Admins',
+        value: list.filter((u) => u.role === 'Admin').length,
+        filter: 'Admin',
+        tone: 'adm',
+      },
+      {
+        key: 'agents',
+        label: 'Support agents',
+        value: list.filter((u) => u.role === 'Support Agent').length,
+        filter: 'Support Agent',
+        tone: 'agt',
+      },
+    ];
+  });
+
+  /**
+   * The rows actually rendered: the user's list narrowed by the
+   * search term and the role filter.
+   *
+   * The search matches display name OR email, case-insensitively.
+   */
+  readonly filteredUsers = computed(() => {
+    const list = this.users();
+    const q = this.searchQuery().trim().toLowerCase();
+    const role = this.roleFilter();
+
+    return list.filter((u) => {
+      if (role !== ALL_ROLES && u.role !== role) return false;
+      if (!q) return true;
+      return (
+        u.displayName.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q)
+      );
+    });
+  });
+
   ngOnInit(): void {
     void this.load();
   }
@@ -232,6 +445,62 @@ export class UsersTabPageComponent implements OnInit {
 
   onRefresh(): void {
     void this.load();
+  }
+
+  onSearchInput(event: Event): void {
+    const target = event.target as HTMLInputElement;
+    this.searchQuery.set(target.value);
+  }
+
+  /**
+   * Set the role filter. Clicking the already-active role chip
+   * clears the filter (toggles back to "All roles") so the chip
+   * behaves like a toggle — matching the stat cards. Clicking a
+   * different chip switches to it.
+   */
+  setRoleFilter(role: RoleFilter): void {
+    if (role === ALL_ROLES) {
+      this.roleFilter.set(ALL_ROLES);
+      return;
+    }
+    this.roleFilter.set(this.roleFilter() === role ? ALL_ROLES : role);
+  }
+
+  /**
+   * The stat cards act as filter shortcuts. Clicking a card
+   * toggles the matching role filter on and off; clicking the
+   * "Total users" card clears every filter.
+   */
+  toggleRoleFilter(filter: RoleFilter | 'none' | 'active' | 'inactive'): void {
+    if (filter === 'none') {
+      this.roleFilter.set(ALL_ROLES);
+      return;
+    }
+    if (filter === 'active' || filter === 'inactive') {
+      // Status filters are not part of the role filter, so the
+      // card simply clears the role filter and leaves the status
+      // narrowing to the table itself. Clicking it again is a
+      // no-op — the cards are role shortcuts, not status filters.
+      this.roleFilter.set(ALL_ROLES);
+      return;
+    }
+    this.roleFilter.set(this.roleFilter() === filter ? ALL_ROLES : filter);
+  }
+
+  /**
+   * Whether a stat card's filter is currently applied. Only the
+   * role cards can be "active"; the count cards are informational.
+   */
+  isFilterActive(filter: RoleFilter | 'none' | 'active' | 'inactive'): boolean {
+    if (filter === 'none' || filter === 'active' || filter === 'inactive') {
+      return false;
+    }
+    return this.roleFilter() === filter;
+  }
+
+  clearFilters(): void {
+    this.searchQuery.set('');
+    this.roleFilter.set(ALL_ROLES);
   }
 
   /**
@@ -407,7 +676,19 @@ export class UsersTabPageComponent implements OnInit {
 
   private patchUser(updated: UserPublic): void {
     this.users.update((list) =>
-      list.map((u) => (u.id === updated.id ? updated : u)),
+      list.map((u) =>
+        u.id === updated.id
+          ? {
+              ...updated,
+              // The single-user endpoints (PUT role / PUT status)
+              // don't compute the ticket count — they send `0`.
+              // Overwriting the real count with 0 would make the
+              // Tickets column flicker to zero after every role
+              // change, so we keep the count we already had.
+              ticketCount: updated.ticketCount || u.ticketCount,
+            }
+          : u,
+      ),
     );
   }
 

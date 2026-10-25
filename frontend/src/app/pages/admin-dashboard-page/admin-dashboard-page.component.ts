@@ -111,6 +111,8 @@ const DEFAULT_FILTERS: SharedTicketFilterState = {
             <h1>{{ headingText() }}</h1>
             @if (activeTab() === 'tickets') {
               <p class="page-subtitle">Monitor and manage all support tickets across different stages.</p>
+            } @else {
+              <p class="page-subtitle">Manage who has access to HelpDesk Lite and what role they hold.</p>
             }
           </div>
           <nav class="tabs" role="tablist" aria-label="Admin views">

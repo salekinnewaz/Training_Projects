@@ -1,9 +1,10 @@
 /**
- * UserRowComponent — HD-014 spec.
+ * UserRowComponent — HD-014 spec (Option A "Command Center" layout).
  *
  * Verifies the per-row markup + interaction wiring:
- *   - non-self row: avatar + name + email + role select + status
- *     toggle + last-active all rendered.
+ *   - non-self row: avatar + identity (name + email stacked) +
+ *     role select + status toggle + tickets + last-active all
+ *     rendered.
  *   - self row: 3px left border class, disabled atom-select,
  *     disabled status toggle, micro-label visible.
  *   - isUpdating row: greys controls + adds `user-row--updating`
@@ -17,6 +18,8 @@
  *     time.
  *   - active toggle aria-label flips between "Deactivate <name>"
  *     and "Activate <name>" based on `user.isActive`.
+ *   - ticketCount renders in its own column; a missing count
+ *     falls back to 0 (never blank).
  */
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -38,6 +41,7 @@ const baseUser: UserPublic = {
   lastActiveAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
   createdAt: '2026-09-01T00:00:00.000Z',
   updatedAt: '2026-09-02T00:00:00.000Z',
+  ticketCount: 12,
 };
 
 describe('UserRowComponent (HD-014)', () => {
@@ -207,5 +211,52 @@ describe('UserRowComponent (HD-014)', () => {
     select.value = 'Wizard';
     select.dispatchEvent(new Event('change'));
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  // ─── Option A: identity cell + tickets column ──────────────────
+
+  it('groups the name and email into a single identity cell', () => {
+    fixture.componentRef.setInput('user', baseUser);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    const identity = el.querySelector('.user-row__identity');
+    expect(identity).toBeTruthy();
+    // Both the name AND the email live inside the identity cell.
+    expect(identity?.querySelector('.user-row__display-name')?.textContent?.trim())
+      .toBe('Eli Chen');
+    expect(identity?.querySelector('.user-row__email')?.textContent?.trim())
+      .toBe('eli@example.com');
+    // The email must NOT be a separate top-level column any more.
+    expect(el.querySelector('.user-row > .user-row__email')).toBeNull();
+  });
+
+  it('renders the ticket count in its own column', () => {
+    fixture.componentRef.setInput('user', baseUser);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    const tickets = el.querySelector('.user-row__tickets');
+    expect(tickets?.textContent?.trim()).toBe('12');
+  });
+
+  it('falls back to 0 when the ticket count is missing', () => {
+    const { ticketCount: _omitted, ...withoutCount } = baseUser;
+    fixture.componentRef.setInput('user', withoutCount as UserPublic);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    // Never blank — a missing count must not leave a ragged gap.
+    expect(el.querySelector('.user-row__tickets')?.textContent?.trim()).toBe('0');
+  });
+
+  it('renders an actions cell that is present in the DOM', () => {
+    fixture.componentRef.setInput('user', baseUser);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    // The action cell is always in the DOM (so keyboard focus can
+    // reach it) — CSS reveals it on hover / focus-within.
+    expect(el.querySelector('.user-row__actions')).toBeTruthy();
   });
 });

@@ -77,6 +77,7 @@ const sharedComponents = {
         'lastActiveAt',
         'createdAt',
         'updatedAt',
+        'ticketCount',
       ],
       properties: {
         id: { type: 'integer', example: 7 },
@@ -96,6 +97,12 @@ const sharedComponents = {
         },
         createdAt: { type: 'string', format: 'date-time' },
         updatedAt: { type: 'string', format: 'date-time' },
+        ticketCount: {
+          type: 'integer',
+          description:
+            'Number of live tickets the user is connected to (as submitter or owner).',
+          example: 12,
+        },
       },
     },
     AgentSummary: {
