@@ -1962,7 +1962,14 @@ a.admin-card-row:focus-visible {
   font-size: 12px;
   color: var(--color-text-secondary);
   font-style: italic;
-  white-space: nowrap;
+  /* The label is longer than the LAST ACTIVE track (120px), so it
+     WRAPS instead of overflowing into the ACTIONS column. Without
+     the wrap it painted over the neighbouring cell — the same
+     class of bug as the ROLE column painting over STATUS.
+     `line-height` is tightened so the wrapped label still sits
+     comfortably inside the row's 58px min-height. */
+  line-height: 1.35;
+  overflow-wrap: break-word;
 }
 /* The row error replaces the "Last active" cell too, so a failed
    inline action doesn't change the table's rhythm. */
