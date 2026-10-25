@@ -670,14 +670,13 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
  *         $ref: '#/components/responses/NotFound'
  */
 export const getById = asyncHandler(async (req: Request, res: Response) => {
-  const parsedId = Number(req.params.id);
-  if (!Number.isInteger(parsedId)) {
-    throw new HttpError(
-      400,
-      'validation_error',
-      'Ticket id must be numeric.',
-    );
-  }
+  // Use the same `parseTicketId` guard as the PATCH/POST paths so
+  // `/tickets/0`, `/tickets/-5` and `/tickets/abc` all reject
+  // identically as malformed input (400) instead of id `0` / `-5`
+  // silently looking up a missing row and returning 404. A malformed
+  // id is client input; a well-formed id that matches no row is a
+  // genuine 404.
+  const parsedId = parseTicketId(req.params.id);
 
   const ticket = await getByIdService(parsedId);
   if (!ticket) {
@@ -764,31 +763,35 @@ export const patch = asyncHandler(async (req: Request, res: Response) => {
 
   const input = validateUpdateTicketBody(req.body);
 
-  // Re-check the role gate on the (now-validated) fields. The
-  // service also gates; we surface a cleaner 403 here with a
-  // field-shape message instead of the service's bare-string 403.
+  // Re-check the role gate on the (now-validated) fields. This is a
+  // PERMISSION denial (the spec says "Eli cannot transition statuses
+  // at all"), so it must be 403 `forbidden` — not a 400 field
+  // validation error. The service layer gates identically with 403
+  // as defense-in-depth; keeping both on 403 means the two layers
+  // agree on the error contract, and the frontend can branch on
+  // `error === 'forbidden'` for the "you don't have access" card.
   const isAgent = role === 'Support Agent' || role === 'Admin';
   if (!isAgent) {
     if (input.status !== undefined) {
       throw new HttpError(
-        400,
-        'validation_error',
+        403,
+        'forbidden',
         'Only agents can change ticket status.',
         { status: 'Only agents can change ticket status.' },
       );
     }
     if (input.priority !== undefined) {
       throw new HttpError(
-        400,
-        'validation_error',
+        403,
+        'forbidden',
         'Only agents can change ticket priority.',
         { priority: 'Only agents can change ticket priority.' },
       );
     }
     if (input.ownerId !== undefined) {
       throw new HttpError(
-        400,
-        'validation_error',
+        403,
+        'forbidden',
         'Only agents can assign tickets.',
         { ownerId: 'Only agents can assign tickets.' },
       );

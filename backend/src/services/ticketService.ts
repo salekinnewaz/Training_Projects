@@ -389,6 +389,35 @@ export async function updateTicket(
       ownerId: current.ownerId,
     };
 
+    // Validate the assignee BEFORE writing. The `owner_id` FK
+    // references `users(id)`, so assigning a non-existent user id
+    // raises a raw SequelizeForeignKeyConstraintError that would
+    // otherwise surface to the client as an opaque 500
+    // "Something went wrong". A bad assignee id is client input, so
+    // it must be a 400 with a field-shaped message instead.
+    if (input.ownerId !== undefined && input.ownerId !== null) {
+      const assignee = await User.findByPk(input.ownerId, { transaction: tx });
+      if (!assignee) {
+        throw new HttpError(
+          400,
+          'validation_error',
+          'Assignee not found.',
+          { ownerId: 'Assignee not found.' },
+        );
+      }
+      // Per the Role-Aware Action Matrix, only Support Agents and
+      // Admins hold tickets. Reassigning to a plain employee would
+      // put the ticket into a state the matrix has no rows for.
+      if (assignee.role !== 'Support Agent' && assignee.role !== 'Admin') {
+        throw new HttpError(
+          400,
+          'validation_error',
+          'Tickets can only be assigned to Support Agents or Admins.',
+          { ownerId: 'Tickets can only be assigned to Support Agents or Admins.' },
+        );
+      }
+    }
+
     // Apply the columns. We use `update` on the instance rather than
     // `Ticket.update({where})` so Sequelize touches `updatedAt`.
     const patch: Record<string, unknown> = {};
@@ -496,15 +525,28 @@ function assertValidTransition(
   // selectable by agent — only the user (creator) confirms close."
   // The agent PATCH path cannot drive Resolved → Closed; that
   // transition is reserved for `confirmCloseTicket` (called from
-  // the user-initiated "Confirm and close" button). Admins still
-  // get a back-door so they can force-close stale tickets, but
-  // Support Agents do not.
-  if (to === 'Closed' && actorRole === 'Support Agent') {
+  // the user-initiated "Confirm and close" button).
+  //
+  // Per the Role-Aware Action Matrix
+  // (`design-process/E-Design-System/05-patterns/role-aware-action-matrix.md`),
+  // "Admin = Agent on the action matrix" — an Admin has IDENTICAL
+  // ticket actions to a Support Agent, and "Admin's exclusivity is
+  // the Users tab (role + status management), not ticket actions."
+  // The matrix has NO "Confirm (close)" row for either the Agent or
+  // the Admin — closing a ticket is an Employee-only action.
+  //
+  // So BOTH Support Agents and Admins are blocked from driving
+  // → Closed via PATCH. Only the ticket's submitter can close it,
+  // through `confirmCloseTicket`. (The previous guard only matched
+  // 'Support Agent', which let Admins close tickets via PATCH and
+  // recorded a `StatusChanged Resolved → Closed` activity event —
+  // contradicting the matrix.)
+  if (to === 'Closed' && (actorRole === 'Support Agent' || actorRole === 'Admin')) {
     throw new HttpError(
       403,
       'forbidden',
-      'Only the ticket creator or an admin can close a ticket.',
-      { status: 'Only the ticket creator or an admin can close a ticket.' },
+      'Only the ticket creator can close a ticket.',
+      { status: 'Only the ticket creator can close a ticket.' },
     );
   }
   const allowed: Record<
@@ -791,6 +833,63 @@ export async function listAllUsers(): Promise<User[]> {
   return User.findAll({
     order: [['displayName', 'ASC']],
   });
+}
+
+/**
+ * Per-user ticket counts (HD-014 GET /api/users — Tickets column).
+ *
+ * The Users page renders a "Tickets" column so the Admin can see
+ * workload at a glance. The count is the number of LIVE tickets
+ * the user is connected to, in either role:
+ *
+ *   - as the SUBMITTER (they raised it), or
+ *   - as the OWNER (they're handling it).
+ *
+ * A ticket counts ONCE per person even if the same user is both
+ * submitter and owner (an Admin creating and then taking a
+ * ticket). Soft-deleted tickets are excluded.
+ *
+ * WHY ONE QUERY
+ * ─────────────
+ * The obvious implementation is one COUNT per user — an N+1 that
+ * runs 20 queries for a 20-person team. Instead this issues a
+ * SINGLE query and returns a `Map<userId, count>`. Callers that
+ * need a count for a user with no tickets get 0 (the map has no
+ * entry).
+ *
+ * The query is a UNION of two grouped counts — one over
+ * submitter_id, one over owner_id — added together. Writing this
+ * as a single grouped SELECT with a `CASE` expression was tried
+ * first and rejected: Sequelize's `fn('CASE', { when: {...} })`
+ * helper escapes the object literal as a value rather than as a
+ * WHERE fragment, so Postgres rejected it with
+ * "Invalid value { ownerId: null }". The UNION avoids the whole
+ * problem — each branch is a plain `SELECT ... GROUP BY`.
+ */
+export async function countTicketsPerUser(): Promise<Map<number, number>> {
+  const [rows] = (await sequelize.query(`
+    SELECT user_id, SUM(ticket_count)::int AS ticket_count FROM (
+      SELECT submitter_id AS user_id, COUNT(*)::int AS ticket_count
+        FROM tickets
+       WHERE submitter_id IS NOT NULL AND deleted_at IS NULL
+       GROUP BY submitter_id
+      UNION ALL
+      SELECT owner_id AS user_id, COUNT(*)::int AS ticket_count
+        FROM tickets
+       WHERE owner_id IS NOT NULL AND deleted_at IS NULL
+       GROUP BY owner_id
+    ) AS per_user
+    GROUP BY user_id
+  `)) as unknown as [
+    { user_id: number; ticket_count: number }[],
+    unknown,
+  ];
+
+  const counts = new Map<number, number>();
+  for (const row of rows) {
+    counts.set(Number(row.user_id), Number(row.ticket_count));
+  }
+  return counts;
 }
 
 /**

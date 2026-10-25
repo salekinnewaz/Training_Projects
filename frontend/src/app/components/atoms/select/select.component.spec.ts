@@ -88,7 +88,7 @@ describe('SelectComponent', () => {
     expect(spy.calls.mostRecent().args[0]).toBe('');
   });
 
-  it('binds [value] onto the rendered <select> element', async () => {
+  it('displays the option matching the bound [value], not the first option', async () => {
     const fixture = TestBed.createComponent(SelectComponent);
     fixture.componentRef.setInput('id', 'priority');
     fixture.componentRef.setInput('options', [
@@ -103,5 +103,111 @@ describe('SelectComponent', () => {
 
     const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
     expect(select.value).toBe('High');
+    // The DISPLAYED option is what matters. A native `<select>`
+    // shows the option whose `selected` flag is true — not the one
+    // whose value merely equals the select's value property. If
+    // only `select.value` were asserted, a regression that marks
+    // NO option as selected would still pass this test while the
+    // UI showed "Low" to the user.
+    expect(select.selectedIndex).toBe(2);
+    const opts = select.options;
+    expect(opts[0].selected).toBe(false);
+    expect(opts[1].selected).toBe(false);
+    expect(opts[2].selected).toBe(true);
+    expect(opts[select.selectedIndex].value).toBe('High');
+  });
+
+  it('marks the bound option as selected when the value is set BEFORE the options render', async () => {
+    // Regression guard for the "value arrives first, options land
+    // later" ordering — e.g. an assignee dropdown whose bound
+    // `ownerId` is known before the agent list resolves. The
+    // displayed option must still end up on the bound value.
+    const fixture = TestBed.createComponent(SelectComponent);
+    fixture.componentRef.setInput('id', 'assignee');
+    fixture.componentRef.setInput('value', '7');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    // Options arrive after the value was bound.
+    fixture.componentRef.setInput('options', [
+      { value: '2', label: 'Sam Chen' },
+      { value: '7', label: 'Avery Patel' },
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+    expect(select.value).toBe('7');
+    expect(select.selectedIndex).toBe(1);
+    expect(select.options[1].selected).toBe(true);
+  });
+
+  it('re-selects the bound option when the value changes after first render', async () => {
+    const fixture = TestBed.createComponent(SelectComponent);
+    fixture.componentRef.setInput('id', 'role');
+    fixture.componentRef.setInput('options', [
+      { value: 'User', label: 'User' },
+      { value: 'Support Agent', label: 'Support Agent' },
+      { value: 'Admin', label: 'Admin' },
+    ]);
+    fixture.componentRef.setInput('value', 'User');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    let select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+    expect(select.value).toBe('User');
+
+    // Simulate the server echoing back the new role after a
+    // successful PUT — the parent patches the row, the bound
+    // value changes, and the dropdown must follow.
+    fixture.componentRef.setInput('value', 'Admin');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+    expect(select.value).toBe('Admin');
+    expect(select.selectedIndex).toBe(2);
+  });
+
+  it('renders a compact closed-state overlay without altering the select value', async () => {
+    // In compact mode the trigger paints its OWN label (e.g.
+    // "Change") over a transparent native <select>. The control
+    // must keep its real value and options — the overlay is purely
+    // visual.
+    const fixture = TestBed.createComponent(SelectComponent);
+    fixture.componentRef.setInput('id', 'role');
+    fixture.componentRef.setInput('options', [
+      { value: 'User', label: 'Employee' },
+      { value: 'Admin', label: 'Admin' },
+    ]);
+    fixture.componentRef.setInput('value', 'Admin');
+    fixture.componentRef.setInput('compact', true);
+    fixture.componentRef.setInput('displayLabel', 'Change');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const overlay = fixture.nativeElement.querySelector(
+      '.select-wrap__overlay',
+    ) as HTMLElement;
+    expect(overlay).toBeTruthy();
+    expect(overlay.textContent?.trim()).toBe('Change');
+
+    // The underlying control is untouched.
+    const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+    expect(select.value).toBe('Admin');
+    expect(select.selectedIndex).toBe(1);
+    expect(select.options.length).toBe(2);
+  });
+
+  it('renders no overlay when compact mode is off', async () => {
+    const fixture = TestBed.createComponent(SelectComponent);
+    fixture.componentRef.setInput('id', 'priority');
+    fixture.componentRef.setInput('options', [{ value: 'High', label: 'High' }]);
+    fixture.componentRef.setInput('value', 'High');
+    fixture.componentRef.setInput('displayLabel', 'Change');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.querySelector('.select-wrap__overlay')).toBeNull();
   });
 });

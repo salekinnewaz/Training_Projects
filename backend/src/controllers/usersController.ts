@@ -31,6 +31,7 @@ import {
   isUserRoleLiteral,
   listActiveAgents,
   listAllUsers,
+  countTicketsPerUser,
   setUserActive,
   setUserRole,
   type UserRoleLiteral,
@@ -110,6 +111,12 @@ interface UserPublicWire {
   lastActiveAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * How many live tickets this user is connected to (as submitter
+   * or owner). Powers the Users page's "Tickets" column. `0` when
+   * the user has no tickets.
+   */
+  ticketCount: number;
 }
 
 /**
@@ -120,8 +127,15 @@ interface UserPublicWire {
  * the wire is ISO 8601 (or null when the user has never logged
  * in). `createdAt` / `updatedAt` are auto-stamped by the model
  * and always present.
+ *
+ * `ticketCount` is passed in rather than read off the model: it
+ * comes from a separate grouped aggregate query (see
+ * `countTicketsPerUser`), so the single-user responses (PUT role /
+ * PUT status) pass `0` — those endpoints don't need the count, and
+ * the page preserves whatever count it already had when it
+ * patches the row.
  */
-function serializeUser(u: UserAttributes): UserPublicWire {
+function serializeUser(u: UserAttributes, ticketCount = 0): UserPublicWire {
   return {
     id: u.id,
     email: u.email,
@@ -131,6 +145,7 @@ function serializeUser(u: UserAttributes): UserPublicWire {
     lastActiveAt: u.lastActiveAt ? u.lastActiveAt.toISOString() : null,
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
+    ticketCount,
   };
 }
 
@@ -178,7 +193,12 @@ export const listAllHandler = asyncHandler(
       );
     }
     const users = await listAllUsers();
-    const payload: UserPublicWire[] = users.map(serializeUser);
+    // One grouped aggregate query for the whole team — NOT one
+    // COUNT per user. See `countTicketsPerUser`.
+    const ticketCounts = await countTicketsPerUser();
+    const payload: UserPublicWire[] = users.map((u) =>
+      serializeUser(u, ticketCounts.get(u.id) ?? 0),
+    );
     res.status(200).json({ users: payload, count: payload.length });
   },
 );

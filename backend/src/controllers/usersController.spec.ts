@@ -67,6 +67,7 @@ jest.mock('../middleware/auth', () => ({
 jest.mock('../services/ticketService', () => ({
   listActiveAgents: jest.fn(),
   listAllUsers: jest.fn(),
+  countTicketsPerUser: jest.fn(),
   setUserRole: jest.fn(),
   setUserActive: jest.fn(),
   isUserRoleLiteral: jest.fn((v: unknown) =>
@@ -182,6 +183,11 @@ describe('usersController.listAllHandler (HD-014)', () => {
 
   beforeEach(() => {
     (ticketService.listAllUsers as jest.Mock).mockReset();
+    (ticketService.countTicketsPerUser as jest.Mock).mockReset();
+    // Default: no tickets for anyone.
+    (ticketService.countTicketsPerUser as jest.Mock).mockResolvedValue(
+      new Map<number, number>(),
+    );
   });
 
   it('returns 200 with the full user list on the happy path (Admin caller)', async () => {
@@ -228,12 +234,13 @@ describe('usersController.listAllHandler (HD-014)', () => {
         lastActiveAt: string | null;
         createdAt: string;
         updatedAt: string;
+        ticketCount: number;
       }>;
       count: number;
     };
     expect(body.count).toBe(5);
     expect(body.users.length).toBe(5);
-    // All 8 UserPublic fields present on every row.
+    // All 9 UserPublic fields present on every row.
     for (const u of body.users) {
       expect(typeof u.id).toBe('number');
       expect(typeof u.email).toBe('string');
@@ -244,6 +251,7 @@ describe('usersController.listAllHandler (HD-014)', () => {
       expect(['string', 'object']).toContain(typeof u.lastActiveAt);
       expect(typeof u.createdAt).toBe('string');
       expect(typeof u.updatedAt).toBe('string');
+      expect(typeof u.ticketCount).toBe('number');
     }
     // lastActiveAt round-trips as ISO when set, null when never.
     expect(body.users[1].lastActiveAt).toBe('2026-10-10T12:00:00.000Z');
@@ -253,6 +261,42 @@ describe('usersController.listAllHandler (HD-014)', () => {
       expect((u as unknown as { passwordHash?: unknown }).passwordHash)
         .toBeUndefined();
     }
+  });
+
+  it('merges the per-user ticket counts into the wire', async () => {
+    (ticketService.listAllUsers as jest.Mock).mockResolvedValueOnce([
+      makeFakeUser(1, { displayName: 'Avery', role: 'Admin' }),
+      makeFakeUser(2, { displayName: 'Sam Patel', role: 'Support Agent' }),
+      makeFakeUser(3, { displayName: 'Nobody', role: 'User' }),
+    ]);
+    (ticketService.countTicketsPerUser as jest.Mock).mockResolvedValueOnce(
+      new Map<number, number>([
+        [1, 12],
+        [2, 34],
+      ]),
+    );
+
+    const req = {
+      user: {
+        id: 1,
+        email: 'admin@example.com',
+        displayName: 'Avery',
+        role: 'Admin',
+      },
+    } as unknown as Request;
+    const { res, statusMock, jsonMock } = makeRes();
+
+    await listAllHandler(req, res, jest.fn() as unknown as NextFunction);
+
+    expect(statusMock.mock.calls[0][0]).toBe(200);
+    const body = jsonMock.mock.calls[0][0] as {
+      users: Array<{ id: number; ticketCount: number }>;
+    };
+    // The counted users carry their real counts...
+    expect(body.users[0].ticketCount).toBe(12);
+    expect(body.users[1].ticketCount).toBe(34);
+    // ...and a user with no tickets falls back to 0, not undefined.
+    expect(body.users[2].ticketCount).toBe(0);
   });
 
   it('returns 403 for a User caller (non-Admin)', async () => {

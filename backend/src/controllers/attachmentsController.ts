@@ -123,6 +123,21 @@ function runUpload(req: Request, res: Response): Promise<void> {
           return;
         }
       }
+      // A malformed / truncated multipart body surfaces as a plain
+      // `Error` from busboy ("Unexpected end of form"), not a
+      // `MulterError`. That is still client input, so it must be a
+      // 400 with actionable copy — not an opaque 500.
+      if (err instanceof Error && !isMulterError(err)) {
+        reject(
+          new HttpError(
+            400,
+            'validation_error',
+            'Could not read the upload. Pick a file and try again.',
+            { file: 'invalid-upload' },
+          ),
+        );
+        return;
+      }
       // Non-multer error (or no error): forward to the
       // next middleware. The `asyncHandler` wrapper catches
       // thrown errors and routes to the central error handler.
@@ -133,6 +148,48 @@ function runUpload(req: Request, res: Response): Promise<void> {
       }
     });
   });
+}
+
+/**
+ * Type guard for multer's `MulterError`.
+ *
+ * `multer.MulterError` extends `Error`, so a plain `instanceof
+ * Error` check would also match it. We need to tell the two apart:
+ * a `MulterError` we don't have an explicit mapping for should
+ * still surface as itself, while a non-multer parse failure should
+ * become a 400 validation envelope.
+ */
+function isMulterError(err: unknown): err is multer.MulterError {
+  return (
+    err instanceof Error &&
+    typeof (err as multer.MulterError).code === 'string'
+  );
+}
+
+/**
+ * Express middleware wrapper around `runUpload` that translates
+ * multer's `MulterError` codes into typed `HttpError` envelopes.
+ *
+ * This is the form the ROUTE must use. The route previously called
+ * the raw `uploadMiddleware` (multer's own `.single('file')`),
+ * which meant a `LIMIT_FILE_SIZE` or `LIMIT_UNEXPECTED_FILE` error
+ * was thrown straight out of the route-level middleware — BEFORE
+ * the controller's `runUpload` translation could ever see it. The
+ * client got an opaque 500 "Something went wrong" instead of a
+ * 413 / 415 with actionable copy.
+ *
+ * Using this wrapper keeps the translation in one place and makes
+ * it apply regardless of how the middleware is wired.
+ */
+export function attachmentUploadMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  runUpload(req, res).then(
+    () => next(),
+    (err: unknown) => next(err),
+  );
 }
 
 /**

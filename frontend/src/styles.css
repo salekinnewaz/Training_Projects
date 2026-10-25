@@ -1428,6 +1428,241 @@ a.admin-card-row:focus-visible {
    row geometry, active toggle, and self-row border are kept
    global so the page component's inline style budget holds under
    2kB. Mirrors the HD-011 / HD-012 / HD-013 pattern. */
+
+/* ── Users table grid (Option A) ────────────────────────────────
+   ONE source of truth for the column tracks, shared by the
+   header row, the body rows and the loading skeleton. The three
+   used to repeat the same literal, which is how they drifted
+   out of sync once (the skeleton kept the old column widths
+   after the body changed).
+
+   USER | ROLE | STATUS | TICKETS | LAST ACTIVE | ACTIONS
+
+   The ROLE track is 224px because that column carries TWO
+   elements: the role badge (the read) and the compact select
+   (the control). The badge is 95px wide at its longest
+   ("Support Agent") and the compact select is a fixed 116px,
+   plus an 8px gap — so the track must be at least 219px or the
+   select OVERFLOWS its cell and paints over the STATUS column
+   next door, clipping "Active" to "ctive". */
+:root {
+  --users-grid: minmax(0, 2.4fr) 224px 120px 90px 120px 108px;
+}
+
+/* ── Users shell (standalone /users route) ──────────────────────
+   The shell owns the chrome + heading. The list component below
+   is content-only, so nothing renders the heading twice. */
+.users-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  gap: 20px;
+}
+.users-shell__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.users-shell__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.users-shell__title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.users-shell__subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+/* ── Stat summary row (Option A) ────────────────────────────────
+   Five at-a-glance counts, each a button that doubles as a
+   filter shortcut for the table below.
+
+   Option A flattens these: a subtle-tinted tile with a
+   coloured number, NO border and NO drop shadow. The old design
+   used five white elevated cards, which competed with the table
+   for attention — but the table is the actual work surface, so
+   the summary should sit quietly above it. */
+.users-stat-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+.stat-card {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.stat-card:hover {
+  border-color: var(--color-border-strong);
+}
+.stat-card:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-primary-ring);
+}
+.stat-card--active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-tint);
+}
+/* The number carries the meaning, so it gets the colour:
+   green = healthy, grey = inactive, amber = Admin, indigo =
+   Support Agent. The label stays neutral so the tiles read as
+   one system rather than five competing highlights. */
+.stat-card__value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+.stat-card--ok .stat-card__value { color: #047857; }
+.stat-card--off .stat-card__value { color: var(--color-text-secondary); }
+.stat-card--adm .stat-card__value { color: #B45309; }
+.stat-card--agt .stat-card__value { color: var(--color-primary); }
+.stat-card__label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+/* ── Toolbar: search + role filter chips ─────────────────────── */
+.users-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.users-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 260px;
+  max-width: 320px;
+  height: 34px;
+  padding: 0 12px;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  color: var(--color-text-secondary);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.users-search:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-primary-ring);
+}
+.users-search__icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.users-search__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--color-text);
+  outline: none;
+}
+.users-search__input::placeholder {
+  color: var(--color-muted);
+}
+/* Option A uses standalone pill chips rather than a segmented
+   control in a bordered box — lighter, and each chip reads as
+   its own target. */
+.users-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.filter-chip {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 13px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text-soft);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.filter-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+.filter-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
+}
+.filter-chip--active {
+  background: var(--color-primary-tint);
+  border-color: var(--color-primary-ring);
+  color: var(--color-primary);
+}
+
+/* ── Empty state ─────────────────────────────────────────────── */
+.users-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 56px 24px;
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 14px;
+  text-align: center;
+}
+.users-empty__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.users-empty__body {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
 .users-page {
   width: 100%;
 }
@@ -1466,23 +1701,33 @@ a.admin-card-row:focus-visible {
   font-size: 14px;
   font-weight: 500;
 }
+
+/* ── Table (Option A: flat, no card chrome) ─────────────────────
+   The old design wrapped the table in a white elevated card with
+   a border and a shadow. That made the table look like a widget
+   floating on the page. Option A drops the card entirely — the
+   table sits directly on the page background, separated only by
+   a hairline rule under the header. */
 .users-table-wrap {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: var(--shadow-card);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
 }
 .users-table-header {
   display: grid;
-  grid-template-columns: 220px 280px 160px 120px 100px;
-  gap: 16px;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--color-border-subtle);
-  background: linear-gradient(180deg, var(--color-surface) 0%, #FAFBFC 100%);
-  font-size: 11px;
+  /* USER | ROLE | STATUS | TICKETS | LAST ACTIVE | ACTIONS */
+  grid-template-columns: var(--users-grid);
+  align-items: center;
+  gap: 14px;
+  padding: 0 12px;
+  height: 34px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 4px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--color-muted);
 }
@@ -1492,65 +1737,127 @@ a.admin-card-row:focus-visible {
   padding: 0;
 }
 
-/* Users tab row geometry (HD-014). 64px tall row, 5 columns
-   matching the design spec §Spacing "row height 64px, name 220px ·
-   email 280px · role 160px · status 120px · last active 100px".
+/* Users tab row geometry (HD-014, Option A). One identity cell
+   (avatar + name + email stacked), then ROLE, STATUS, TICKETS,
+   LAST ACTIVE and a hover-revealed ACTIONS column.
+
    Self-row gets a 3px primary left border per the design spec
    "self-row visual differentiator" §VisualTokens. */
 .user-row {
   position: relative;
   display: grid;
-  grid-template-columns: 220px 280px 160px 120px 100px;
-  gap: 16px;
+  grid-template-columns: var(--users-grid);
   align-items: center;
-  height: 64px;
-  padding: 0 20px;
+  gap: 14px;
+  padding: 0 12px;
+  /* min-height, not height: the row must be able to hold a
+     two-line error message if the text wraps on a narrow
+     viewport. A fixed height clipped it. */
+  min-height: 58px;
   border-bottom: 1px solid var(--color-border-subtle);
+  font-size: 13.5px;
   transition: background-color var(--duration-fast) var(--ease-out);
 }
 .user-row:last-child {
   border-bottom: 0;
 }
 .user-row:hover {
-  background: var(--color-primary-soft-tint, rgba(99, 102, 241, 0.04));
+  background: var(--color-surface-subtle);
 }
 .user-row--self {
-  background: rgba(99, 102, 241, 0.04);
+  background: var(--color-primary-tint);
   border-left: 3px solid var(--color-primary);
-  padding-left: 17px;
 }
 .user-row--self:hover {
-  background: rgba(99, 102, 241, 0.06);
+  background: var(--color-primary-tint);
 }
 .user-row--updating {
   opacity: 0.6;
   pointer-events: none;
 }
+
+/* ── Identity cell ─────────────────────────────────────────────
+   Avatar + a stacked name/email pair. The email is secondary
+   (muted, smaller) so the NAME is what the eye lands on first. */
+.user-row__identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.user-row__identity-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
 .user-row__name {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
   min-width: 0;
 }
 .user-row__display-name {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
-  color: var(--color-primary);
+  color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
+/* "You" tag on the viewer's own row. The self-row already carries
+   a left border + tint; this makes the identification explicit in
+   the name column so the Admin doesn't have to infer it from the
+   disabled controls. */
+.user-row__you-tag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-primary-ring);
+  color: var(--color-primary);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
 .user-row__email {
-  font-size: 13px;
-  color: var(--color-muted);
+  font-size: 12.5px;
+  color: var(--color-label);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
 .user-row__role {
-  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  /* Belt-and-braces: the badge + select are sized to fit the
+     track, but if a LONGER role name ever lands here the cell
+     must clip rather than overflow and paint over the STATUS
+     column next door. */
+  overflow: hidden;
+}
+/* The role badge sits immediately left of the select. The badge is
+   the PRIMARY read (it shows the role name in full, never
+   truncated); the select beside it is the CONTROL that changes the
+   role and renders in compact mode (a narrow, fixed-width trigger).
+   On a narrow column the badge is dropped so the select's
+   affordance always survives. */
+.user-row__role-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+@media (max-width: 1100px) {
+  .user-row__role-badge {
+    display: none;
+  }
 }
 .user-row__status {
   display: flex;
@@ -1559,23 +1866,27 @@ a.admin-card-row:focus-visible {
 .user-row__active-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   background: transparent;
   border: 0;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: 6px;
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  color: var(--color-primary);
+  /* The ACTIVE label uses the same green as its indicator dot.
+     It was indigo (--color-primary) which read as "a link" and
+     clashed with the green dot sitting right next to it. */
+  color: var(--color-text-soft);
   transition: background-color 120ms ease;
 }
 .user-row__active-toggle:hover:not(:disabled) {
-  background: var(--color-surface);
+  background: var(--color-surface-muted);
 }
 .user-row__active-toggle:disabled {
   cursor: not-allowed;
+  color: var(--color-disabled);
 }
 .user-row__active-toggle:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
@@ -1586,8 +1897,6 @@ a.admin-card-row:focus-visible {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
-}
-.user-row__active-toggle.is-active .user-row__active-dot {
   background: var(--color-success);
 }
 .user-row__active-toggle.is-inactive .user-row__active-dot {
@@ -1597,51 +1906,108 @@ a.admin-card-row:focus-visible {
 .user-row__active-toggle.is-inactive {
   color: var(--color-muted);
 }
+
+/* ── Tickets column ────────────────────────────────────────────
+   A workload signal, so it gets tabular numerals to keep the
+   column visually aligned when the counts differ in width. */
+.user-row__tickets {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-soft);
+  font-weight: 600;
+}
 .user-row__last-active {
-  font-size: 12px;
-  color: var(--color-muted);
-  justify-self: end;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--color-label);
 }
 .user-row__never {
   color: var(--color-muted);
 }
+/* ── Actions column ────────────────────────────────────────────
+   Option A keeps the row quiet until you engage with it: the
+   action cell is invisible until the row is hovered or a control
+   inside it has focus (so keyboard users still get it). */
+.user-row__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+.user-row:hover .user-row__actions,
+.user-row:focus-within .user-row__actions {
+  opacity: 1;
+}
+.user-row__actions-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-soft);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  border-radius: 7px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+/* The self-row micro-label. It was absolutely positioned at
+   `bottom: -22px`, which made it float OVER the next row — a
+   visible overlap bug in the original design.
+
+   It now lives in the row's trailing cell, REPLACING the "Last
+   active" timestamp on the self row (the Admin knows exactly
+   when they were last active — it's now). The row therefore
+   keeps the SAME height as every other row instead of growing a
+   second line, and the table keeps a clean rhythm. */
 .user-row__self-micro-label {
-  position: absolute;
-  left: 16px;
-  bottom: -22px;
   margin: 0;
   font-size: 12px;
-  color: var(--color-muted);
+  color: var(--color-text-secondary);
   font-style: italic;
+  white-space: nowrap;
 }
+/* The row error replaces the "Last active" cell too, so a failed
+   inline action doesn't change the table's rhythm. */
 .user-row__error {
-  position: absolute;
-  right: 16px;
-  bottom: -22px;
+  grid-column: 5 / -1;
   margin: 0;
   font-size: 12px;
   color: var(--color-error);
+  font-weight: 500;
+  justify-self: end;
+  text-align: right;
 }
 
 /* Users tab loading skeleton (HD-014). 5 placeholder rows render
-   during the loading state. Each row has 6 grey bars (pulsing)
-   matching the 5-column geometry above. */
+   during the loading state. Each row has grey pulsing bars
+   matching the column geometry above. */
 .users-table-wrap[aria-busy="true"] .users-table {
   display: flex;
   flex-direction: column;
 }
+/* Stat-card skeleton — mirrors the .stat-card geometry above. */
+.stat-card--skel {
+  cursor: default;
+  pointer-events: none;
+}
+.stat-card--skel:hover {
+  border-color: var(--color-border-subtle);
+  background: var(--color-surface-subtle);
+}
+.bar-stat-value {
+  height: 22px;
+  width: 34%;
+}
+.bar-stat-label {
+  height: 10px;
+  width: 56%;
+}
 .user-row-skel {
   display: grid;
-  grid-template-columns: 220px 280px 160px 120px 100px;
-  gap: 16px;
+  grid-template-columns: var(--users-grid);
   align-items: center;
-  height: 64px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--color-border);
+  gap: 14px;
+  height: 58px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 .user-row-skel .bar {
   background: var(--color-surface-muted);
@@ -1655,11 +2021,7 @@ a.admin-card-row:focus-visible {
 }
 .user-row-skel .bar-name {
   height: 14px;
-  width: 70%;
-}
-.user-row-skel .bar-email {
-  height: 12px;
-  width: 90%;
+  width: 60%;
 }
 .user-row-skel .bar-role {
   height: 24px;
@@ -1668,6 +2030,10 @@ a.admin-card-row:focus-visible {
 .user-row-skel .bar-status {
   height: 16px;
   width: 80%;
+}
+.user-row-skel .bar-tickets {
+  height: 14px;
+  width: 40%;
 }
 .user-row-skel .bar-time {
   height: 12px;

@@ -213,6 +213,42 @@ export const INLINED_OPENAPI_PATHS: Record<string, Record<string, unknown>> = {
       }
     }
   },
+  "/tickets/stats": {
+    "get": {
+      "summary": "Ticket summary + 14-day trend",
+      "tags": [
+        "Tickets"
+      ],
+      "responses": {
+        "200": {
+          "description": "Counters + dailyCreated array."
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        },
+        "403": {
+          "$ref": "#/components/responses/Forbidden"
+        }
+      }
+    }
+  },
+  "/tickets/stats/mine": {
+    "get": {
+      "summary": "Caller's own ticket summary + 14-day trend",
+      "description": "Status counters and a 14-day tickets-created series, scoped\nto tickets submitted by the JWT'd user. Never exposes other\nusers' tickets or team-wide queue state.\n",
+      "tags": [
+        "Tickets"
+      ],
+      "responses": {
+        "200": {
+          "description": "Counters + dailyCreated array."
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        }
+      }
+    }
+  },
   "/tickets/queue": {
     "get": {
       "summary": "List every ticket (Support Agent / Admin)",
@@ -236,6 +272,25 @@ export const INLINED_OPENAPI_PATHS: Record<string, Record<string, unknown>> = {
         },
         "403": {
           "$ref": "#/components/responses/Forbidden"
+        }
+      }
+    }
+  },
+  "/tickets/list": {
+    "get": {
+      "summary": "List every ticket (Support Agent + Admin)",
+      "tags": [
+        "Tickets"
+      ],
+      "responses": {
+        "200": {
+          "description": "The full ticket list."
+        },
+        "401": {
+          "description": "Not authenticated."
+        },
+        "403": {
+          "description": "Caller is neither Support Agent nor Admin."
         }
       }
     }
@@ -631,6 +686,99 @@ export const INLINED_OPENAPI_PATHS: Record<string, Record<string, unknown>> = {
         },
         "404": {
           "$ref": "#/components/responses/NotFound"
+        }
+      }
+    }
+  },
+  "/notifications": {
+    "get": {
+      "summary": "List the caller's notifications",
+      "description": "Returns the caller's notification feed newest-first along\nwith the unread count that drives the bell's red dot.\n`limit` is clamped to 1..50 (default 20).\n",
+      "tags": [
+        "Notifications"
+      ],
+      "parameters": [
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Notification feed.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Notification"
+                    }
+                  },
+                  "unreadCount": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        }
+      }
+    }
+  },
+  "/notifications/{id}/read": {
+    "post": {
+      "summary": "Mark a notification read",
+      "tags": [
+        "Notifications"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Marked read (idempotent)."
+        },
+        "400": {
+          "$ref": "#/components/responses/ValidationError"
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        },
+        "404": {
+          "$ref": "#/components/responses/NotFound"
+        }
+      }
+    }
+  },
+  "/notifications/read-all": {
+    "post": {
+      "summary": "Mark all the caller's notifications read",
+      "tags": [
+        "Notifications"
+      ],
+      "responses": {
+        "200": {
+          "description": "Sweep complete."
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
         }
       }
     }

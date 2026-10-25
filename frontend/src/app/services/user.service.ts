@@ -51,8 +51,8 @@ interface ListAgentsResponse {
 /**
  * Wire shape returned by GET /api/users (HD-014). The full
  * `UserPublic` is returned per row (email, role, isActive,
- * lastActiveAt, createdAt, updatedAt) — the Users tab page needs
- * every field for its 5 columns.
+ * lastActiveAt, createdAt, updatedAt, ticketCount) — the Users
+ * tab page needs every field for its 5 columns.
  */
 interface ListAllResponse {
   users: UserPublic[];

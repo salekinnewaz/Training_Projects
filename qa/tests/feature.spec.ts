@@ -688,12 +688,39 @@ test.describe('Feature: Register / Forbidden', () => {
 test.describe('Feature: Users tab', () => {
   test('admin sees the Users heading + active count summary + user table', async ({ page }) => {
     // Wireframe §"Content & Actions" #2: "Users" heading
-    // (24px semibold) + active count summary "N users · N
-    // active · N inactive" muted below the heading.
+    // (24px semibold) + active count summary.
+    //
+    // The summary used to be a single muted line ("N users · N
+    // active · N inactive"). The redesign replaced it with a row
+    // of stat CARDS (Total users / Active / Inactive / Admins /
+    // Support agents) — the same information, scannable at a
+    // glance, and each card doubles as a filter shortcut. The
+    // assertion below pins that the counts are present and
+    // consistent.
     await loginAs(page, 'admin');
     await page.goto('/users');
     await expect(page.getByRole('heading', { name: 'Users', level: 1 })).toBeVisible();
-    await expect(page.getByText(/\d+ users? · \d+ active · \d+ inactive/i)).toBeVisible();
+
+    const statRow = page.locator('[data-testid="users-stat-row"]');
+    await expect(statRow).toBeVisible();
+
+    const readStat = async (key: string) =>
+      Number(
+        (
+          await page
+            .locator(`[data-testid="stat-${key}"]`)
+            .locator('.stat-card__value')
+            .innerText()
+        ).trim(),
+      );
+
+    const total = await readStat('total');
+    const active = await readStat('active');
+    const inactive = await readStat('inactive');
+
+    expect(total).toBeGreaterThan(0);
+    // Active + inactive must account for every user.
+    expect(active + inactive).toBe(total);
   });
 
   test('admin self-row has the "You cannot change your own role" micro-label', async ({ page }) => {

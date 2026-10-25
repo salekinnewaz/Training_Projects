@@ -125,8 +125,8 @@ export const routes: Routes = [
     path: 'users',
     canActivate: [authGuard, roleGuard(['Admin'])],
     loadComponent: () =>
-      import('./pages/users-tab-page/users-tab-page.component').then(
-        (m) => m.UsersTabPageComponent
+      import('./pages/users-tab-page/users-page-shell.component').then(
+        (m) => m.UsersPageShellComponent
       ),
     title: 'Users · HelpDesk Lite',
   },
