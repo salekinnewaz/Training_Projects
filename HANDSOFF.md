@@ -1,5 +1,12 @@
 # HANDSOFF — QA Loop Log
 
+> **⚠️ In-progress rework (2026-11-02).** The Admin Dashboard is
+> being rebuilt as the WDS-2026 Admin Workspace. It is functionally
+> complete but its **responsive geometry is unfinished**, and **nothing
+> is committed yet**. See **`RESUME-TOMORROW.md`** for the full handoff:
+> open tasks, measured reference geometry, and the uncommitted-file
+> inventory. Do not discard the working tree.
+>
 > **What this is.** A working log for the post-deployment QA
 > loop. Every action taken, gap found, fix applied, and test
 > result is recorded here. Maintained continuously by the QA
