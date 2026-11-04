@@ -6,8 +6,8 @@
  * script covers the rest of the contract:
  *
  *   1. The full strip at the reference's width (the baseline).
- *   2. The 1180px breakpoint — three equal columns.
- *   3. The 760px breakpoint — two equal columns.
+ *   2. The three-column step — three equal columns.
+ *   3. The two-column step — two equal columns.
  *   4. A narrow phone — the sparkline and the bar must stay INSIDE
  *      their card rather than spilling over the neighbour.
  *   5. A zero total — the bars render empty rather than dividing by
@@ -27,6 +27,7 @@ const { chromium } = require('playwright');
 const path = require('path');
 const { REF_PAYLOAD } = require('./ref-payload');
 const M = require('./ref-measurements');
+const { BASE_URL: BASE } = require('./base-url');
 
 let failures = 0;
 let checks = 0;
@@ -68,7 +69,7 @@ async function signIn(
       body: JSON.stringify(payload),
     }),
   );
-  await page.goto('http://localhost:4200', { waitUntil: 'networkidle' });
+  await page.goto(BASE, { waitUntil: 'networkidle' });
   await page.locator('input[type="email"]').first().fill(who);
   await page.locator('input[type="password"]').first().fill('password123');
   await page.locator('button[type="submit"]').first().click();
@@ -97,7 +98,65 @@ async function signIn(
   }
 
   /* ── 2 & 3. The breakpoints ───────────────────────────────── */
-  console.log('\n══ 2. THREE COLUMNS AT 1180px ══');
+  /*
+   * The ladder is driven by the STRIP's OWN width — the molecule is
+   * a query container — so the VIEWPORT at which it steps down
+   * depends on the page's chrome. The User's dashboard content
+   * column is 64px narrower than its viewport, so:
+   *
+   *   five columns  while the strip is wider than 1115px
+   *                 (a 1180px viewport and up)
+   *   three columns while the strip is wider than 683px
+   *                 (760px .. 1180px)
+   *   two columns   below that
+   *
+   * Measured on the live page (qa/scripts/_ladder.mjs):
+   *   viewport  700  → 636px strip  → 2 columns
+   *   viewport  760  → 696px strip  → 3 columns
+   *   viewport 1180  → 1116px strip → 5 columns
+   */
+  console.log('\n══ 2. THREE COLUMNS AT 1000px ══');
+  {
+    const { context, page } = await signIn(browser, REF_PAYLOAD, {
+      width: 1000,
+      height: 900,
+    });
+    const widths = await page
+      .locator('[data-testid="stat-strip"]')
+      .evaluate((h) =>
+        Array.from(h.querySelectorAll('article.card')).map((c) =>
+          +c.getBoundingClientRect().width.toFixed(1),
+        ),
+      );
+    console.log(`  widths: ${JSON.stringify(widths)}`);
+    // Three equal columns: the cards share a width, and the fifth
+    // wraps onto a second row.
+    check('first three columns equal', widths[0], widths[1], 0.6);
+    check('first three columns equal', widths[1], widths[2], 0.6);
+    check('the fourth and fifth share the first column\'s width',
+      widths[3], widths[0], 0.6);
+    await context.close();
+  }
+
+  console.log('\n══ 3. TWO COLUMNS AT 700px ══');
+  {
+    const { context, page } = await signIn(browser, REF_PAYLOAD, {
+      width: 700,
+      height: 900,
+    });
+    const widths = await page
+      .locator('[data-testid="stat-strip"]')
+      .evaluate((h) =>
+        Array.from(h.querySelectorAll('article.card')).map((c) =>
+          +c.getBoundingClientRect().width.toFixed(1),
+        ),
+      );
+    console.log(`  widths: ${JSON.stringify(widths)}`);
+    check('first two columns equal', widths[0], widths[1], 0.6);
+    await context.close();
+  }
+
+  console.log('\n══ 3b. FIVE COLUMNS AT 1180px ══');
   {
     const { context, page } = await signIn(browser, REF_PAYLOAD, {
       width: 1180,
@@ -111,27 +170,10 @@ async function signIn(
         ),
       );
     console.log(`  widths: ${JSON.stringify(widths)}`);
-    // Three equal columns: the first three cards share a width.
-    check('first three columns equal', widths[0], widths[1], 0.6);
-    check('first three columns equal', widths[1], widths[2], 0.6);
-    await context.close();
-  }
-
-  console.log('\n══ 3. TWO COLUMNS AT 760px ══');
-  {
-    const { context, page } = await signIn(browser, REF_PAYLOAD, {
-      width: 760,
-      height: 900,
-    });
-    const widths = await page
-      .locator('[data-testid="stat-strip"]')
-      .evaluate((h) =>
-        Array.from(h.querySelectorAll('article.card')).map((c) =>
-          +c.getBoundingClientRect().width.toFixed(1),
-        ),
-      );
-    console.log(`  widths: ${JSON.stringify(widths)}`);
-    check('first two columns equal', widths[0], widths[1], 0.6);
+    // Back to five, on the reference's own unequal proportions.
+    check('the five cards are not all the same width',
+      new Set(widths).size > 1, true);
+    check('the Total card is the widest', widths[0] === Math.max(...widths), true);
     await context.close();
   }
 
@@ -337,7 +379,7 @@ async function signIn(
       { width: 1536, height: 1024 },
       'eli@company.com',
     );
-    await page.goto('http://localhost:4200/tickets', { waitUntil: 'networkidle' });
+    await page.goto(BASE + '/tickets', { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
 
     // The Agent's page renders the SAME shared <stat-strip> molecule
@@ -360,7 +402,7 @@ async function signIn(
     // renders, so the page's own `tickets-forbidden` panel never
     // appears — the assertion is on the redirect.
     const { context: uctx, page: upage } = await signIn(browser, REF_PAYLOAD);
-    await upage.goto('http://localhost:4200/tickets', { waitUntil: 'networkidle' });
+    await upage.goto(BASE + '/tickets', { waitUntil: 'networkidle' });
     await upage.waitForTimeout(1200);
     const url = upage.url();
     const userStrips = await upage.locator('stat-strip').count();

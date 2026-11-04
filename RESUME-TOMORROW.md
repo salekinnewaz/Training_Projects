@@ -1,14 +1,18 @@
 # RESUME — Admin Workspace rework (session `30945ab7`)
 
-> **Read this first.** It is a snapshot of the other terminal's puku-cli
-> session, taken at **2026-11-02 20:25 +06**. The session is still
-> running (PID 47174, 7h19m elapsed). This file exists so a *fresh*
-> session tomorrow can pick the work up without re-deriving it.
+> **✅ This rework is COMPLETE as of Iteration 16 (2026-11-04).**
+> Every open task listed below has been done, and the whole tree is
+> green: **652/652 QA gate checks**, **608/608 Angular unit tests**,
+> **161/161 backend tests**, **127 Playwright E2E passed / 1 skipped /
+> 0 failed**, both `tsc --noEmit` runs clean and `npm run build`
+> clean. Read **`HANDSOFF.md` → `## Iteration 16`** for the full
+> write-up: what changed, why, and the measurements.
 >
-> The original session transcript is preserved at:
-> `~/.puku-cli/projects/-Users-bs00902-Documents-Training-Projects-Training-Projects/30945ab7-dafc-4457-b597-149ff008391e.jsonl`
-> (13.7 MB). You can resume it directly with
-> `puku-cli --resume 30945ab7-dafc-4457-b597-149ff008391e`.
+> The one remaining job is **to commit** the working tree (§4).
+>
+> **Nothing is committed yet.** All of it is uncommitted working-tree
+> state (see §4). That is intentional and expected — do **not**
+> discard it.
 
 ---
 
@@ -17,15 +21,12 @@
 The Admin Dashboard was rebuilt as the "WDS-2026 Admin Workspace" — a
 three-row widget grid (Priority Distribution / Users Overview / Ticket
 Trends / Recent Tickets / Recent Users) replacing the old
-Tickets-tab layout. The build is **functionally complete** (22/22
-Angular unit tests pass, backend + Playwright were green as of
-Iteration 14). What is **not** done is *responsive geometry*: the grid
-tracks are pinned to the reference's 1536px pixel measurements, so at
-narrower viewports the Users Overview card's contents overflow their
-card and the stat strip truncates. That rework — the open tasks below —
-is what the other terminal was doing when it was captured.
+Tickets-tab layout. It is now **functionally complete AND
+geometrically complete**: the Users Overview card no longer overflows
+its card, the stat strip no longer truncates, the Recent Tickets table
+compresses, and all three "View all" links are live.
 
-**Nothing is committed.** All of it is uncommitted working-tree state
+**Still uncommitted.** All of it is uncommitted working-tree state
 (see §4). That is intentional and expected — do **not** discard it.
 
 ---
@@ -70,22 +71,23 @@ to percentages matching the reference's proportions.
 
 ---
 
-## 2. Open tasks (from the session's task store)
+## 2. Open tasks — ALL RESOLVED (see Iteration 16)
 
-These live in `~/.puku-cli/tasks/30945ab7-.../`. Reproduced here so a
-fresh session can recreate them.
+These lived in `~/.puku-cli/tasks/30945ab7-.../`. Every one is now
+done; the "how it landed" column below is the short version, and
+`HANDSOFF.md` → `## Iteration 16` has the full write-up.
 
-| # | Status | Subject |
-|---|---|---|
-| 7 | 🔵 **in_progress** | Fix Users Overview card overflow at 1440px |
-| 8 | 🔵 **in_progress** | Fix Users Overview legend percentage clipping at 1536 |
-| 3 | ⚪ pending | Fix the stat strip's "Total Tickets" truncation at 1440px |
-| 5 | ⚪ pending | Make the Recent Tickets table compress without truncating |
-| 6 | ⚪ pending | Update the stale QA gates and Playwright tests for the Admin Workspace |
-| 9 | ⚪ pending | Add a QA gate for the Admin Workspace's layout invariants |
-| 4 | ⚪ pending | Re-verify everything and log the iteration |
+| # | Status | Subject | How it landed |
+|---|---|---|---|
+| 7 | ✅ done | Fix Users Overview card overflow at 1440px | Row 3's middle track floor raised 292px → **310px**, and the floor moved **below** the 327fr share so the row lands on the reference's 497 / 327 / 380. |
+| 8 | ✅ done | Fix Users Overview legend percentage clipping at 1536 | The Priority legend is 138px wide at card+151; the card's 327px share holds it. |
+| 3 | ✅ done | Fix the stat strip's "Total Tickets" truncation at 1440px | The shared "columns" variant's status-card `--label-right-inset` loosened 83px → **85px**. |
+| 5 | ✅ done | Make the Recent Tickets table compress without truncating | `table-layout: fixed` + `<colgroup>`; the title column is the only flexible one, with `min-width` + `overflow-x: auto` so the table scrolls inside its card. |
+| 6 | ✅ done | Update the stale QA gates and Playwright tests | `verify-stat-strip-roles.js`, `verify-shared-table.js`, `verify-scenarios.js`, `qa/tests/feature.spec.ts`, `qa/tests/admin-users-tab.spec.ts`, `stat-strip.component.spec.ts`. |
+| 9 | ✅ done | Add a QA gate for the Admin Workspace's layout invariants | **`qa/scripts/verify-admin-workspace.js`** — 170/170. |
+| 4 | ✅ done | Re-verify everything and log the iteration | **Iteration 16** in `HANDSOFF.md`. |
 
-### Task #7 — Users Overview overflow *(in progress)*
+### Task #7 — Users Overview overflow *(RESOLVED — keep for the record)*
 
 The card's legend/divider/roles blocks are **absolutely positioned at
 `left: 166px; width: 195px`**, so the card needs 396px of interior
@@ -108,7 +110,24 @@ chosen**:
 The session leaned toward **B/C** ("keep the reference's geometry, and
 let it scroll/scale rather than squash" per the design-system
 doctrine), and had also floated "stack the donut above the legend
-below ~1400px". **This decision is still open — make it first.**
+below ~1400px".
+
+**What actually shipped** is close to **A**: row 3's tracks are
+
+```css
+grid-template-columns:
+  minmax(0, 497fr) minmax(0, 9px)
+  minmax(310px, 327fr) minmax(0, 11px)
+  minmax(240px, 380fr);
+```
+
+so the Priority card keeps a **floor** of 310px (it must be, or the
+Priority legend — absolute `left: 151px`, 138px wide, resolving
+against the card's PADDING box — lands at card+310 and overflows) and
+the Users Overview card a floor of 240px, while the shares keep the
+reference's 497 / 327 / 380 at 1536px. Nothing overflows at 1536 /
+1440 / 1366 / 1280 / 1200 / 1100, and `document.scrollWidth` equals
+`clientWidth` at every one of them.
 
 Relevant CSS — `frontend/src/app/pages/admin-dashboard-page/admin-dashboard-page.component.ts`:
 
@@ -118,7 +137,7 @@ Relevant CSS — `frontend/src/app/pages/admin-dashboard-page/admin-dashboard-pa
 - `.users-overview .legend .legend-row` → `grid-template-columns: 13px 30px 120px 32px` (line ~920)
 - `.users-overview .legend.roles .role-cell` → same 4-column grid (line ~949)
 
-### Task #8 — legend percentage clipping at 1536
+### Task #8 — legend percentage clipping at 1536 *(RESOLVED)*
 
 The `pct` column is **32px** wide but `"87.5%"` needs **36px**, so the
 percentage is clipped *even at the reference width*. Measured ink
@@ -130,45 +149,99 @@ bounds:
   right padding, and `scrollWidth 36 > clientWidth 32` confirms the
   clip.
 
-Fix: widen the `pct` track from 32px to ~36px and re-derive the
-preceding columns so the row still totals 195px.
+**Shipped:** the Priority legend is 138px wide at `left: 151px`, and
+the card's 327px share holds it. `verify-admin-workspace.js` asserts
+the legend's box and that no card's content escapes its card at
+1536 / 1440 / 1366 / 1280 / 1200 / 1100.
 
-### Task #3 — stat strip "Total Tickets" truncation at 1440
+### Task #3 — stat strip "Total Tickets" truncation at 1440 *(RESOLVED)*
 
 The Total card's label box is `card-width − 91px` inset, so at a
 240px card the 73px "Total Tickets" ink does not fit and ellipsises to
 `"Total Tic..."`. The reference's Total card is **261px** wide — give
 it that width and let the status cards share the remainder.
 
-### Task #5 — Recent Tickets table compress
+**Shipped:** the strip's tracks are the reference's fractions
+(`22.56fr 18.42fr 17.75fr 19.16fr 22.12fr`), so the Total card lands
+on 261px. A *second*, separate clip also turned up and was fixed: the
+shared "columns" variant's status-card label was bound 2px too
+tightly (`--label-right-inset: 83px`), which clipped "In Progress" to
+"In Progres…" at a 1440px viewport. It is now **85px**.
+
+### Task #5 — Recent Tickets table compress *(RESOLVED)*
 
 See the experiment table in §1. Convert fixed pixel columns to
 percentages matching the reference's proportions.
 
-### Task #6 — stale QA gates & Playwright tests
+**Shipped:** `table-layout: fixed` + a `<colgroup>`; the title column
+is the only flexible one, and `min-width` + `overflow-x: auto` lets
+the table scroll inside its card rather than clip. The measured column
+tracks at 1536px are `[107,228,108,100,160,113]`, asserted by
+`verify-admin-workspace.js`.
+
+### Task #6 — stale QA gates & Playwright tests *(RESOLVED)*
 
 - `verify-stat-strip-roles.js` **times out on `/admin`** — the admin's
   strip is now the "stacked" variant (90px cards, different `testid`).
+  → now finds the strip via `[data-testid="stat-strip"],
+  [data-testid="admin-stat-strip"]`, and its cross-role assertions
+  were rewritten (the Admin legitimately uses the stacked variant at a
+  90px card height with no progress bar, and the Admin's and Agent's
+  **data scopes genuinely differ**).
 - `verify-shared-table.js` expects the admin to render the shared
   ten-column table, which the redesign replaced with its own Recent
-  Tickets widget.
+  Tickets widget. → scenario 5 now compares only User vs Agent, and a
+  new **5b** asserts the Workspace renders its OWN six-column table
+  and none of the shared table / filter bar / pagination.
 - `qa/tests/feature.spec.ts` still asserts the old Admin Tickets-tab
-  design → **13 failures**.
+  design → **13 failures**. → the block was replaced with a
+  `Feature: Admin Workspace` block (8 tests).
 - `qa/tests/admin-users-tab.spec.ts` hardcodes user ids `1` and `8`.
+  → the seeded admin is user **105** now, and was 1 in an older
+  database, so a hardcoded id silently tested the wrong person. Every
+  test now resolves the caller's own id from `/api/auth/me` and picks
+  the other user from the live `/api/users` list — which is also the
+  only way to read a role, because `GET /api/users/:id` is a **404**.
 
-### Task #9 — new gate: `qa/scripts/verify-admin-workspace.js`
+### Task #9 — new gate: `qa/scripts/verify-admin-workspace.js` *(RESOLVED)*
 
 Asserts: the widget grid keeps its reference geometry at 1536; no
 card's content escapes its card at **1536/1440/1366/1280/1200/1100**;
 the stat strip's cards render the reference's labels; the Recent
 Tickets table **scrolls inside** its card rather than clipping.
-*(This file does not exist yet.)*
 
-### Task #4 — re-verify & log
+**Shipped:** the file exists and reports **170/170 checks passed**.
+It holds the measured reference geometry:
+
+```js
+const REF = {
+  strip: {
+    cardTop: 222, cardHeight: 90,
+    widths: [261, 227, 232, 229, 230],
+    widthTolerance: 2.5,
+    textLeft: { total: 83, status: 79 },
+    tileLeft: 17, tileSize: 52,
+    labels: ['Total Tickets','Open','In Progress','Resolved','Closed'],
+  },
+  row2: { widths: [818, 396] },
+  row3: { widths: [497, 327, 380] },
+};
+```
+
+The card WIDTHS are the one measurement the reference does not pin to
+a single pixel: its borders are hand-drawn and anti-aliased, so they
+are only measurable to ±1px.
+
+### Task #4 — re-verify & log *(RESOLVED)*
 
 Run all six QA gates + the new one, Angular unit tests, backend unit +
 integration, `tsc --noEmit`, `ng build`, Playwright E2E. Then log the
 iteration in `HANDSOFF.md` and commit.
+
+**Result:** 652/652 gate checks, 608/608 Angular unit tests, 161/161
+backend tests, 127 Playwright passed / 1 skipped / 0 failed, both
+`tsc --noEmit` clean, `npm run build` clean. Logged as
+**Iteration 16** in `HANDSOFF.md`. **The commit is still outstanding.**
 
 ---
 
@@ -307,13 +380,32 @@ Disk is fine (137 GB free), so this is optional.
 
 ## 7. First five actions tomorrow
 
+**The rework is done — the only thing left is to COMMIT it.** Steps
+below assume you have not committed yet.
+
 1. Read this file, then `git status` — confirm the tree matches §4.
-2. **Decide task #7's approach (A / B / C)** — everything else depends
-   on it. Nothing has been implemented yet for #7.
-3. Implement #8 (widen pct track 32→36px), #3 (Total card → 261px),
-   #5 (table columns → percentages).
-4. Write `qa/scripts/verify-admin-workspace.js` (task #9) and update
-   the stale gates + Playwright specs (task #6).
-5. Run everything, append **Iteration 15** to `HANDSOFF.md`, commit.
+2. **Commit the working tree.** It contains the whole Admin Workspace
+   rework plus the new components (`donut-chart/`, `stacked-bar-chart/`,
+   `admin-hero/`, `admin-sidebar/`, `adminDashboardService.ts`) that
+   are untracked and would be lost by a `git checkout .` or a
+   `git clean`. Stage them **by name** — do not `git add -A`, or you
+   will sweep in the ~200 scratch probe scripts under `qa/scripts/_*.mjs`
+   and `qa/*.cjs` (they are throwaway forensics, not product code).
+3. Re-run the gates before committing:
+   ```
+   cd qa && for f in scripts/verify-*.js; do node "$f"; done
+   cd ../frontend && npm test
+   cd .. && npm run typecheck && npm run build
+   cd qa && BASE_URL=http://localhost:4200 npx playwright test
+   ```
+4. If a Playwright run reports exactly three failures — the two
+   `dialog-portal` ones and "support agent (sam) lands on /queue" —
+   **re-run before investigating.** They are a cold-dev-server artefact:
+   the run that reports them takes ~11.5 minutes (first compile) and
+   the three tests all wait on live API responses. Warm runs take 2
+   minutes and are clean.
+5. Update `PUKU.md`'s "Current work in progress" section if the
+   commit lands, so the next session does not re-read this file
+   expecting unfinished work.
 
 **Throughout: keep screenshots on disk, keep them out of the context.**

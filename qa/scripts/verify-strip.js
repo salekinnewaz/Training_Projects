@@ -19,6 +19,7 @@ const path = require('path');
 const fs = require('fs');
 const { REF_PAYLOAD } = require('./ref-payload');
 const M = require('./ref-measurements');
+const { BASE_URL: BASE } = require('./base-url');
 
 const OUT_DIR = path.join(__dirname, '..', 'screenshots', 'local-view');
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -75,7 +76,7 @@ function checkOrder(label, values, order) {
     }),
   );
 
-  await page.goto('http://localhost:4200', { waitUntil: 'networkidle' });
+  await page.goto(BASE, { waitUntil: 'networkidle' });
   await page.locator('input[type="email"]').first().fill('jess@company.com');
   await page.locator('input[type="password"]').first().fill('password123');
   await page.locator('button[type="submit"]').first().click();
@@ -437,7 +438,7 @@ function checkOrder(label, values, order) {
         body: JSON.stringify(REF_PAYLOAD),
       }),
     );
-    await page1x.goto('http://localhost:4200', { waitUntil: 'networkidle' });
+    await page1x.goto(BASE, { waitUntil: 'networkidle' });
     await page1x.locator('input[type="email"]').first().fill('jess@company.com');
     await page1x
       .locator('input[type="password"]')

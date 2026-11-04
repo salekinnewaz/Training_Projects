@@ -29,6 +29,7 @@ import type {
   TicketCategory,
   TicketPriority,
   TicketStatus,
+  UserRole,
 } from '../models/enums';
 import { apiErrorFrom } from './api-error';
 
@@ -163,6 +164,66 @@ export interface UpdateTicketPayload {
   priority?: TicketPriority;
   category?: TicketCategory | null;
   ownerId?: number | null;
+}
+
+/**
+ * Wire shape returned by GET /api/admin/workspace (WDS-2026 Admin
+ * Workspace dashboard).
+ *
+ * One response carries all six widgets' data — the summary counters
+ * (hero chips + stat strip), the recent-tickets table, the users
+ * overview donut, the priority distribution donut, the ticket
+ * trends chart, and the recent-users list.
+ */
+export interface AdminWorkspaceBundle {
+  summary: {
+    totalTickets: number;
+    recentTickets: number;
+    previousTickets: number;
+    totalUsers: number;
+    newUsersThisWeek: number;
+    counts: {
+      total: number;
+      open: number;
+      inProgress: number;
+      resolved: number;
+      closed: number;
+    };
+  };
+  recentTickets: Ticket[];
+  usersOverview: {
+    total: number;
+    active: number;
+    inactive: number;
+    byRole: {
+      admins: number;
+      supportAgents: number;
+      employees: number;
+    };
+  };
+  priorities: Array<{ priority: TicketPriority | 'None'; count: number }>;
+  trends: TrendBucket[];
+  recentUsers: Array<{
+    id: number;
+    displayName: string;
+    email: string;
+    role: UserRole;
+    isActive: boolean;
+    createdAt: string;
+    lastActiveAt: string | null;
+  }>;
+}
+
+/**
+ * One day of the ticket-trend series: the count of tickets created
+ * that day, broken down by the status they are currently in.
+ */
+export interface TrendBucket {
+  date: string;
+  open: number;
+  inProgress: number;
+  resolved: number;
+  closed: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -564,6 +625,39 @@ export class TicketService {
       const res = await firstValueFrom(
         this.http.get<TicketStats>(
           `${environment.apiBaseUrl}/tickets/stats/mine`,
+          { withCredentials: true },
+        ),
+      );
+      return res;
+    } catch (err) {
+      throw apiErrorFrom(err as Parameters<typeof apiErrorFrom>[0]);
+    }
+  }
+
+  // ─── WDS-2026 — Admin Workspace bundle ──────────────────────
+
+  /**
+   * GET /api/admin/workspace — the Admin Workspace dashboard
+   * bundle (WDS-2026).
+   *
+   * One round-trip carrying all six widgets' data: the summary
+   * counters behind the hero chips and the stat strip, the
+   * recent-tickets table, the users overview donut, the priority
+   * distribution donut, the ticket trends chart, and the
+   * recent-users list.
+   *
+   * Admin only — the route's inline gate returns 403 for anyone
+   * else, and the page's `roleGuard(['Admin'])` is the primary
+   * client-side gate.
+   *
+   * Throws `ApiError` on non-2xx — same mapping as the other
+   * reads.
+   */
+  async workspace(): Promise<AdminWorkspaceBundle> {
+    try {
+      const res = await firstValueFrom(
+        this.http.get<AdminWorkspaceBundle>(
+          `${environment.apiBaseUrl}/admin/workspace`,
           { withCredentials: true },
         ),
       );

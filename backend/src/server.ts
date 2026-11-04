@@ -35,14 +35,34 @@ const app: Application = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:4200';
 
-// Accept both `localhost` and `127.0.0.1` so dev users don't have
-// to match the exact host they happen to type into the address bar.
+// The set of browser origins allowed to call the API with credentials.
+//
+// Two devs often run the frontend at the same time (one per IDE), so
+// the dev ports are not a single value. `FRONTEND_ORIGINS` (plural,
+// comma-separated) is the override; `FRONTEND_ORIGIN` stays
+// supported as the single-origin form.
+//
+// Accept both `localhost` and `127.0.0.1` for each port so dev users
+// don't have to match the exact host they type into the address bar.
 // In prod on Vercel the env var still pins a single origin.
-const ALLOWED_ORIGINS = [
-  FRONTEND_ORIGIN,
-  'http://localhost:4200',
-  'http://127.0.0.1:4200',
-];
+const DEV_FRONTEND_PORTS = (process.env.FRONTEND_PORTS || '4200,4300')
+  .split(',')
+  .map((p) => p.trim())
+  .filter(Boolean);
+
+const ALLOWED_ORIGINS = Array.from(
+  new Set([
+    FRONTEND_ORIGIN,
+    ...(process.env.FRONTEND_ORIGINS
+      ? process.env.FRONTEND_ORIGINS.split(',').map((o) => o.trim())
+      : []
+    ).filter(Boolean),
+    ...DEV_FRONTEND_PORTS.flatMap((port) => [
+      `http://localhost:${port}`,
+      `http://127.0.0.1:${port}`,
+    ]),
+  ])
+);
 
 // On Vercel (or any reverse-proxied deploy) trust the first proxy
 // hop so express-rate-limit and req.ip see the real client IP, not
@@ -104,7 +124,7 @@ if (process.env.VERCEL !== '1' && process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {
     console.log(
       `[helpdesk-lite-backend] Listening on http://localhost:${PORT} ` +
-        `(cors origin: ${FRONTEND_ORIGIN}, env: ${process.env.NODE_ENV ?? 'development'})`
+        `(cors origins: ${ALLOWED_ORIGINS.join(', ')}, env: ${process.env.NODE_ENV ?? 'development'})`
     );
   });
 }

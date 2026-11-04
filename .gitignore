@@ -96,3 +96,31 @@ qa/screenshots/*
 !qa/screenshots/local-view/
 qa/screenshots/local-view/*
 !qa/screenshots/local-view/ref-full.png
+
+# ── QA one-off probe scripts ──────────────────────────────────────
+# The Admin Workspace rework produced ~250 throwaway measurement
+# scripts: pixel probes, crop/compare/zoom helpers, geometry
+# solvers. Each measured one thing and printed it to stdout, and
+# the numbers they produced were transcribed into the reference
+# files and the `verify-*.js` gates — where they can be re-derived
+# and asserted against, which is strictly better than a transcript
+# that drifts silently.
+#
+# Only the gates and the reference pipeline are tracked. Everything
+# else in `qa/scripts/` is scratch, so the whole directory is
+# excluded and the keepers are re-included explicitly.
+qa/scripts/*
+!qa/scripts/README.md
+!qa/scripts/base-url.js
+!qa/scripts/base-url.mjs
+!qa/scripts/build-ref-series.js
+!qa/scripts/compare-*.js
+!qa/scripts/ref-*.js
+!qa/scripts/verify-*.js
+!qa/scripts/visual-tickets-check.mjs
+!qa/scripts/wireframe-audit.mjs
+
+# One-off analysis scratch that landed outside `qa/scripts/`.
+qa/*.cjs
+qa/admin-workspace-metrics.json
+qa/qa/

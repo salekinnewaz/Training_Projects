@@ -34,6 +34,14 @@ import {
   getDashboardSummary,
   type DashboardSummary,
 } from '../services/ticketService';
+import {
+  getWorkspaceSummary,
+  getRecentTickets,
+  getUsersOverview,
+  getPriorityDistribution,
+  getTicketTrends,
+  getRecentUsers,
+} from '../services/adminDashboardService';
 
 /**
  * Serialize a Ticket instance (with eager-loaded associations) into
@@ -132,5 +140,60 @@ export const getDashboardHandler = asyncHandler(
     }
     const summary = await getDashboardSummary();
     res.status(200).json(serializeDashboard(summary));
+  },
+);
+
+/**
+ * GET /api/admin/workspace — the Admin Workspace dashboard bundle.
+ *
+ * The WDS-2026 Admin Dashboard renders six independent widgets. They
+ * are fetched as ONE response rather than six round-trips because
+ * they always render together — a partial render (some widgets
+ * present, some absent) would be a worse UX than a single failure
+ * state, and the queries are all indexed primary-key lookups or
+ * small aggregates.
+ *
+ * Response shape:
+ *   {
+ *     summary:      { totalTickets, recentTickets, previousTickets,
+ *                     totalUsers, newUsersThisWeek, counts: {...} },
+ *     recentTickets: [ ...serialized tickets ],
+ *     usersOverview: { total, active, inactive, byRole: {...} },
+ *     priorities:   [ { priority, count }, ... ],
+ *     trends:       [ { date, open, inProgress, resolved, closed }, ... ],
+ *     recentUsers:  [ { id, displayName, email, role, isActive, ... }, ... ]
+ *   }
+ *
+ * Admin only — the same inline gate as `getDashboardHandler`.
+ */
+export const getWorkspaceHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const role = req.user!.role;
+    if (role !== 'Admin') {
+      throw new HttpError(
+        403,
+        'forbidden',
+        'Admin role required to view the dashboard.',
+      );
+    }
+
+    const [summary, recentTickets, usersOverview, priorities, trends, recentUsers] =
+      await Promise.all([
+        getWorkspaceSummary(),
+        getRecentTickets(),
+        getUsersOverview(),
+        getPriorityDistribution(),
+        getTicketTrends(),
+        getRecentUsers(),
+      ]);
+
+    res.status(200).json({
+      summary,
+      recentTickets: recentTickets.map(serializeTicket),
+      usersOverview,
+      priorities,
+      trends,
+      recentUsers,
+    });
   },
 );

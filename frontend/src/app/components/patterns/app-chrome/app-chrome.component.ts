@@ -19,7 +19,7 @@
  * link is off-screen until focused (see `.skip-link` in styles.css).
  */
 
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
 import { HeaderChromeComponent } from '../../molecules/header-chrome/header-chrome.component';
@@ -33,11 +33,23 @@ import { HeaderChromeComponent } from '../../molecules/header-chrome/header-chro
     <a class="skip-link" href="#main-content">Skip to main content</a>
     <header-chrome />
     <main id="main-content" class="page-shell" tabindex="-1">
-      <div class="page-content">
+      <div class="page-content" [class.is-wide]="wide()">
         <ng-content />
         <router-outlet />
       </div>
     </main>
   `,
 })
-export class AppChromeComponent {}
+export class AppChromeComponent {
+  /**
+   * Opt out of the shared 1448px content-column cap.
+   *
+   * The Admin Workspace is a full-bleed layout: a 248px sidebar
+   * rail hard against the viewport's left edge plus a widget grid
+   * that needs the remaining width. The shared cap would squeeze
+   * the grid's columns and shift the rail away from the edge, so
+   * the Admin page sets this flag and the content column opens up
+   * to the viewport's width.
+   */
+  readonly wide = input(false);
+}

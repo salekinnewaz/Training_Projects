@@ -10,6 +10,15 @@
       "url": "http://localhost:4200/"
     },
     {
+      // Second instance — use this when 4200 is already taken by
+      // another IDE. The backend stays shared on :3000.
+      "name": "ng serve (alt port 4300)",
+      "type": "chrome",
+      "request": "launch",
+      "preLaunchTask": "npm: start:alt",
+      "url": "http://localhost:4300/"
+    },
+    {
       "name": "ng test",
       "type": "chrome",
       "request": "launch",

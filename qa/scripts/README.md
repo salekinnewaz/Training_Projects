@@ -16,8 +16,15 @@ Two kinds of script live here:
 There is also a third family, added with the WDS-2026 shared ticket
 table: **`verify-shared-table.js`**, which proves the reference's
 filter bar, ten columns and pagination against the live DOM for the
-**User**, the **Support Agent** and the **Admin** — and that the
-three agree.
+**User** and the **Support Agent** — and that the two agree. (The
+Admin does **not** use the shared table; the Admin Workspace has its
+own six-column Recent Tickets widget, and scenario **5b** proves
+both halves of that.)
+
+And a fourth, added with the WDS-2026 Admin Workspace:
+**`verify-admin-workspace.js`**, which holds the widget grid's
+measured reference geometry and proves the live DOM still matches it
+at the reference's viewport and at six narrower ones.
 
 ---
 
@@ -149,6 +156,19 @@ Requirements: the app running on `localhost:4200` and the backend on
 `localhost:3000` (the login is real — `jess@company.com` /
 `password123`).
 
+> **The frontend port is not fixed.** When two devs (or two IDEs)
+> run the stack at the same time, the second instance moves to
+> another port so both stay live. Every script here reads its target
+> from `BASE_URL` and falls back to `localhost:4200`:
+>
+> ```
+> BASE_URL=http://localhost:4300 node qa/scripts/verify-strip.js
+> ```
+>
+> The backend stays on `:3000` and is shared by both instances — its
+> CORS allowlist covers `4200` and `4300` by default (see
+> `FRONTEND_PORTS` in `backend/src/server.ts`).
+
 ### `compare-text-ink.js`
 
 Prints the reference's and the local render's glyph ink **side by
@@ -165,13 +185,14 @@ node qa/scripts/compare-text-ink.js
 
 The reference PNG shows **one** state — five populated cards at one
 width. This script covers the rest of the contract, the states the
-mockup cannot show (46 checks):
+mockup cannot show (49 checks):
 
 | # | Scenario |
 |---|---|
 | 1 | The full strip at the reference's width — five cards, all 88px tall |
-| 2 | The 1180px breakpoint — three equal columns |
-| 3 | The 760px breakpoint — two equal columns |
+| 2 | The three-column step — three equal columns |
+| 3 | The two-column step — two equal columns |
+| 3b | Five columns still — the cards are not all the same width, and the Total card is the widest |
 | 4 | A narrow phone — the sparkline and the bar stay INSIDE their card |
 | 5 | A zero total — the bars render empty rather than dividing by zero |
 | 6 | A missing previous period — the delta pill is hidden entirely |
@@ -179,6 +200,17 @@ mockup cannot show (46 checks):
 | 8 | No series — the sparkline is omitted but the bar remains |
 | 9 | A long label — it is ellipsised, not wrapped |
 | 10 | The strip is the USER dashboard's only — the Agent's ticket list has NOT adopted it, and a User is redirected away from it |
+
+> **The breakpoints are container queries, not media queries.** The
+> ladder is driven by the strip's OWN width (1115px → three columns,
+> 683px → two), because the strip sits in a column whose width
+> differs per role — the Employee's column is 152px narrower than
+> the viewport, the Admin's is 312px narrower. The same strip width
+> therefore arrives at a different *viewport* on each page, so a
+> media query cannot express it. Scenario 2 runs at a 1000px
+> viewport and scenario 3 at a 700px viewport, because those are
+> the viewports at which the strip reaches those widths on the page
+> the scenario measures.
 
 ```
 node qa/scripts/verify-scenarios.js
@@ -221,10 +253,12 @@ Exits non-zero on any drift. Same requirements as `verify-strip.js`.
 ### `verify-shared-table.js`
 
 The WDS-2026 reference defines **one** ticket-table layout, and it is
-used by all three roles — the User's `/dashboard`, the Support
-Agent's `/tickets` and the Admin's `/admin`. This script proves the
-reference is real on all three, and that the three **agree**
-(67 checks):
+used by the User's `/dashboard` and the Support Agent's `/tickets`.
+The **Admin** does NOT use it — the Admin Workspace replaced the
+Admin's Tickets tab with its own six-column Recent Tickets widget
+(see `verify-admin-workspace.js` below). This script proves the
+shared table is real on the two roles that use it, and that those
+two **agree** (68 checks):
 
 | # | Scenario |
 |---|---|
@@ -232,7 +266,8 @@ reference is real on all three, and that the three **agree**
 | 2 | The reference's ten table columns, in order |
 | 3 | A populated row — category glyph, number, title + muted description, both pills, customer, assignee, relative timestamp, kebab |
 | 4 | The pagination footer — "Showing 1–10 of N tickets", the numbered pager, the "10 / page" picker |
-| 5 | All three roles render the SAME layout — the columns and the filter labels are compared role-to-role |
+| 5 | The User and the Agent render the SAME layout — the columns and the filter labels are compared role-to-role |
+| 5b | The **Admin's Workspace renders its OWN** six-column table (`#`, `Title`, `Status`, `Priority`, `Assignee`, `Updated`), does NOT render the shared table, the shared filter bar or any pagination — and navigating to `/tickets` DOES show the shared table |
 | 6 | The search filter narrows the rows |
 | 7 | Each dropdown filter narrows the rows |
 | 8 | The sort control reorders the rows |
@@ -247,7 +282,8 @@ node qa/scripts/verify-shared-table.js
 ```
 
 Exits non-zero on any drift. Same requirements as `verify-strip.js`:
-the app on `localhost:4200`, the backend on `localhost:3000`, and a
+the app on `localhost:4200` (or `BASE_URL`), the backend on
+`localhost:3000`, and a
 real login for each of the three personas (`jess@company.com`,
 `eli@company.com`, `admin@company.com` — all `password123`).
 
@@ -293,34 +329,111 @@ molecule, verified pixel-for-pixel against the WDS-2026 reference by
 | Support Agent | `/tickets` | team-wide (`GET /api/tickets/stats`) |
 | Admin | `/admin` | team-wide (`GET /api/tickets/stats`) |
 
-Only the **data scope** differs. The geometry, the anatomy and the
-behaviour are identical, and that is what this script proves
-(45 checks):
+Only the **data scope** differs — plus, on the Admin, the *variant*.
+The User and the Support Agent render the "columns" variant; the
+Admin renders the "stacked" variant (the reference's own layout for
+that role), so its cards are 90px tall and carry no progress bar.
+The geometry, the anatomy and the behaviour are otherwise identical,
+and that is what this script proves (57 checks):
 
 - each role's strip is the shared `<stat-strip>` molecule, with
   five cards (Total + four statuses), a tinted icon tile per card,
-  a sparkline and a progress bar per status card, and the
-  "vs last month" caption;
-- every card is **88px tall** — the reference's height — and the
-  cards carry the reference's **unequal** widths (the Total card is
-  the widest);
-- the three roles agree on the card heights and on the card width
-  **ratios** (not the absolute pixels: the User's content column
-  is wider than the Agent's, so the same fractions produce
-  different absolute widths);
-- the data scope really does differ: the Agent and the Admin show
-  identical numbers (both see the whole queue), and the User's
-  total is both different from and smaller than the team-wide one.
+  a sparkline per status card, and the "vs last month" caption;
+- the User's and the Agent's cards are **88px tall** — the
+  reference's height — and the Admin's are **90px**, the
+  reference's height for the stacked variant;
+- the cards carry the reference's **unequal** widths (the Total
+  card is the widest);
+- the User and the Agent agree **exactly** on the card heights,
+  widths and ratios (not the absolute pixels: the User's content
+  column is wider than the Agent's, so the same fractions produce
+  different absolute widths), while the Admin uses its own
+  proportions and a different variant — but all three share the
+  same labels, accents, sparkline count and tile anatomy;
+- the data scope really does differ, and each role's status counts
+  sum to its own total. The Agent's total is **295** (all time) and
+  the Admin's is **156** (the trailing 30 days) — they are NOT the
+  same numbers, which an earlier version of this script wrongly
+  assumed. The Admin's total is a subset of the Agent's, and the
+  User's total is both different from and smaller than the
+  team-wide one.
 
 ```
 node qa/scripts/verify-stat-strip-roles.js
 ```
+
+> The strip is found via `[data-testid="stat-strip"],
+> [data-testid="admin-stat-strip"]` — the Admin wraps the molecule
+> in a differently-named wrapper, so a single selector times out on
+> `/admin`.
 
 > The Agent page used to carry its own band of five `<stat-card>`
 > elements — a different molecule, 169px tall with equal-width
 > cards and outline glyphs, which did **not** match the reference.
 > It now renders the shared `<stat-strip>` like the other two
 > roles, and the old `<stat-card>` band is gone from the page.
+
+---
+
+## The Admin Workspace
+
+### `verify-admin-workspace.js`
+
+The WDS-2026 Admin Workspace is the Admin's own dashboard — a
+three-row widget grid (Priority Distribution / Users Overview /
+Ticket Trends / Recent Tickets / Recent Users) that replaced the old
+Tickets-tab layout. This gate holds its **measured reference
+geometry** and proves the live DOM still matches it (170 checks):
+
+```js
+const REF = {
+  strip: {
+    cardTop: 222, cardHeight: 90,
+    widths: [261, 227, 232, 229, 230],
+    widthTolerance: 2.5,
+    textLeft: { total: 83, status: 79 },
+    tileLeft: 17, tileSize: 52,
+    labels: ['Total Tickets','Open','In Progress','Resolved','Closed'],
+  },
+  row2: { widths: [818, 396] },
+  row3: { widths: [497, 327, 380] },
+};
+```
+
+It asserts:
+
+- at **1536px** — the reference's own viewport — the widget grid
+  lands on the reference's card widths (row 2: 818 / 396, row 3:
+  497 / 327 / 380), the Recent Tickets table is 816px wide with the
+  column tracks `[107,228,108,100,160,113]`, and the table
+  **scrolls inside** its card (`overflow-x: auto`) rather than
+  clipping;
+- at **1536 / 1440 / 1366 / 1280 / 1200 / 1100** — no card lets any
+  of its content escape its own border box, and the document does
+  not overflow sideways;
+- the stat strip's five cards carry the reference's labels, and no
+  label is clipped.
+
+```
+node qa/scripts/verify-admin-workspace.js
+```
+
+> The card **widths** are the one measurement the reference does not
+> pin to a single pixel: its borders are hand-drawn and anti-aliased,
+> so they are only measurable to ±1px. Everything else is asserted
+> exactly.
+
+> Row 3's grid is
+> `minmax(0, 497fr) minmax(0, 9px) minmax(310px, 327fr) minmax(0, 11px) minmax(240px, 380fr)`
+> — and the **floor must sit below its own `fr` share**. A
+> `minmax(floor, Xfr)` floor *above* the Xfr share steals the
+> difference from its neighbours, and the row lands on 495 / 330 /
+> 379 instead of the reference's 497 / 327 / 380. The 310px floor is
+> also load-bearing: the Priority card's legend is absolutely
+> positioned at `left: 151px` and is 138px wide, and an absolutely
+> positioned element resolves `left`/`right` against the card's
+> **padding box** — so the legend's right edge lands at card+310,
+> not card+289, and the card must be at least that wide.
 
 ---
 
@@ -368,7 +481,7 @@ To run it against the local stack, start both servers and point
 
 ```
 cd backend && npm start          # :3000
-cd frontend && npm start         # :4200
+cd frontend && npm start         # :4200 (or --port 4300 for a second instance)
 cd qa && BASE_URL=http://localhost:4200 npx playwright test
 ```
 
@@ -378,10 +491,11 @@ default; override with `BASE_URL` if needed:
 ```
 node qa/scripts/verify-ref-measurements.js   #  97 checks — the reference's numbers
 node qa/scripts/verify-strip.js              # 149 checks — the stat strip
-node qa/scripts/verify-scenarios.js          #  46 checks — the strip's other states
-node qa/scripts/verify-shared-table.js       #  67 checks — the shared table, all three roles
-node qa/scripts/verify-stat-strip-roles.js   #  45 checks — the strip on all three roles
+node qa/scripts/verify-scenarios.js          #  49 checks — the strip's other states
+node qa/scripts/verify-shared-table.js       #  68 checks — the shared table, the two roles that use it
+node qa/scripts/verify-stat-strip-roles.js   #  57 checks — the strip on all three roles
 node qa/scripts/verify-header-narrow.js      #  62 checks — the chrome at narrow widths
+node qa/scripts/verify-admin-workspace.js    # 170 checks — the Admin Workspace's layout
 ```
 
 > **Run them with a pause between.** The backend's login route has

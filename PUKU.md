@@ -2,16 +2,17 @@
 
 ## Current work in progress
 
-**There is an unfinished rework in the working tree.** Before doing
-anything else, read **`RESUME-TOMORROW.md`** — it is a full handoff
-snapshot: what was built, what is broken, the exact open tasks, the
-measured reference geometry, and the uncommitted-file inventory.
+**There is an uncommitted working tree.** Before doing anything else,
+read **`RESUME-TOMORROW.md`** — it is a full handoff snapshot: what was
+built, what is broken, the exact open tasks, the measured reference
+geometry, and the uncommitted-file inventory.
 
-The rework is the **WDS-2026 Admin Workspace** (Admin Dashboard widget
-grid). It is functionally complete but its **responsive geometry is
-unfinished**: grid tracks are pinned to the 1536px reference
-measurements, so the Users Overview card overflows its card at narrower
-viewports and the stat strip truncates.
+The **WDS-2026 Admin Workspace** (Admin Dashboard widget grid) rework
+is now **functionally and geometrically complete** (Iteration 16 in
+`HANDSOFF.md`): the Users Overview card no longer overflows its card,
+the stat strip no longer truncates, and all three "View all" links are
+live. It is still **uncommitted**, so the working tree below still
+matters.
 
 **Do not discard the uncommitted working tree.** It contains new
 untracked components (`donut-chart/`, `stacked-bar-chart/`,
@@ -30,12 +31,27 @@ not in git and would be lost.
   measurements from the 1536px reference, and its gutters are
   **deliberately unequal** (9px and 11px) — a single `gap` rounds them
   wrong. Preserve this when editing.
+- A `minmax(floor, Xfr)` **floor above the Xfr share steals the
+  difference from its neighbours.** Floors must sit *below* their own
+  share, or the row lands on the wrong widths (497 / 327 / 380 became
+  495 / 330 / 379).
 - The stat strip is **one shared component** on all three roles
   (User / Support Agent / Admin). Only the *data scope* differs. Do not
-  fork it per-role.
+  fork it per-role. Its ladder is a **container query** (1115px /
+  683px), not a media query — the strip sits in a column whose width
+  differs per role, so a viewport breakpoint cannot express it.
 - QA verify gates live in `qa/scripts/verify-*.js` and run against the
-  **live** dev server at `http://localhost:4200`. Login
-  `admin@company.com` / `password123`.
+  **live** dev server. Login `admin@company.com` / `password123`.
+- The **frontend port is not fixed at 4200** — two IDEs run this
+  project at the same time. Each session starts its own `ng serve`
+  on a different port and points its QA at it via `BASE_URL`:
+  ```
+  BASE_URL=http://localhost:4300 node qa/scripts/verify-strip.js
+  ```
+  Gates default to `http://localhost:4200` when `BASE_URL` is unset.
+  The **backend is shared** on `:3000` — its CORS allowlist covers
+  `4200` and `4300` (see `FRONTEND_PORTS` in `backend/src/server.ts`).
+  Start a second instance with `npm run start:alt` in `frontend/`.
 - `.qa-tmp/` and `qa/225` are scratch — gitignored, safe to clear.
 
 ## Performance rule for QA work (important)

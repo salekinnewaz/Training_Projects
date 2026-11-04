@@ -6,10 +6,12 @@
  *   (a) Renders the 28×28 brand mark + 16px wordmark on the left
  *   (b) When the user is null, the right column is empty (no
  *       nav, no profile, no search)
- *   (c) Renders the "Tickets" nav link for every role; the link
- *       target is role-correct (User → /dashboard, Agent/Admin →
- *       /queue)
- *   (d) Renders the "Users" nav link only when role === Admin
+ *   (c) Renders the "Tickets" nav link for the user and support
+ *       agent roles; the link target is role-correct (User →
+ *       /dashboard, Agent → /tickets)
+ *   (d) Renders the "Admin" role pill INSTEAD of nav links for the
+ *       admin role — the WDS-2026 workspace chrome puts the admin's
+ *       Tickets / Users navigation in the page sidebar
  *   (e) Renders the search input only when role is Support Agent
  *       or Admin (never for the user role)
  *   (f) Renders the profile trigger (avatar + name + caret) and
@@ -194,18 +196,22 @@ describe('HeaderChromeComponent', () => {
     expect(links[0].getAttribute('href')).toBe('/dashboard');
   });
 
-  it('renders "Tickets" + "Users" links for admin, with Users targeting /users', () => {
+  it('renders the role pill instead of nav links for admin (WDS-2026)', () => {
+    // The WDS-2026 Admin Workspace chrome draws a filled "Admin"
+    // role pill where the employee and agent chrome draws its nav
+    // links — the two never appear together. The admin's Tickets
+    // and Users navigation lives in the workspace SIDEBAR, not in
+    // the chrome, so the chrome carries no `.nav-link` at all.
     seedUser(makeUser({ role: 'Admin' }));
     fixture = TestBed.createComponent(HeaderChromeComponent);
     fixture.detectChanges();
 
-    const links = fixture.nativeElement.querySelectorAll('.nav-link') as NodeListOf<HTMLAnchorElement>;
-    expect(links.length).toBe(2);
-    const labels = Array.from(links).map((l) => l.textContent?.trim());
-    expect(labels).toContain('Tickets');
-    expect(labels).toContain('Users');
-    const usersLink = Array.from(links).find((l) => l.textContent?.trim() === 'Users') as HTMLAnchorElement;
-    expect(usersLink.getAttribute('href')).toBe('/users');
+    const pill = fixture.nativeElement.querySelector('.role-pill') as HTMLElement;
+    expect(pill).not.toBeNull();
+    expect(pill.textContent?.trim()).toBe('Admin');
+
+    const links = fixture.nativeElement.querySelectorAll('.nav-link');
+    expect(links.length).toBe(0);
   });
 
   it('targets the "Tickets" link to /tickets for support agents (HD-019)', () => {

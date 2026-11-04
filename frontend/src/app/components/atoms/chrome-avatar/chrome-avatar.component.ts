@@ -45,7 +45,8 @@ import {
 })
 export class ChromeAvatarComponent {
   readonly displayName = input<string>('');
-  readonly size = input<20 | 24 | 28 | 32 | 56>(32);
+  /** 40 is the size the Admin Workspace's Recent Users list uses. */
+  readonly size = input<20 | 24 | 28 | 30 | 32 | 40 | 56>(32);
 
   readonly initials = computed(() => computeInitials(this.displayName()));
 }
