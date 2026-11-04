@@ -16,6 +16,13 @@
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-stack: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* The admin dashboard's design is drawn in the geometric Figtree
+     face. The reference's letterforms — a spur-less "G" with a
+     horizontal bar, a circular "o", straight-stem "m" and a
+     single-storey "g" — identify it as Figtree. It is applied only
+     inside the admin workspace, so the employee and agent dashboards
+     keep the Inter face. */
+  --font-admin: 'Figtree', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   /* ── Brand & accent (modern, vibrant) ─────────────────────────── */
   --color-primary: #4F46E5;          /* indigo-600 — modern primary */
@@ -148,6 +155,69 @@
   --stat-spark-in-progress: #B4BEEB;
   --stat-spark-resolved: #02C878;
   --stat-spark-closed: #87A0D0;
+
+  /* ── Colors ─ Admin Workspace (WDS-2026) ──────────────────────────
+     The Admin Workspace is a sidebar + widget-grid layout, so it
+     needs its own small token family rather than borrowing the
+     User/Agent surfaces. Sampled from the reference screenshot. */
+  --admin-sidebar-bg: #FAFBFE;
+  --admin-sidebar-border: #E9EDF5;
+  --admin-nav-text: #334155;
+  --admin-nav-muted-text: #64748B;
+  --admin-nav-hover-bg: #F1F4FB;
+  --admin-nav-active-bg: #F0EFFE;
+  --admin-nav-active-text: #4F3DF5;
+  --admin-badge-bg: #EEF1F8;
+  --admin-badge-text: #64748B;
+  --admin-section-label: #94A3B8;
+  --admin-footer-card-bg: #F4F7FF;
+  --admin-footer-card-border: #E4EAF8;
+  --admin-footer-icon-bg: #FFF3D4;
+  --admin-footer-icon: #E0A800;
+  --admin-hero-subtitle: #4B5563;
+  --admin-chip-icon-bg: #D7E7FD;
+  --admin-chip-icon: #0A6BF9;
+
+  /* The Admin Workspace draws its status and priority pills in a
+     different palette from the User and Agent surfaces. Sampled off
+     the reference PNG's "Recent Tickets" table, one pixel inside each
+     pill:
+       Open       pill bg rgb(225,232,255), text rgb(45,39,250)
+       In Progress pill bg rgb(254,249,232), text rgb(199,103,4)
+       Resolved   pill bg rgb(218,249,232), text rgb(5,153,76)
+       Closed     pill bg rgb(220,225,234), text rgb(118,128,153)
+       Low        pill bg rgb(226,232,240), text rgb(83,102,143)
+       Medium     pill bg rgb(254,243,199), text rgb(204,103,5)
+       High       pill bg rgb(254,226,226), text rgb(190,44,44)
+     These tokens are re-pointed at the admin scope only — the
+     User/Agent pages keep the app-wide palette. */
+  --admin-status-open-bg: #E1E8FF;
+  --admin-status-open-text: #2D27FA;
+  --admin-status-in-progress-bg: #FEF9E8;
+  --admin-status-in-progress-text: #C76704;
+  --admin-status-resolved-bg: #DAF9E8;
+  --admin-status-resolved-text: #05994C;
+  --admin-status-closed-bg: #DCE1EA;
+  --admin-status-closed-text: #768099;
+  --admin-priority-low-bg: #E2E8F0;
+  --admin-priority-low-text: #53668F;
+  --admin-priority-medium-bg: #FEF3C7;
+  --admin-priority-medium-text: #CC6705;
+  --admin-priority-high-bg: #FEE2E2;
+  --admin-priority-high-text: #BE2C2C;
+
+  /* The widget cards share one surface treatment: white, a hair
+     border, a soft shadow, 16px radius. */
+  --admin-card-bg: #FFFFFF;
+  --admin-card-border: #E9EDF5;
+  --admin-card-radius: 16px;
+  --admin-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.03),
+    0 8px 24px rgba(15, 23, 42, 0.04);
+
+  /* The donut charts' track and the trends chart's gridlines. */
+  --donut-track: #E8EDF5;
+  --chart-grid: #EDF1F7;
+  --chart-axis-text: #94A3B8;
 
   /* ── Colors ─ priority pills ───────────────────────────────────── */
   --priority-low-bg: #F1F5F9;
@@ -421,6 +491,18 @@ a:hover {
   width: 100%;
   display: flex;
   flex-direction: column;
+}
+/* Opt-out of the shared content-column cap. The Admin Workspace
+   is full-bleed: a 248px sidebar rail hard against the viewport's
+   left edge plus a widget grid that needs the remaining width. */
+.page-content.is-wide {
+  max-width: none;
+  /* The reference's hero sits flush against the chrome strip
+     (1px below its 64px bottom edge), so the shared 24px top
+     padding is dropped for the wide layout. */
+  padding-top: 1px;
+  padding-left: 32px;
+  padding-right: 0;
 }
 
 .placeholder-page {
@@ -2085,4 +2167,807 @@ a.admin-card-row:focus-visible {
 .detail-page .header .back-link:hover {
   color: var(--color-primary);
   text-decoration: underline;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Admin Workspace (WDS-2026)
+
+   The Admin dashboard is a sidebar + widget-grid layout. The card
+   chrome below is shared by all six widgets (Recent Tickets, Users
+   Overview, Ticket Trends, Priority Distribution, Recent Users), so
+   it lives here rather than being duplicated in each component's
+   inline styles.
+
+   The reference's card geometry, measured off the screenshot:
+     card radius   16px
+     card border   1px #E9EDF5
+     card padding  18px 20px
+     header height 40px (icon + title, with the "View all" affordance
+                  right-aligned)
+     title size    16px / 700
+   ═══════════════════════════════════════════════════════════════════ */
+
+.admin-card,
+.card {
+  background: var(--admin-card-bg);
+  border: 1px solid var(--admin-card-border);
+  border-radius: var(--admin-card-radius);
+  box-shadow: var(--admin-card-shadow);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px;
+  min-width: 0;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  min-height: 24px;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+/* The little rounded-square icon chip that leads every widget
+   title. The reference draws these in the brand indigo. */
+.title-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border-radius: 8px;
+  background: var(--admin-nav-active-bg);
+  color: var(--color-primary);
+}
+
+.view-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: gap var(--duration-fast) var(--ease-out);
+}
+.view-all:hover {
+  gap: 8px;
+}
+
+.period-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--admin-card-border);
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Recent Tickets table ──────────────────────────────────────── */
+.table-wrap {
+  overflow-x: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+
+.tickets-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.tickets-table thead th {
+  padding: 0 10px 10px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+  border-bottom: 1px solid var(--admin-card-border);
+  white-space: nowrap;
+}
+.tickets-table thead th:first-child {
+  padding-left: 0;
+}
+.tickets-table thead th:last-child {
+  padding-right: 0;
+  text-align: right;
+}
+
+/* The reference's rows are 48px tall — a two-line title cell with
+   9px of padding above and below it. */
+.tickets-table tbody td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #F1F4F9;
+  color: var(--color-text-soft);
+  vertical-align: middle;
+}
+.tickets-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ticket-row {
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.ticket-row:hover {
+  background: #FAFBFE;
+}
+.ticket-row:focus-visible {
+  outline: 2px solid var(--color-focus-ring, #4263EB);
+  outline-offset: -2px;
+}
+
+.tickets-table .col-num {
+  width: 92px;
+  padding-left: 0;
+  white-space: nowrap;
+}
+.num-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.file-icon {
+  display: inline-flex;
+  color: var(--color-primary);
+}
+
+.tickets-table .col-title {
+  max-width: 0;
+  width: 100%;
+}
+.title-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+/* The reference's title cell carries a second, lighter line — the
+   ticket's description — in a smaller, softer type. */
+.title-sub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.tickets-table .col-updated {
+  text-align: right;
+  white-space: nowrap;
+  color: var(--color-muted);
+  font-size: 12.5px;
+}
+.updated-text {
+  font-variant-numeric: tabular-nums;
+}
+
+.assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.assignee-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-soft);
+}
+.assignee-name.is-muted {
+  color: var(--color-muted);
+}
+.avatar-unassigned {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: 50%;
+  background: var(--color-surface-muted);
+  color: var(--color-muted);
+}
+
+.empty-cell {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+/* ── Donut widgets (Users Overview + Priority Distribution) ────── */
+.overview-body,
+.priority-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.donut-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.donut-centre {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.donut-value {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+  line-height: 1.1;
+}
+.donut-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.legend-row {
+  display: grid;
+  /* The reference's legend row is four columns: the colour dot, the
+     label, the count, and the percentage.
+
+     The columns are FIXED rather than content-sized, because the
+     reference's own columns are fixed too: the dot at card+171,
+     the label starting at card+188 and running 43px to card+231
+     ("Medium"), the count right-aligned at card+267 and the
+     percentage right-aligned at card+308.
+
+     With `minmax(0, 1fr)` on the label the column instead took
+     whatever was left after the two right-hand columns, which on
+     the Admin dashboard's narrower Priority card squeezed
+     "Medium" down to 31px and ellipsised it to "Medi...". The
+     label now keeps its measured 44px and the row's slack is
+     shared out between the columns, so the count and the
+     percentage stay right-anchored to the card's edge. */
+  grid-template-columns: 8px 44px 13px 24px;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.legend-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.legend-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-soft);
+}
+.legend-value {
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+  /* The count is right-aligned in its fixed column, so a one-digit
+     count lines up with a two-digit one. */
+  text-align: right;
+}
+.legend-pct {
+  text-align: right;
+  color: var(--color-muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-body .divider {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: var(--admin-card-border);
+  margin: 2px 0;
+}
+.legend.roles {
+  grid-column: 1 / -1;
+}
+
+/* ── Ticket Trends chart ───────────────────────────────────────── */
+.chart-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  /* The chart sits at the TOP of the wrap, not centred in it: the
+     SVG keeps its viewBox's aspect ratio (so it never distorts)
+     and any slack in the row collects BELOW the plot, where the
+     legend lives. Centring it would push the baseline down and
+     leave the x-axis labels floating in the middle of the card. */
+  align-items: flex-start;
+  min-height: 0;
+  overflow: hidden;
+}
+.chart-wrap > atom-stacked-bar-chart {
+  display: block;
+  width: 100%;
+  min-height: 0;
+}
+.chart-wrap .chart {
+  width: 100%;
+  /* The SVG's intrinsic aspect ratio comes from its viewBox, so its
+     height follows its width and the chart never letterboxes. */
+  height: auto;
+}
+
+.chart-legend {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--color-text-soft);
+  font-weight: 500;
+}
+.legend-square {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* ── Recent Tickets table (WDS-2026) ─────────────────────────────────
+   The Admin Workspace's Recent Tickets table is the shared
+   `.tickets-table` with the reference's own metrics laid over it.
+   The shared rules are used by other surfaces, so every override
+   here is scoped to the `.card.recent-tickets` wrapper.
+
+   These live in the global sheet rather than the page component's
+   inline styles: they are the heaviest block on the page, and
+   keeping them here holds the component's inline style budget
+   under its 8kB ceiling — the same pattern the rest of the Admin
+   Workspace rules follow.
+
+   Measured off the reference PNG:
+     file icon   304..317   (14px wide)
+     ticket no.  336..373   "HD-53"
+     Title       411..590   "Health check failing on server"
+     Status      639..681   the pill (dot 639..646)
+     Priority    747..785   the pill (dot 747..754)
+     Assignee    854..952   the avatar (854..866) and the name
+     Updated     1015..1054 "16m ago"
+
+   The header is a BANDED row — a #F8F9FC fill from y=392 to
+   y=432 — with the column labels sitting inside it, and the
+   rows are 48px tall with a hairline separator at y=478, 526,
+   574 and 623. */
+.card.recent-tickets { padding: 18px 18px 0; }
+.card.recent-tickets .card-head { margin-bottom: 19px; }
+/* The card is a QUERY CONTAINER so the table can change its layout
+   strategy when the card narrows — the table's own width is what
+   matters here, not the viewport's (the Admin's table is 818px wide
+   at a 1536px viewport but only 560px at a 1280px one, because the
+   workspace's third track shrinks with the viewport). */
+.card.recent-tickets { container-type: inline-size; container-name: recent-tickets; }
+.card.recent-tickets .card-head { margin-bottom: 19px; }
+.card.recent-tickets .table-wrap { margin: 0 -18px; padding: 0; }
+.card.recent-tickets .tickets-table {
+  font-size: 14px;
+  table-layout: fixed;
+  /* The reference's own table is 816px wide (107 + 228 + 108 + 100
+     + 160 + 113). The table KEEPS that width and the card's
+     `.table-wrap` scrolls it when the card is narrower — see the
+     note on the column tracks below. */
+  min-width: 816px;
+}
+.card.recent-tickets .tickets-table thead {
+  background: var(--admin-table-head-bg, #F8F9FC);
+}
+.card.recent-tickets .tickets-table thead th {
+  height: 40px; padding: 0 10px;
+  font-size: 12.5px; font-weight: 500;
+  color: var(--color-muted); border-bottom: 0; vertical-align: middle;
+}
+/* The column widths are the gaps between the measured starts:
+     #         304..336   32
+     icon      (inside the # cell)
+     number    336..411   75
+     Title     411..639  228
+     Status    639..747  108
+     Priority  747..847  100
+     Assignee  847..1007 160
+     Updated   1007..     rest
+
+   Those are the reference's widths at its own 816px table width. They
+   were once hard-coded as fixed pixel widths, which broke as soon as
+   the table got NARROWER: `table-layout: fixed` gives every column
+   its declared width, so the Title column (the only flexible one)
+   was squeezed to zero at a 574px table and the fixed columns alone
+   then overflowed the card by 88px — the table was clipped and the
+   title was unreadable.
+
+   So the columns are FLOORED rather than fixed. Each is a
+   `minmax(<floor>, <share>)`, which means:
+
+     - at the reference's 816px table the shares win and the columns
+       land on 107 / 228 / 108 / 100 / 160 / 113 exactly as the
+       reference draws them; and
+     - as the table narrows, each column slides down to its floor —
+       the width of its own content (the number "HD-53", the status
+       pill, the priority pill, the assignee's avatar plus name, the
+       "16m ago" stamp) — and the Title column, which has the
+       largest floor of all, takes the whole of what is left.
+
+   The floors are the measured CONTENT widths, not guesses: the
+   ticket number needs 71px, the title 202px, the status pill 65px,
+   the priority pill 61px, the assignee 113px and the timestamp 48px.
+   Their sum (560px) is below the narrowest card the Admin Workspace
+   ever shows the table at, so the table never has to clip.
+
+   THE FIX is a MIN-WIDTH on the table rather than a set of flexible
+   columns. With `table-layout: fixed` and `width: 100%`, the table
+   is forced to the wrapper's width and the browser shrinks the
+   columns to fit — and because only the Title column is flexible,
+   IT is the one that gets crushed: it was squeezed to zero at a
+   574px table, after which the five fixed columns alone exceeded
+   the card and the table overflowed it by 88px with the title
+   unreadable.
+
+   Giving the table `min-width: 816px` — the sum of the reference's
+   own column widths — means it KEEPS the reference's geometry at
+   every width, and the card's `.table-wrap` (which is already
+   `overflow-x: auto`) scrolls it sideways when the card is
+   narrower. The table scrolls INSIDE its card; it never clips and
+   never crushes its own title.
+
+   The column tracks live on a <colgroup> so that the widths are
+   declared once, in the order the reference draws them. */
+.card.recent-tickets .tickets-table col.col-num     { width: 107px; }
+.card.recent-tickets .tickets-table col.col-title   { width: 228px; }
+.card.recent-tickets .tickets-table col.col-status  { width: 108px; }
+.card.recent-tickets .tickets-table col.col-priority{ width: 100px; }
+.card.recent-tickets .tickets-table col.col-assignee{ width: 160px; }
+.card.recent-tickets .tickets-table col.col-updated { width: 113px; }
+.card.recent-tickets .tickets-table thead th.col-num { width: auto; text-align: left; padding-left: 0; }
+.card.recent-tickets .tickets-table thead th:last-child { text-align: left; padding-right: 0; }
+.card.recent-tickets .tickets-table tbody td {
+  height: 48px; padding: 0 10px;
+  border-bottom: 1px solid var(--admin-table-row-rule, #F1F4F9);
+  vertical-align: middle;
+}
+/* The reference's last row has NO bottom rule — the card's own
+   edge closes the table. */
+.card.recent-tickets .tickets-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.card.recent-tickets .tickets-table tbody td:first-child { padding-left: 0; }
+.card.recent-tickets .tickets-table tbody td:last-child { padding-right: 0; }
+.card.recent-tickets .tickets-table .col-title { max-width: none; width: auto; }
+.card.recent-tickets .tickets-table .title-sub { display: none; }
+.card.recent-tickets .tickets-table .title-text { font-size: 14px; font-weight: 500; }
+/* The Title and the Assignee's name are the two cells with real
+   TEXT in them, so they are the two that have to give way when the
+   table narrows. Both ellipsise rather than overflow their column,
+   and the assignee's name only starts to give way once the column
+   is down at its floor. */
+.card.recent-tickets .tickets-table td.col-title {
+  overflow: hidden;
+}
+.card.recent-tickets .tickets-table .title-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card.recent-tickets .tickets-table .assignee {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.card.recent-tickets .tickets-table .assignee-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.card.recent-tickets .num-cell { gap: 18px; font-size: 14px; font-weight: 500; }
+/* The reference draws the ticket number in a muted grey, not in
+   the app's primary indigo. */
+.card.recent-tickets .num-cell { color: var(--color-muted); }
+.card.recent-tickets .file-icon { width: 14px; height: 14px; color: var(--color-primary); }
+.card.recent-tickets .updated-cell {
+  color: var(--color-muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* The reference's Recent Tickets pills all lead with a SOLID DOT —
+   statuses and priorities alike. The shared badge atoms draw a
+   triangle / tick / cross / square instead, and they are used by
+   the Employee and Agent surfaces, so the swap is scoped to this
+   page and reaches into the badge atoms' shadow DOM. */
+.card.recent-tickets badge-status .status-dot,
+.card.recent-tickets badge-priority .badge {
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 10px;
+  font-size: 11px;
+  line-height: 22px;
+  letter-spacing: 0;
+}
+.card.recent-tickets badge-status .status-glyph,
+.card.recent-tickets badge-priority .priority-glyph {
+  width: 7px;
+  height: 7px;
+}
+/* Hide the shared glyph artwork and paint a solid dot instead. */
+.card.recent-tickets badge-status .status-glyph path,
+.card.recent-tickets badge-status .status-glyph rect,
+.card.recent-tickets badge-priority .priority-glyph path,
+.card.recent-tickets badge-priority .priority-glyph rect {
+  display: none;
+}
+.card.recent-tickets badge-status .status-glyph,
+.card.recent-tickets badge-priority .priority-glyph {
+  position: relative;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+/* ── Recent Users list ─────────────────────────────────────────────
+   The reference's rows sit on a fixed 46px rhythm: the divider
+   rules fall at y 794, 840, 886 and 932, the name ink runs from
+   720 to 730 and the role ink from 758 to 766, so each row is 46px
+   tall with the name's cap-height starting 6px below the row's top
+   edge (measured by users-rows.mjs).
+
+   The card's own padding is asymmetric: the reference's icon tile
+   starts at x=1142 (the card's border is at 1127, so 14px of
+   padding) while its timestamps end at x=1487 (20px from the
+   card's right border at 1507). The shared card's 20px left
+   padding would push the whole list 6px right of the reference.
+
+   The classes are prefixed `ru-` (recent users) because the
+   app-wide `.user-row` belongs to the HD-014 Users tab, which
+   wants a six-column grid, a 58px min-height and a 14px gap — a
+   different row entirely. Reusing the name would have the two
+   rules fight over the same box. */
+/* The Recent Users card's own box metrics, measured off the PNG:
+     card border   x 1127, y 692
+     icon tile     x 1142..1173, y 708..741   (32px)
+     title ink     x 1184..1281, y 719..730
+     list          y 748..978                 (5 rows of 46px)
+   so the card's padding is 13px left and 15px top, and the head's
+   bottom margin is 8px — the shared card's 20/18/16 would push
+   every one of those landmarks out of place. */
+.card.recent-users {
+  padding: 15px 20px 15px 13px;
+}
+
+/* The reference's icon tile is 32px across (x 1142..1173) and the
+   title's ink starts 10px to its right at x=1184. */
+.card.recent-users .title-icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 10px;
+}
+
+.card.recent-users .card-title {
+  /* The reference's title ink starts at x=1184 — 9px after the
+     icon tile's right edge at 1173. */
+  gap: 9px;
+  /* The reference's title cap-height is 12px (y 719..730), which is
+     a 17px Figtree, not the shared card's 16px. */
+  font-size: 17px;
+  /* The reference's title sits 1px lower on the tile than the
+     centred position. */
+  position: relative;
+  top: 1px;
+}
+
+/* The reference's list starts at y=748 — 8px below the header's
+   32px tile. */
+.card.recent-users .card-head {
+  margin-bottom: 8px;
+  min-height: 32px;
+}
+
+/* The reference's "View all" ink sits at y 720..730, 1px below the
+   centred position. */
+.card.recent-users .view-all {
+  position: relative;
+  top: 1px;
+}
+
+.ru-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The reference's row layout, measured off the PNG (ru-bands.mjs,
+   ru-dot2.mjs):
+     avatar   x 1142..1181  (40px)
+     name     x 1204..      (23px of air after the avatar)
+     role     x 1204..      (flush with the name)
+     dot      x 1405..1412  (8px)
+     time     x 1426..1487  (right-aligned on the card's content edge)
+   The four tracks are sized so each of those lands on its pixel. */
+.ru-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 8px 61px;
+  align-items: center;
+  column-gap: 13px;
+  height: 46px;
+  min-height: 46px;
+  padding: 0;
+  border-bottom: 1px solid #F1F4F9;
+}
+.ru-row:last-child {
+  border-bottom: 0;
+}
+
+/* The reference draws each avatar as a pastel disc with saturated
+   matching initials; the page supplies the pair per row.
+
+   The atom writes its width/height/font-size as INLINE styles, so
+   the size here needs `!important` to win over them. */
+.ru-row .ru-avatar .avatar {
+  background: var(--avatar-bg, var(--color-disabled));
+  color: var(--avatar-fg, #ffffff);
+  font-size: 14px !important;
+  font-weight: 700;
+}
+
+/* The name and the role share one column; the name's ink starts
+   8px into it, which puts it on the reference's x=1204. The 1px
+   top nudge drops the name's cap-height from y=756 to the
+   reference's y=757. */
+.ru-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-left: 8px;
+  margin-top: 1px;
+  gap: 1px;
+}
+.ru-name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ru-role {
+  font-size: 12.5px;
+  line-height: 1.2;
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ru-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22C55E;
+}
+.ru-dot.is-offline {
+  background: var(--color-muted);
+}
+.ru-time {
+  font-size: 12.5px;
+  color: var(--color-muted);
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Workspace skeleton + error ────────────────────────────────── */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.skeleton-hero {
+  height: 190px;
+  border-radius: 18px;
+  background: linear-gradient(100deg, #F1F4FA 30%, #F8FAFD 50%, #F1F4FA 70%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+.skeleton-card {
+  height: 88px;
+  border-radius: 12px;
+  background: linear-gradient(100deg, #F1F4FA 30%, #F8FAFD 50%, #F1F4FA 70%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-card.tall {
+  height: 300px;
+}
+.skeleton-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2.06fr) minmax(0, 1fr);
+  gap: 20px;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.error-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 24px;
+  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--admin-card-border);
+}
+.error-message {
+  margin: 0;
+  color: var(--color-text-soft);
+  font-size: 14px;
 }

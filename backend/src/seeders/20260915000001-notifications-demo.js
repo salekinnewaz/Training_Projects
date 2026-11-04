@@ -27,109 +27,140 @@ module.exports = {
       await queryInterface.sequelize.transaction(async (tx) => {
         await queryInterface.bulkDelete(TABLE, null, { transaction: tx });
 
+        // Resolve the users by EMAIL rather than by hard-coded id.
+        // The demo-data seeder recreates the `users` table from
+        // scratch, so its row ids move every time it runs; the
+        // notifications' foreign keys then point at rows that no
+        // longer exist and the insert fails. Looking the ids up by
+        // email keeps this seeder independent of the other seeder's
+        // insertion order.
+        const [userRows] = await queryInterface.sequelize.query(
+          'SELECT id, email FROM users',
+          { transaction: tx },
+        );
+        const idByEmail = Object.fromEntries(
+          userRows.map((u) => [u.email, u.id]),
+        );
+        const idOf = (email) => {
+          const id = idByEmail[email];
+          if (!id) {
+            throw new Error(
+              `notifications seeder: no user with email ${email}`,
+            );
+          }
+          return id;
+        };
+
+        const AVERY = idOf('admin@company.com');
+        const SAM = idOf('sam@company.com');
+        const MORGAN = idOf('morgan@company.com');
+        const ELI = idOf('eli@company.com');
+        const NOAH = idOf('noah@company.com');
+        const PRIYA = idOf('priya@company.com');
+
         await queryInterface.bulkInsert(
           TABLE,
           [
-            // ── Eli (#4): three unread (red dot), two read ──────────
+            // ── Eli: three unread (red dot), two read ───────────────
             {
-              user_id: 4,
+              user_id: ELI,
               type: 'ticket_assigned',
               title: 'You were assigned HD-101',
               body: 'Sam Chen assigned "Printer on floor 3 jams" to you.',
               ticket_id: null,
-              actor_id: 2,
+              actor_id: SAM,
               read_at: null,
               created_at: t(15),
               updated_at: t(15),
             },
             {
-              user_id: 4,
+              user_id: ELI,
               type: 'comment_added',
               title: 'New comment on HD-98',
               body: 'Priya Singh replied on "VPN drops every hour".',
               ticket_id: null,
-              actor_id: 7,
+              actor_id: PRIYA,
               read_at: null,
               created_at: t(90),
               updated_at: t(90),
             },
             {
-              user_id: 4,
+              user_id: ELI,
               type: 'ticket_priority_changed',
               title: 'HD-96 escalated to High',
               body: 'Avery Patel raised the priority.',
               ticket_id: null,
-              actor_id: 1,
+              actor_id: AVERY,
               read_at: null,
               created_at: t(6 * 60),
               updated_at: t(6 * 60),
             },
             {
-              user_id: 4,
+              user_id: ELI,
               type: 'ticket_status_changed',
               title: 'HD-90 moved to Resolved',
               body: 'Sam Chen resolved "Laptop battery swelling".',
               ticket_id: null,
-              actor_id: 2,
+              actor_id: SAM,
               read_at: t(24 * 60),
               created_at: t(24 * 60),
               updated_at: t(24 * 60),
             },
             {
-              user_id: 4,
+              user_id: ELI,
               type: 'mention',
               title: 'You were mentioned',
               body: 'Morgan Lee mentioned you on "Budget forecast thread".',
               ticket_id: null,
-              actor_id: 3,
+              actor_id: MORGAN,
               read_at: t(30 * 60),
               created_at: t(30 * 60),
               updated_at: t(30 * 60),
             },
 
-            // ── Sam (#2): two unread ────────────────────────────────
+            // ── Sam: two unread ──────────────────────────────────────
             {
-              user_id: 2,
+              user_id: SAM,
               type: 'ticket_assigned',
               title: 'You were assigned HD-77',
               body: 'Avery Patel assigned "Email signature missing" to you.',
               ticket_id: null,
-              actor_id: 1,
+              actor_id: AVERY,
               read_at: null,
               created_at: t(30),
               updated_at: t(30),
             },
             {
-              user_id: 2,
+              user_id: SAM,
               type: 'comment_added',
               title: 'New comment on HD-72',
               body: 'Noor Hassan replied on "SSO redirect loop".',
               ticket_id: null,
-              actor_id: 6,
+              actor_id: NOAH,
               read_at: null,
               created_at: t(3 * 60),
               updated_at: t(3 * 60),
             },
             {
-              user_id: 2,
+              user_id: SAM,
               type: 'ticket_status_changed',
               title: 'HD-70 moved to In Progress',
               body: 'You started work on "Shared drive permissions".',
               ticket_id: null,
-              actor_id: 2,
+              actor_id: SAM,
               read_at: t(48 * 60),
               created_at: t(48 * 60),
               updated_at: t(48 * 60),
             },
 
-            // ── Avery / Admin (#1): one unread ──────────────────────
+            // ── Avery / Admin: one unread ────────────────────────────
             {
-              user_id: 1,
+              user_id: AVERY,
               type: 'ticket_priority_changed',
               title: 'HD-96 escalated to High',
               body: 'Eli Tanaka raised the priority.',
               ticket_id: null,
-              actor_id: 4,
+              actor_id: ELI,
               read_at: null,
               created_at: t(6 * 60),
               updated_at: t(6 * 60),

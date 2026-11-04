@@ -21,7 +21,7 @@
 
 import { Router } from 'express';
 
-import { getDashboardHandler } from '../controllers/adminController';
+import { getDashboardHandler, getWorkspaceHandler } from '../controllers/adminController';
 import { authMiddleware } from '../middleware/auth';
 
 const adminRouter = Router();
@@ -33,5 +33,10 @@ const adminRouter = Router();
 // technically moot, but the placement is the convention every
 // reader expects.
 adminRouter.get('/dashboard', authMiddleware, getDashboardHandler);
+
+// WDS-2026 — Admin Workspace dashboard bundle. One round-trip
+// carrying all six widgets' data (summary, recent tickets, users
+// overview, priority distribution, ticket trends, recent users).
+adminRouter.get('/workspace', authMiddleware, getWorkspaceHandler);
 
 export default adminRouter;

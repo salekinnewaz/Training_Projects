@@ -6,6 +6,12 @@ This project was generated with [Angular CLI](https://github.com/angular/angular
 
 Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
 
+If `4200` is already taken (e.g. by another IDE running the same project), start a second instance on `4300` instead — the backend is shared on `:3000` and allows both origins:
+
+```
+npm run start:alt     # → http://localhost:4300/
+```
+
 ## Code scaffolding
 
 Run `ng generate component component-name` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module`.

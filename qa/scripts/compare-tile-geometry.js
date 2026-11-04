@@ -11,6 +11,7 @@
 const { chromium } = require('playwright');
 const path = require('path');
 const M = require('./ref-measurements');
+const { BASE_URL: BASE } = require('./base-url');
 
 const OUT_DIR = path.join(__dirname, '..', 'screenshots', 'local-view');
 
@@ -40,7 +41,7 @@ const OUT_DIR = path.join(__dirname, '..', 'screenshots', 'local-view');
     }),
   );
 
-  await page.goto('http://localhost:4200', { waitUntil: 'networkidle' });
+  await page.goto(BASE, { waitUntil: 'networkidle' });
   await page.locator('input[type="email"]').first().fill('jess@company.com');
   await page.locator('input[type="password"]').first().fill('password123');
   await page.locator('button[type="submit"]').first().click();

@@ -30,6 +30,7 @@ const path = require('path');
 const fs = require('fs');
 const { PNG } = require('pngjs');
 const M = require('./ref-measurements');
+const { BASE_URL: BASE } = require('./base-url');
 
 const OUT_DIR = path.join(__dirname, '..', 'screenshots', 'local-view');
 
@@ -145,7 +146,7 @@ function inkBox(png, band, scale, xLo, xHi, yLo, yHi) {
     }),
   );
 
-  await page.goto('http://localhost:4200', { waitUntil: 'networkidle' });
+  await page.goto(BASE, { waitUntil: 'networkidle' });
   await page.locator('input[type="email"]').first().fill('jess@company.com');
   await page.locator('input[type="password"]').first().fill('password123');
   await page.locator('button[type="submit"]').first().click();

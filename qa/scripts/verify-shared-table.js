@@ -1,12 +1,25 @@
 /**
  * The SHARED TICKET TABLE — verified against the live DOM for
- * all three roles.
+ * the two roles that render it.
  *
  * The WDS-2026 reference layout is a filter bar, a ten-column
  * ticket table and a paginated footer. This script proves that
- * layout is real on the User's dashboard, the Support Agent's
- * ticket list AND the Admin's dashboard — and that the three
- * agree, column for column.
+ * layout is real on the User's dashboard and on the Support
+ * Agent's ticket list — and that the two agree, column for column.
+ *
+ * THE ADMIN IS NOT ONE OF THEM ANY MORE. The WDS-2026 Admin
+ * Workspace replaced the Admin's two-tab Tickets / Users page with
+ * a six-widget dashboard, and its "Recent Tickets" card is a
+ * SIX-COLUMN summary table (number, title, status, priority,
+ * assignee, updated) with no filter bar and no pagination — it
+ * shows the ten most recently updated tickets and links out to the
+ * full queue at /tickets, where the shared table still lives.
+ *
+ * So scenario 5 asserts what is actually true: the Admin's
+ * dashboard renders the Workspace's OWN table, the shared table is
+ * still reachable at /tickets, and that shared table is the same
+ * one the Agent sees. The Admin Workspace's own geometry has its
+ * own gate: qa/scripts/verify-admin-workspace.js.
  *
  * Scenarios:
  *
@@ -19,8 +32,10 @@
  *      the assignee, the relative timestamp, the kebab.
  *   4. The footer — "Showing 1–10 of N tickets", the numbered
  *      pagination, the "10 / page" picker.
- *   5. All three roles render the SAME layout — the columns, the
- *      filter controls and the footer copy are identical.
+ *   5. The two roles that render the shared table agree on it —
+ *      the columns, the filter controls and the footer copy — and
+ *      the Admin's Workspace renders its own six-column table
+ *      while the shared table stays reachable at /tickets.
  *   6. The search filter narrows the rows.
  *   7. Each dropdown filter narrows the rows.
  *   8. The sort control reorders the rows.
@@ -228,12 +243,11 @@ async function filterLabels(page) {
     await context.close();
   }
 
-  console.log('\n=== 5. All three roles render the SAME layout ===');
+  console.log('\n=== 5. The roles that render the shared table agree on it ===');
   {
     const roles = [
       ['User', 'jess@company.com', '/dashboard'],
       ['Support Agent', 'eli@company.com', '/tickets'],
-      ['Admin', 'admin@company.com', '/admin'],
     ];
 
     const seen = [];
@@ -251,17 +265,43 @@ async function filterLabels(page) {
       await context.close();
     }
 
-    const [a, b, c] = seen;
+    const [a, b] = seen;
     check('the User and the Agent agree on the columns', JSON.stringify(a.headers),
       JSON.stringify(b.headers));
-    check('the Agent and the Admin agree on the columns', JSON.stringify(b.headers),
-      JSON.stringify(c.headers));
-    check('the User and the Admin agree on the columns', JSON.stringify(a.headers),
-      JSON.stringify(c.headers));
-    check('all three agree on the filter labels', JSON.stringify(a.labels),
-      JSON.stringify(b.labels));
-    check('the Agent and the Admin agree on the filter labels',
-      JSON.stringify(b.labels), JSON.stringify(c.labels));
+    check('the User and the Agent agree on the filter labels',
+      JSON.stringify(a.labels), JSON.stringify(b.labels));
+  }
+
+  console.log('\n=== 5b. The Admin\'s Workspace renders its OWN table ===');
+  {
+    const { context, page } = await signIn(browser, 'admin@company.com', '/admin');
+
+    // The Workspace's Recent Tickets card: six columns, no filter
+    // bar, no pagination.
+    const workspaceHeaders = await page.$$eval(
+      '[data-testid="admin-recent-tickets"] thead th',
+      (ths) => ths.map((th) => (th.textContent || '').trim()),
+    );
+    check('the Workspace renders a six-column table',
+      JSON.stringify(workspaceHeaders),
+      JSON.stringify(['#', 'Title', 'Status', 'Priority', 'Assignee', 'Updated']));
+    check('the Workspace does NOT render the shared table',
+      (await page.locator('[data-testid="ticket-table"]').count()), 0);
+    check('the Workspace does NOT render the shared filter bar',
+      (await page.locator('[data-testid="ticket-filter-bar"]').count()), 0);
+    check('the Workspace has no pagination',
+      (await page.locator('[data-testid="ticket-pagination"]').count()), 0);
+
+    // The shared table is still reachable for the Admin, on the
+    // full queue page.
+    await page.goto(`${BASE}/tickets`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    check('the shared table is still reachable at /tickets',
+      (await page.locator('[data-testid="ticket-table"]').count()), 1);
+    check('the shared filter bar is still reachable at /tickets',
+      (await page.locator('[data-testid="ticket-filter-bar"]').count()), 1);
+
+    await context.close();
   }
 
   console.log('\n=== 6. The search filter narrows the rows ===');

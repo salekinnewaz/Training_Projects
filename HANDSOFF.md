@@ -780,3 +780,249 @@ profile trigger's display name and the duplicate search form below
 survives. The ⌘K shortcut falls back to the page-level filter bar's
 search field when the chrome's own input is hidden.
 
+
+---
+
+## Iteration 15 — 2026-11-04 — Split the dev frontend across two IDEs
+
+Two IDE sessions now run this project at the same time. The frontend
+port was hardcoded to 4200 everywhere, so the second instance could
+not start. This iteration makes the port a per-session choice.
+
+**What changed:**
+
+- **`backend/src/server.ts` — the CORS allowlist is now
+  port-driven.** It was a hardcoded triple (`FRONTEND_ORIGIN`,
+  `localhost:4200`, `127.0.0.1:4200`), which would have blocked
+  the second instance's credentialed login. It now reads
+  `FRONTEND_PORTS` (comma-separated, default `4200,4300`) plus an
+  optional `FRONTEND_ORIGINS` list, and expands each port to both
+  `localhost` and `127.0.0.1`. `FRONTEND_ORIGIN` still works as the
+  single-origin form. The startup log now prints the resolved list
+  instead of one origin.
+
+- **The QA gates read `BASE_URL`.** Six gates
+  (`verify-ref-measurements`, `verify-strip`, `verify-scenarios`,
+  `verify-shared-table`, `verify-stat-strip-roles`,
+  `verify-header-narrow`) plus the three `compare-*.js` scripts
+  hardcoded `http://localhost:4200` **inline in `page.goto()` calls**,
+  so `BASE_URL` did not reach them. They now resolve the target
+  through `qa/scripts/base-url.js` (CJS) / `base-url.mjs` (ESM).
+  The ~70 probe scripts were converted the same way. **The default
+  is still 4200** — an unset `BASE_URL` behaves exactly as before,
+  so the other IDE is unaffected.
+
+- **`frontend/package.json` gained `start:alt`** (`ng serve --port
+  4300`) and `frontend/.vscode/launch.json` a matching debug
+  configuration.
+
+**Verification** — both instances live simultaneously, and the
+gates produce identical results on either:
+
+| Check | :4200 | :4300 |
+|---|---|---|
+| `verify-ref-measurements.js` | 97/97 | 97/97 |
+| `verify-strip.js` | 149/149 | 149/149 |
+| `verify-header-narrow.js` | 62/62 | 62/62 |
+| `verify-scenarios.js` | 44/46 | 44/46 |
+| `verify-shared-table.js` | 62/67 | 62/67 |
+| `verify-stat-strip-roles.js` | timeout | timeout |
+| CORS preflight | allow-origin set | allow-origin set |
+| Login → admin, httpOnly cookie | ok | ok |
+| Document horizontal overflow @1536 | 0px | 0px |
+
+The non-green rows are **pre-existing and identical on both ports**
+— they are the stale gates called out as task #6 in
+`RESUME-TOMORROW.md` (`verify-scenarios` 2 column-width checks,
+`verify-shared-table` 5 checks, `verify-stat-strip-roles` timing out
+because the Admin's strip is now the "stacked" variant). The frontend
+unit suite is **607/608** — the one failure
+(`StatStripComponent declares the responsive breakpoints…`) reproduces
+with the stat-strip reverted to `HEAD`, so it belongs to the
+unfinished Admin Workspace rework, not to this change.
+
+Backend unit tests 153/153. Both `tsc --noEmit` runs clean.
+
+**Note for the next session.** The backend is **shared** — do not
+start a second one on `:3000`. Start only a frontend, on a free
+port, and point your QA at it:
+
+```
+cd frontend && npm run start:alt                # or: ng serve --port 4300
+BASE_URL=http://localhost:4300 node qa/scripts/verify-strip.js
+```
+
+
+---
+
+## Iteration 16 — 2026-11-04 — Finish the WDS-2026 Admin Workspace: responsive geometry, dead "View all" links, and a 1px label clip
+
+The Admin Workspace rework that `RESUME-TOMORROW.md` flagged as
+"functionally complete but geometrically unfinished" is now
+finished and fully green. Three defects were fixed and the QA gates
+were brought back in line with the code.
+
+**What changed:**
+
+- **`frontend/.../admin-dashboard-page.component.ts` — row 3's grid
+  tracks.** The Users Overview card overflowed its own card by 18px
+  at 1280/1366/1440px. Root cause: the Priority card's legend is
+  absolutely positioned at `left: 151px`, and an absolutely
+  positioned element resolves `left`/`right` against the card's
+  PADDING box — so the legend's right edge lands at card+310, not
+  card+289, and the card must be at least that wide. The middle
+  track's floor was therefore raised from 292px to 310px.
+
+  That alone broke the reference geometry at 1536px: the row landed
+  on 495 / 330 / 379 instead of the reference's 497 / 327 / 380,
+  because a `minmax(floor, Xfr)` floor **above** the Xfr share
+  steals the difference from its neighbours. The floor now sits
+  *below* the card's own 327fr share, so the row lands exactly on
+  the reference:
+
+  ```css
+  grid-template-columns:
+    minmax(0, 497fr) minmax(0, 9px)
+    minmax(310px, 327fr) minmax(0, 11px)
+    minmax(240px, 380fr);
+  ```
+
+  The deliberately unequal 9px / 11px gutters are preserved.
+
+- **`frontend/.../stat-strip.component.ts` — a 1px clip of "In
+  Progress".** The "columns" variant's status-card label was
+  bound 2px too tightly (`--label-right-inset: 83px`). At a 1440px
+  viewport the In Progress card is 238.55px wide, its label's box
+  is 69.5px and its advance is 71px — a one-pixel clip that
+  ellipsised "In Progress" to "In Progres…". The inset is now
+  85px, which sits inside the reference's 24px of clearance so
+  nothing else moves. The label's four-pixel allowance covered the
+  trailing letter-space exactly, but the box was then sized to the
+  last whole pixel, and a card whose width lands on a half-pixel
+  (the strip's fractional tracks do that routinely) clipped the
+  final letter by one.
+
+- **`frontend/.../admin-dashboard-page.component.ts` — all three
+  "View all" links were dead.** `RouterLink` was never imported
+  into the standalone component's `imports` array, so Angular
+  rendered `<a routerlink="/tickets" class="view-all">` with a
+  **literal attribute and no `href`** — the links were inert and
+  were not exposed with the link role at all. This was a real
+  product bug, not a test artefact: the three links point at the
+  full queue (`/tickets`) and the Users page (`/users`).
+
+- **Stale QA gates and specs** (the ones `RESUME-TOMORROW.md`
+  listed as task #6):
+  - `verify-stat-strip-roles.js` — now finds the strip via
+    `[data-testid="stat-strip"], [data-testid="admin-stat-strip"]`
+    (the Admin wraps the molecule), and its cross-role assertions
+    were rewritten to match reality: the Admin legitimately uses
+    the **stacked** variant at a 90px card height with no progress
+    bar, and the Admin's and the Agent's **data scopes genuinely
+    differ** (295 all-time vs 156 trailing-30-days) rather than
+    being the same numbers.
+  - `verify-shared-table.js` — scenario 5 now compares only User vs
+    Agent; a new **5b** asserts the Workspace renders its OWN
+    six-column table and does **not** render the shared table, the
+    shared filter bar or any pagination, and that navigating to
+    `/tickets` does show the shared table.
+  - `verify-scenarios.js` — the ladder scenarios moved to 1000px
+    (three columns) and 700px (two columns), and a new **3b**
+    asserts five columns at 1180px. The ladder is a **container
+    query** driven by the strip's own width, so its viewport
+    breakpoints differ per role.
+  - `qa/tests/feature.spec.ts` — the stale
+    `Feature: Admin Dashboard (WDS-2026 shared ticket table)` block
+    was replaced by a `Feature: Admin Workspace` block that
+    asserts the six widgets, the shared strip in its stacked
+    variant, no clipped label, the Workspace's own table, the row
+    anatomy, the "View all" link, no horizontal overflow at 1440px
+    and no card letting its content escape.
+  - `qa/tests/admin-users-tab.spec.ts` — the user ids are no
+    longer hardcoded. The seeded admin is user **105** in the
+    current database and was user 1 in an older one, so a
+    hardcoded id silently tested the wrong person. Every test now
+    resolves the caller's own id from `/api/auth/me` and picks the
+    other user from the live `/api/users` list (which is also the
+    only way to read a role — `GET /api/users/:id` is a **404**,
+    there is no such route).
+  - `frontend/.../stat-strip.component.spec.ts` — the breakpoints
+    spec asserted the old viewport-based thresholds (1180px /
+    760px). The ladder is now a **container query** at 1115px /
+    683px, derived from the card floors (252 + 204×4 = 1068px of
+    card plus four 12px gaps = 1116px; then 252 + 204×2 + 2 gaps =
+    684px). A viewport breakpoint cannot express this, because the
+    Employee's strip sits in a column 152px narrower than the
+    viewport while the Admin's sits 312px narrower — so the same
+    strip width arrives at a different viewport on each page. The
+    assertion also had to change shape: the browser normalises
+    `minmax(0, 1fr)` to `minmax(0px, 1fr)` when it serialises a
+    rule, but **not** inside a `var()` fallback, which is left
+    verbatim — and both column counts here are inside `var()`
+    fallbacks.
+
+- **NEW: `qa/scripts/verify-admin-workspace.js`** — the gate for
+  the Workspace itself, holding the measured reference geometry:
+
+  ```js
+  const REF = {
+    strip: {
+      cardTop: 222, cardHeight: 90,
+      widths: [261, 227, 232, 229, 230],
+      widthTolerance: 2.5,
+      textLeft: { total: 83, status: 79 },
+      tileLeft: 17, tileSize: 52,
+      labels: ['Total Tickets','Open','In Progress','Resolved','Closed'],
+    },
+    row2: { widths: [818, 396] },
+    row3: { widths: [497, 327, 380] },
+  };
+  ```
+
+  It probes every card for content escaping its border box (skipping
+  anything inside a scrollable ancestor), checks the strip's label
+  boxes against their ink, and at 1536px asserts the row-2 / row-3
+  card widths, the table width (816px), the column tracks
+  (`[107,228,108,100,160,113]`) and `overflow-x: auto`. The width
+  TOLERANCE is the one measurement the reference does not pin to a
+  single pixel: its borders are hand-drawn and anti-aliased, so the
+  card widths are only measurable to ±1px.
+
+**Verification** — all green, against the live stack on
+`http://localhost:4200`:
+
+| Gate | Result |
+|---|---|
+| `verify-admin-workspace.js` (new) | **170/170** |
+| `verify-strip.js` | 149/149 |
+| `verify-ref-measurements.js` | 97/97 |
+| `verify-scenarios.js` | 49/49 |
+| `verify-shared-table.js` | 68/68 |
+| `verify-stat-strip-roles.js` | 57/57 |
+| `verify-header-narrow.js` | 62/62 |
+| **Total** | **652/652** |
+
+| Suite | Result |
+|---|---|
+| Angular unit (`npm test --workspace frontend`) | **608/608** |
+| Backend jest (unit + integration) | **161/161** |
+| Playwright E2E | **127 passed, 1 skipped, 0 failed** |
+| `tsc --noEmit` (frontend + backend) | clean |
+| `npm run build` (backend + frontend) | clean |
+
+The one Playwright skip is pre-existing and deliberate
+(`Eli has no Closed tickets in the seeded data`).
+
+**Note on the E2E run.** The first full run after the rebuild
+reported 3 failures, all of which passed in isolation and then
+passed on every subsequent run. The cause was the **cold dev
+server**: the run took 11.5 minutes against a first-compile, and
+the three affected tests all wait on live API responses; the warm
+run takes 2.0 minutes and is clean. Two consecutive warm runs both
+reported 127 passed / 0 failed, so the suite is stable — but if a
+run reports exactly these three failures after a rebuild, re-run
+before investigating.
+
+**No PNGs were read into the session.** Every measurement above
+came from a probe script that wrote JSON or text to
+`qa/.qa-tmp/`, per the performance rule in `PUKU.md`.

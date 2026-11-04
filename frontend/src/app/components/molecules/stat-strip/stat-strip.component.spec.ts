@@ -718,19 +718,33 @@ describe('StatStripComponent', () => {
   });
 
   it('declares the responsive breakpoints the reference layout needs', () => {
-    // Three columns at 1180px, two at 760px. Asserting the rules
+    // Three columns at 1115px, two at 683px. Asserting the rules
     // exist keeps the breakpoints from being dropped silently --
     // a spec cannot resize the Karma browser, so the rules are the
     // only observable surface.
     //
+    // The thresholds are the STRIP's own width, not the viewport's:
+    // the ladder is a CONTAINER query, driven by the five card
+    // floors (252 + 204×4 = 1068px of card plus four 12px gaps =
+    // 1116px) and then by the three floors (252 + 204×2 = 660px
+    // plus two 12px gaps = 684px). A viewport-based breakpoint
+    // cannot express this, because the strip sits in a column
+    // whose width differs per role -- the Employee's column is
+    // 152px narrower than the viewport, the Admin's is 312px
+    // narrower, so the SAME strip width arrives at a different
+    // viewport on each page.
+    //
     // NOTE: the browser normalises `minmax(0, 1fr)` to
-    // `minmax(0px, 1fr)` when it serialises a rule, so the
-    // assertion has to expect the normalised form.
+    // `minmax(0px, 1fr)` when it serialises a rule -- but NOT
+    // inside a `var()` fallback, which is left verbatim. The two
+    // column counts here are inside `var()` fallbacks, so the
+    // assertion has to expect the UN-normalised form.
     const rules: string[] = [];
     const collect = (list: CSSRuleList): void => {
       for (const rule of Array.from(list)) {
         rules.push(rule.cssText);
-        // A media rule's own declarations live in a nested list.
+        // A media or container rule's own declarations live in a
+        // nested list.
         const nested = (rule as CSSMediaRule).cssRules;
         if (nested && nested.length) collect(nested);
       }
@@ -745,10 +759,13 @@ describe('StatStripComponent', () => {
     }
     const all = rules.join('\n');
 
-    expect(all).toContain('max-width: 1180px');
-    expect(all).toContain('repeat(3, minmax(0px, 1fr))');
-    expect(all).toContain('max-width: 760px');
-    expect(all).toContain('repeat(2, minmax(0px, 1fr))');
+    // The ladder must be a CONTAINER query, not a media query --
+    // a media query would key off the viewport and break the
+    // per-role column widths.
+    expect(all).toContain('container stat-strip (max-width: 1115px)');
+    expect(all).toContain('container stat-strip (max-width: 683px)');
+    expect(all).toContain('repeat(3, minmax(0, 1fr))');
+    expect(all).toContain('repeat(2, minmax(0, 1fr))');
   });
 
   it('renders the caption when one is supplied', () => {

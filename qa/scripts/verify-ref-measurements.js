@@ -11,6 +11,7 @@
  */
 
 const M = require('./ref-measurements');
+const { BASE_URL: BASE } = require('./base-url');
 
 let failures = 0;
 let checks = 0;
@@ -342,7 +343,7 @@ async function solveFontSize() {
   // Inter's per-digit ink widths at each candidate size.
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
-  await page.goto('http://localhost:4200', { waitUntil: 'domcontentloaded' });
+  await page.goto(BASE, { waitUntil: 'domcontentloaded' });
   const table = await page.evaluate(() => {
     const family = getComputedStyle(document.body).fontFamily;
     const ctx = document.createElement('canvas').getContext('2d');

@@ -87,7 +87,7 @@ import { NotificationsPanelComponent } from '../notifications-panel/notification
     NotificationsPanelComponent,
   ],
   template: `
-    <header class="chrome" role="banner">
+    <header class="chrome" role="banner" [class.is-admin]="isAdmin()">
       <button
         type="button"
         class="brand"
@@ -95,31 +95,40 @@ import { NotificationsPanelComponent } from '../notifications-panel/notification
         aria-label="HelpDesk Lite — go to your dashboard"
       >
         <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="18" height="18" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <!-- The admin design draws a fuller headset — an arc, two
+               earcups and a boom bar. It is a separate glyph so the
+               employee and agent chrome keeps its own mark. -->
+          <svg class="mark-shared" viewBox="0 0 24 24" width="18" height="18" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 14v-2a9 9 0 0 1 18 0v2" />
             <path d="M21 14a2 2 0 0 1-2 2h-1v-4h1a2 2 0 0 1 2 2z" fill="currentColor" stroke="none" />
             <path d="M3 14a2 2 0 0 1 2-2h1v4H5a2 2 0 0 1-2-2z" fill="currentColor" stroke="none" />
+          </svg>
+          <svg class="mark-admin" viewBox="0 0 24 24" width="24" height="24" focusable="false" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4.6 15.2v-3.1a7.4 7.4 0 0 1 14.8 0v3.1" />
+            <rect x="2.9" y="13.4" width="3.7" height="6.6" rx="1.85" fill="currentColor" stroke="none" />
+            <rect x="17.4" y="13.4" width="3.7" height="6.6" rx="1.85" fill="currentColor" stroke="none" />
+            <path d="M9.5 21.6h5" stroke-width="2.6" />
           </svg>
         </span>
         <span class="brand-wordmark">HelpDesk Lite</span>
       </button>
 
       @if (user(); as u) {
-        <nav class="chrome-nav" aria-label="Primary">
-          <a
-            class="nav-link"
-            [routerLink]="ticketsLink()"
-            routerLinkActive="active"
-            [routerLinkActiveOptions]="{ exact: false }"
-          >Tickets</a>
-          @if (isAdmin()) {
+        <!-- The admin design shows a role pill where the employee and
+             agent chrome shows nav links, so the two never appear
+             together. -->
+        @if (isAdmin()) {
+          <span class="role-pill">Admin</span>
+        } @else {
+          <nav class="chrome-nav" aria-label="Primary">
             <a
               class="nav-link"
-              routerLink="/users"
+              [routerLink]="ticketsLink()"
               routerLinkActive="active"
-            >Users</a>
-          }
-        </nav>
+              [routerLinkActiveOptions]="{ exact: false }"
+            >Tickets</a>
+          </nav>
+        }
 
         @if (canSearch()) {
           <form class="chrome-search" (submit)="onSearchSubmit($event)">
@@ -133,7 +142,7 @@ import { NotificationsPanelComponent } from '../notifications-panel/notification
               #searchInput
               type="search"
               class="search-input"
-              placeholder="Search by ID, title, or description"
+              [placeholder]="isAdmin() ? 'Search tickets, users, or keywords...' : 'Search by ID, title, or description'"
               [value]="searchValue()"
               (input)="onSearchInput($event)"
               aria-label="Search tickets"
@@ -293,6 +302,20 @@ import { NotificationsPanelComponent } from '../notifications-panel/notification
       color: var(--color-text-primary);
       letter-spacing: -0.02em;
       transition: color var(--duration-fast) var(--ease-out);
+    }
+    /* The brand tile carries two glyphs; the admin one is only
+       painted on the admin chrome, the shared one everywhere else. */
+    .brand-mark svg {
+      grid-area: 1 / 1;
+    }
+    .mark-admin {
+      display: none;
+    }
+    .chrome.is-admin .mark-shared {
+      display: none;
+    }
+    .chrome.is-admin .mark-admin {
+      display: block;
     }
     .chrome-nav {
       display: flex;
@@ -557,6 +580,73 @@ import { NotificationsPanelComponent } from '../notifications-panel/notification
       .nav-link {
         padding: 6px 10px;
       }
+    }
+
+    /* ── Admin variant ───────────────────────────────────────────
+       The Admin Workspace's chrome is drawn differently from the
+       employee and agent chrome: a 40px brand tile, a larger
+       wordmark, a filled role pill instead of nav links, a wide
+       blue-tinted search field, and a lavender avatar.
+
+       Everything below is scoped to the admin chrome variant, so the
+       employee dashboard and the agent queue keep the chrome they
+       have always had. */
+    .chrome.is-admin {
+      grid-template-columns: auto auto 1fr auto minmax(0, auto);
+      column-gap: 12px;
+      background: linear-gradient(180deg, #f9fbfd 0%, #fbfbfe 100%);
+    }
+    .chrome.is-admin .brand {
+      gap: 12px;
+    }
+    .chrome.is-admin .brand-mark {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+    }
+    .chrome.is-admin .brand-mark svg {
+      width: 26px;
+      height: 26px;
+    }
+    .chrome.is-admin .brand-wordmark {
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+    /* The role pill replaces the nav links in the admin design. */
+    .role-pill {
+      display: inline-flex;
+      align-items: center;
+      height: 23px;
+      padding: 0 10px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, #9d9afc 0%, #5a3efd 100%);
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+    .chrome.is-admin .chrome-search {
+      max-width: none;
+      height: 40px;
+      padding: 0 14px;
+      background: #f0f4fe;
+      border: 1px solid transparent;
+      border-radius: 10px;
+    }
+    .chrome.is-admin .chrome-search:focus-within {
+      background: #f0f4fe;
+      border-color: var(--color-primary);
+    }
+    .chrome.is-admin .search-input::placeholder {
+      color: #8a93a8;
+    }
+    /* The admin avatar is a pale lavender disc with purple
+       initials; the shared atom paints a grey disc, so the
+       admin-specific colours are applied here. */
+    .chrome.is-admin .profile-trigger chrome-avatar {
+      background: #e8e9fe;
+      color: #4f46e5;
     }
   `],
 })

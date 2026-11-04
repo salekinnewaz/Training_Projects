@@ -447,135 +447,163 @@ test.describe('Feature: Ticket Detail', () => {
   });
 });
 
-test.describe('Feature: Admin Dashboard (WDS-2026 shared ticket table)', () => {
-  // The Admin's Tickets tab was converted from the old Kanban board
-  // to the SAME shared table the User's and the Agent's dashboards
-  // use (WDS-2026). These tests pin that: the reference's filter
-  // bar, its ten columns and its pagination footer.
+test.describe('Feature: Admin Workspace (WDS-2026 Admin Workspace)', () => {
+  /**
+   * The Admin's dashboard is the WDS-2026 ADMIN WORKSPACE: a
+   * six-widget grid (hero, stat strip, Recent Tickets, Users
+   * Overview, Ticket Trends, Priority Distribution, Recent Users)
+   * rather than the old two-tab Tickets / Users page.
+   *
+   * The shared ten-column ticket table is NOT on this page — it
+   * lives on /tickets, which the Workspace's "View all" link
+   * points at. These tests pin the Workspace itself; the shared
+   * table has its own coverage in the User / Agent specs and in
+   * qa/scripts/verify-shared-table.js.
+   */
 
-  test('admin lands on /admin and sees the Tickets tab', async ({ page }) => {
+  test('admin lands on /admin and the Workspace renders its six widgets', async ({ page }) => {
     await loginAs(page, 'admin');
-    await expect(page.getByRole('heading', { name: 'Tickets', level: 1 })).toBeVisible();
-    // Admin should see a Users tab — wireframe says admin-only.
-    await expect(page.getByRole('tab', { name: /^users$/i }).or(
-      page.getByRole('link', { name: /^users$/i })
-    ).first()).toBeVisible();
+    await expect(page).toHaveURL(/\/admin/);
+    for (const id of [
+      'admin-stat-strip',
+      'admin-recent-tickets',
+      'admin-users-overview',
+      'admin-ticket-trends',
+      'admin-priority-distribution',
+      'admin-recent-users',
+    ]) {
+      await expect(page.getByTestId(id)).toBeVisible();
+    }
   });
 
-  test('admin can navigate to the Users tab and see the user list', async ({ page }) => {
+  test('the Workspace renders the shared stat strip, stacked variant', async ({ page }) => {
     await loginAs(page, 'admin');
-    // Click the Users tab — accept either role=tab or anchor link.
-    const usersTab = page.getByRole('tab', { name: /^users$/i }).or(
-      page.getByRole('link', { name: /^users$/i })
-    ).first();
-    await usersTab.click();
-    await page.waitForURL(/\/users/, { timeout: 10_000 });
-    // The Users page should show the "Users" heading + a list
-    // of user rows (or table).
-    await expect(page.getByRole('heading', { name: 'Users', level: 1 })).toBeVisible();
+    await expect(page.getByTestId('admin-stat-strip')).toBeVisible();
+    // The shared MOLECULE — not a per-page copy.
+    await expect(page.locator('stat-strip[data-variant="stacked"]')).toHaveCount(1);
+    // Its five cards.
+    await expect(page.locator('stat-strip article.card')).toHaveCount(5);
+    await expect(page.getByTestId('stat-total-card')).toBeVisible();
+    await expect(page.getByTestId('stat-card-open')).toBeVisible();
+    await expect(page.getByTestId('stat-card-inProgress')).toBeVisible();
+    await expect(page.getByTestId('stat-card-resolved')).toBeVisible();
+    await expect(page.getByTestId('stat-card-closed')).toBeVisible();
   });
 
-  test('admin dashboard renders the redesigned page subtitle', async ({ page }) => {
+  test('no stat strip label is clipped', async ({ page }) => {
     await loginAs(page, 'admin');
-    await expect(
-      page.getByText(/monitor and manage all support tickets across different stages/i),
-    ).toBeVisible();
-  });
-
-  test('admin dashboard renders the shared filter bar (search + 5 selects)', async ({ page }) => {
-    await loginAs(page, 'admin');
-    await page.waitForSelector('[data-testid="ticket-filter-bar"]', { timeout: 10_000 });
-    // The reference's search placeholder, verbatim.
-    await expect(page.getByTestId('ticket-filter-search')).toHaveAttribute(
-      'placeholder',
-      'Search tickets by ID, title, or keyword...',
+    await page.waitForSelector('stat-strip article.card', { timeout: 10_000 });
+    const clipped = await page.evaluate(() =>
+      [...document.querySelectorAll('stat-strip article.card .label')]
+        .filter(
+          (l) =>
+            l.scrollWidth > Math.ceil(l.getBoundingClientRect().width) + 0.5,
+        )
+        .map((l) => l.textContent?.trim()),
     );
-    // Four dimension dropdowns + the sort control.
-    await expect(page.locator('[data-testid="ticket-filter-bar"] select')).toHaveCount(5);
-    // The reference's default labels.
-    await expect(page.locator('[data-testid="ticket-filter-bar"] .pill-label')).toHaveText([
-      'All customers',
-      'All applications',
-      'All priorities',
-      'All assignees',
-      'Newest first',
-    ]);
+    // "In Progress" was clipped to "In Progres…" at every width.
+    expect(clipped).toEqual([]);
   });
 
-  test('admin dashboard renders the shared table with the reference\'s ten columns', async ({ page }) => {
+  test('the Workspace renders its own six-column Recent Tickets table', async ({ page }) => {
     await loginAs(page, 'admin');
-    await page.waitForSelector('[data-testid="ticket-table"]', { timeout: 10_000 });
-    const headers = page.locator('[data-testid="ticket-table"] thead th');
-    await expect(headers).toHaveCount(10);
-    // 0 checkbox · 1 category · 2 ID · 3 Title · 4 Status ·
-    // 5 Priority · 6 Customer · 7 Assignee · 8 Updated · 9 actions.
-    await expect(headers.nth(2)).toHaveText('ID');
-    await expect(headers.nth(3)).toHaveText('Title');
-    await expect(headers.nth(4)).toHaveText('Status');
-    await expect(headers.nth(5)).toHaveText('Priority');
-    await expect(headers.nth(6)).toHaveText('Customer');
-    await expect(headers.nth(7)).toHaveText('Assignee');
-    await expect(headers.nth(8)).toHaveText('Updated');
+    await page.waitForSelector(
+      '[data-testid="admin-recent-tickets"] thead th',
+      { timeout: 10_000 },
+    );
+    const headers = page.locator('[data-testid="admin-recent-tickets"] thead th');
+    await expect(headers).toHaveCount(6);
+    await expect(headers.nth(0)).toHaveText('#');
+    await expect(headers.nth(1)).toHaveText('Title');
+    await expect(headers.nth(2)).toHaveText('Status');
+    await expect(headers.nth(3)).toHaveText('Priority');
+    await expect(headers.nth(4)).toHaveText('Assignee');
+    await expect(headers.nth(5)).toHaveText('Updated');
+    // The shared ten-column table is NOT on this page.
+    await expect(page.getByTestId('ticket-table')).toHaveCount(0);
+    await expect(page.getByTestId('ticket-filter-bar')).toHaveCount(0);
   });
 
-  test('admin dashboard table rows carry number, title, badges and a relative timestamp', async ({ page }) => {
+  test('the Workspace\'s Recent Tickets rows carry number, title, badges and a timestamp', async ({ page }) => {
     await loginAs(page, 'admin');
-    await page.waitForSelector('[data-testid="ticket-table"] tbody > tr', { timeout: 10_000 });
-    const first = page.locator('[data-testid="ticket-table"] tbody > tr').first();
-    await expect(first.locator('.number')).toHaveText(/^HD-\d+$/);
-    await expect(first.locator('.title')).not.toBeEmpty();
-    await expect(first.locator('ticket-category-icon')).toBeVisible();
+    await page.waitForSelector(
+      '[data-testid="admin-recent-tickets"] tbody > tr',
+      { timeout: 10_000 },
+    );
+    const first = page.locator('[data-testid="admin-recent-tickets"] tbody > tr').first();
+    await expect(first.locator('.col-num')).toContainText(/HD-\d+/);
+    await expect(first.locator('.title-text')).not.toBeEmpty();
     await expect(first.locator('badge-status')).toBeVisible();
     await expect(first.locator('badge-priority')).toBeVisible();
-    await expect(first.locator('.col-updated')).toContainText(/ago|just now/);
+    await expect(first.locator('.updated-cell')).toContainText(/ago|just now/);
   });
 
-  test('admin dashboard table row navigation goes to /tickets/:id', async ({ page }) => {
+  test('the Workspace\'s "View all" links to the shared queue', async ({ page }) => {
     await loginAs(page, 'admin');
-    await page.waitForSelector('[data-testid="ticket-table"] tbody > tr', { timeout: 10_000 });
-    await page.locator('[data-testid="ticket-table"] tbody > tr').first().click();
-    await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
+    const viewAll = page
+      .getByTestId('admin-recent-tickets')
+      .getByRole('link', { name: /view all/i });
+    await expect(viewAll).toBeVisible();
+    await viewAll.click();
+    await page.waitForURL(/\/tickets/, { timeout: 10_000 });
+    // The shared table is there.
+    await expect(page.getByTestId('ticket-table')).toBeVisible();
   });
 
-  test('admin dashboard renders the pagination footer', async ({ page }) => {
-    await loginAs(page, 'admin');
-    await page.waitForSelector('[data-testid="ticket-table-summary"]', { timeout: 10_000 });
-    // The reference's summary copy: "Showing 1–10 of N tickets".
-    await expect(page.getByTestId('ticket-table-summary')).toHaveText(
-      /^Showing \d+–\d+ of \d+ tickets$/,
-    );
-    // The "N / page" picker.
-    await expect(page.getByTestId('ticket-table-page-size')).toBeVisible();
-    await expect(page.locator('[data-testid="ticket-table-page-size"] option')).toHaveText([
-      '10 / page',
-      '25 / page',
-      '50 / page',
-    ]);
-  });
-
-  test('admin dashboard does not cause horizontal page overflow at 1440px', async ({ page }) => {
+  test('the Workspace does not cause horizontal page overflow at 1440px', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await loginAs(page, 'admin');
-    await page.waitForSelector('[data-testid="ticket-table"]', { timeout: 10_000 });
-    // The body should not have horizontal overflow.
+    await page.waitForSelector('[data-testid="admin-recent-tickets"]', {
+      timeout: 10_000,
+    });
     const overflow = await page.evaluate(() => {
       return document.documentElement.scrollWidth > document.documentElement.clientWidth;
     });
     expect(overflow).toBe(false);
   });
 
-  test('the admin filter bar narrows the rows', async ({ page }) => {
+  test('no Workspace card lets its content escape its own card', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
     await loginAs(page, 'admin');
-    await page.waitForSelector('[data-testid="ticket-table"] tbody > tr', { timeout: 10_000 });
-    const before = await page.locator('[data-testid="ticket-table"] tbody > tr').count();
-
-    await page.getByTestId('ticket-filter-priority').selectOption('High');
-    await page.waitForTimeout(600);
-
-    const after = await page.locator('[data-testid="ticket-table"] tbody > tr').count();
-    expect(after).toBeLessThanOrEqual(before);
-    // The visible label mirrors the selection.
-    await expect(page.locator('[data-testid="ticket-filter-bar"] .pill-label').nth(2)).toHaveText('High');
+    await page.waitForSelector('[data-testid="admin-recent-tickets"]', {
+      timeout: 10_000,
+    });
+    const escapes = await page.evaluate(() =>
+      [...document.querySelectorAll('.workspace .card')]
+        .map((card) => {
+          const c = card.getBoundingClientRect();
+          let worst = 0;
+          card.querySelectorAll('*').forEach((el) => {
+            // Content inside a scrollable box is not an escape.
+            let p = el.parentElement;
+            let scrollable = false;
+            while (p && p !== card) {
+              const ox = getComputedStyle(p).overflowX;
+              if (ox === 'auto' || ox === 'scroll' || ox === 'hidden') {
+                scrollable = true;
+                break;
+              }
+              p = p.parentElement;
+            }
+            if (scrollable) return;
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 && r.height === 0) return;
+            worst = Math.max(
+              worst,
+              c.left - r.left,
+              r.right - c.right,
+              c.top - r.top,
+              r.bottom - c.bottom,
+            );
+          });
+          return {
+            card: [...card.classList].filter((k) => k !== 'card').join('.'),
+            worst: Math.round(worst * 10) / 10,
+          };
+        })
+        .filter((c) => c.worst > 0.5),
+    );
+    expect(escapes).toEqual([]);
   });
 });
 

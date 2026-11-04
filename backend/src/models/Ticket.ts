@@ -19,7 +19,7 @@ export interface TicketAttributes {
   title: string;
   description: string;
   category: TicketCategory | null;
-  priority: TicketPriority;
+  priority: TicketPriority | null;
   status: TicketStatus;
   submitterId: number;
   ownerId: number | null;
@@ -85,8 +85,12 @@ Ticket.init(
       allowNull: true,
     },
     priority: {
+      // Nullable so a ticket can be filed without a priority. The
+      // Admin dashboard's "Priority Distribution" donut has a "None"
+      // bucket for exactly those rows, and the workspace service
+      // groups them under that key.
       type: DataTypes.ENUM('Low', 'Medium', 'High'),
-      allowNull: false,
+      allowNull: true,
     },
     status: {
       type: DataTypes.ENUM('Open', 'In Progress', 'Resolved', 'Closed'),
