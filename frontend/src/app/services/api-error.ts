@@ -46,6 +46,7 @@ export type ApiErrorCode =
   | 'file_too_large'
   | 'unsupported_media_type'
   | 'storage_missing'
+  | 'storage_unavailable'
   | 'storage_failed'
   | 'rate_limited'
   | 'internal_server_error'

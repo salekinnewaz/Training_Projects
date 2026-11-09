@@ -24,12 +24,13 @@
  * into a typed `ApiError`. Services never need to think about
  * cookies or CORS preflight.
  *
- * **MIME type / size cap**: the backend enforces both (10 MB +
- * the allowlist in `attachmentsController.ts`). The frontend
- * does a quick client-side size check before opening the
- * upload request so the user sees the same error envelope
- * (413 `file_too_large`) without a wasted round-trip; the
- * server check is the source of truth.
+ * **MIME type / size cap**: the backend enforces both (the size
+ * cap from `MAX_UPLOAD_BYTES` + the allowlist in
+ * `attachmentsController.ts`). The frontend does a quick
+ * client-side size check before opening the upload request so
+ * the user sees the same error envelope (413 `file_too_large`)
+ * without a wasted round-trip; the server check is the source
+ * of truth.
  */
 
 import { HttpClient } from '@angular/common/http';
@@ -51,13 +52,22 @@ export interface AttachmentUploadResult {
 }
 
 /**
- * Mirrors the backend's 10 MB cap. Used for the client-side
- * pre-check (avoids a wasted round-trip). The server is the
- * source of truth — a file exactly at 10 MB will succeed on
- * both sides; a 10 MB + 1 byte file will fail on the server
- * with 413 `file_too_large`.
+ * Mirrors the backend's cap. Used for the client-side pre-check
+ * (avoids a wasted round-trip). The server is the source of
+ * truth — a file exactly at the cap will succeed on both sides;
+ * one byte over will fail on the server with 413
+ * `file_too_large`.
  */
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = environment.maxAttachmentBytes;
+
+/**
+ * Render the cap for the error copy: `"10 MB"` / `"4 MB"` —
+ * never `"10.0 MB"`.
+ */
+function formatMaxSize(): string {
+  const mb = MAX_FILE_SIZE_BYTES / (1024 * 1024);
+  return `${Number.isInteger(mb) ? mb : Number(mb.toFixed(1))} MB`;
+}
 
 @Injectable({ providedIn: 'root' })
 export class AttachmentService {
@@ -74,7 +84,7 @@ export class AttachmentService {
    * Throws `ApiError` on:
    *   - 400 `validation_error` `fields.file: 'required'` if
    *     no file was in the request.
-   *   - 413 `file_too_large` if the file exceeds 10 MB.
+   *   - 413 `file_too_large` if the file exceeds the configured cap.
    *   - 415 `unsupported_media_type` if the mimetype isn't in
    *     the server's allowlist (image/png|jpeg|gif, pdf, txt,
    *     zip).
@@ -88,7 +98,7 @@ export class AttachmentService {
     if (file.size > MAX_FILE_SIZE_BYTES) {
       throw apiErrorFrom({
         status: 413,
-        error: { error: 'file_too_large', message: 'File is larger than 10 MB. Pick a smaller file.' },
+        error: { error: 'file_too_large', message: `File is larger than ${formatMaxSize()}. Pick a smaller file.` },
       } as unknown as Parameters<typeof apiErrorFrom>[0]);
     }
 

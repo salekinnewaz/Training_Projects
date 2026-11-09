@@ -22,13 +22,24 @@
  *     are logged but not thrown; the row is the source of
  *     truth and a missing file is recoverable from a backup.
  *
- * The default export is the filesystem implementation. v1.x
- * can replace it with an `S3Storage` class implementing the
- * same interface; the controller + route files don't change.
+ * Two implementations ship:
+ *
+ *   - `LocalFsStorage` — the filesystem under `backend/uploads/`.
+ *     The default for local dev; zero configuration.
+ *   - `VercelBlobStorage` — a private Vercel Blob store. The
+ *     default on Vercel, because the serverless filesystem is
+ *     read-only except `/tmp` and `/tmp` is ephemeral per
+ *     instance (files vanish when the instance recycles), so it
+ *     cannot hold attachment bytes permanently.
+ *
+ * The backend is selected by the `ATTACHMENT_STORAGE_BACKEND`
+ * env var (`fs` | `blob`). The controller + route files don't
+ * change either way — that was the whole point of the seam.
  */
 
 import { promises as fs, createReadStream } from 'fs';
 import * as path from 'path';
+import { Readable } from 'stream';
 
 export interface AttachmentStream {
   stream: NodeJS.ReadableStream;
@@ -116,7 +127,7 @@ export class LocalFsStorage implements AttachmentStorage {
   }
 
   async getStream(storagePath: string): Promise<AttachmentStream> {
-    const absolute = path.join(this.baseDir, storagePath);
+    const absolute = this.resolveWithinBase(storagePath);
     // `stat` first so we can surface a clear error if the
     // file is missing. The controller maps ENOENT to a 500
     // (orphaned-metadata scenario).
@@ -128,7 +139,7 @@ export class LocalFsStorage implements AttachmentStorage {
   }
 
   async delete(storagePath: string): Promise<void> {
-    const absolute = path.join(this.baseDir, storagePath);
+    const absolute = this.resolveWithinBase(storagePath);
     try {
       await fs.unlink(absolute);
     } catch (err) {
@@ -137,6 +148,47 @@ export class LocalFsStorage implements AttachmentStorage {
         err,
       );
     }
+  }
+
+  /**
+   * Resolve a stored relative path to an absolute path inside
+   * the base dir, or throw ENOENT.
+   *
+   * Two hazards are handled here:
+   *
+   *  1. **Doubled prefix.** Seeded rows carry paths like
+   *     `uploads/seed/x.png` (the path is relative to the
+   *     *project root*, not to the base dir). Joining that
+   *     against `<cwd>/uploads` yields
+   *     `<cwd>/uploads/uploads/seed/x.png` — a file that
+   *     never existed. We strip a leading `uploads/` segment
+   *     before joining.
+   *
+   *  2. **Path traversal.** `path.join(base, '../../etc/passwd')`
+   *     escapes the base dir entirely. We resolve the joined
+   *     path and verify it is still inside the base dir.
+   *
+   * Both failures surface as `ENOENT` so the controller's
+   * existing missing-bytes mapping works unchanged.
+   */
+  private resolveWithinBase(storagePath: string): string {
+    const relative = storagePath.replace(/^[/\\]+/, '');
+    const withoutBasePrefix = relative.replace(
+      /^uploads[/\\]/,
+      '',
+    );
+    const absolute = path.resolve(this.baseDir, withoutBasePrefix);
+    const baseWithSep = this.baseDir.endsWith(path.sep)
+      ? this.baseDir
+      : this.baseDir + path.sep;
+    if (absolute !== this.baseDir && !absolute.startsWith(baseWithSep)) {
+      const err = new Error(
+        `[attachmentStorage] refusing to read ${storagePath} — it escapes ${this.baseDir}`,
+      ) as NodeJS.ErrnoException;
+      err.code = 'ENOENT';
+      throw err;
+    }
+    return absolute;
   }
 }
 
@@ -161,13 +213,167 @@ function sanitizeFilename(filename: string): string {
 }
 
 /**
- * Singleton filesystem storage. Resolves `backend/uploads/`
- * relative to the project root (the cwd when `npm run dev`
- * is invoked). The directory is auto-created by the
- * `LocalFsStorage` constructor.
+ * Which storage implementation is in use.
+ *
+ * `fs`   — local filesystem under `<cwd>/uploads`. Default.
+ * `blob` — a private Vercel Blob store. Required on Vercel,
+ *          where the serverless filesystem is read-only.
+ */
+export type StorageBackendKind = 'fs' | 'blob';
+
+/**
+ * Read `ATTACHMENT_STORAGE_BACKEND` and validate it.
+ *
+ * Unset (or empty) means `fs` so local dev needs zero
+ * configuration. An unrecognised value is a configuration
+ * error and must fail loudly — silently falling back to `fs`
+ * on Vercel would reproduce the 500 this module exists to fix.
+ */
+export function resolveStorageBackend(): StorageBackendKind {
+  const raw = (process.env.ATTACHMENT_STORAGE_BACKEND ?? '')
+    .trim()
+    .toLowerCase();
+  if (raw === '' || raw === 'fs') return 'fs';
+  if (raw === 'blob') return 'blob';
+  throw new Error(
+    `[attachmentStorage] ATTACHMENT_STORAGE_BACKEND="${raw}" is not valid. Use "fs" or "blob".`,
+  );
+}
+
+/**
+ * The backend the running process is actually using. Recorded
+ * on each attachment row (`backend_kind`) so a row written by
+ * one backend is never read by the other.
+ */
+export function activeStorageBackend(): StorageBackendKind {
+  return resolveStorageBackend();
+}
+
+/**
+ * Vercel Blob storage — a private store.
+ *
+ * The blob URL is *not* publicly reachable; bytes are fetched
+ * through the Function with the SDK and streamed to the
+ * client, which is exactly what the existing auth-gated
+ * `GET /api/attachments/:id` route already does. No wire
+ * contract change, no frontend change.
+ *
+ * `storage_path` holds the blob **pathname** (not the URL) so
+ * it fits `VARCHAR(512)` comfortably and survives a change of
+ * the store's hostname.
+ *
+ * The SDK is required lazily inside each method so the `fs`
+ * path never loads it.
+ */
+export class VercelBlobStorage implements AttachmentStorage {
+  async put(
+    id: number,
+    filename: string,
+    source: { buffer: Buffer } | { path: string },
+  ): Promise<string> {
+    const { put } = loadBlobSdk();
+    const safeFilename = sanitizeFilename(filename);
+    // The blob SDK takes a Buffer (or a stream), so the
+    // disk-backed multer variant has to be read into memory
+    // first. The current wiring uses `memoryStorage`, so this
+    // path is only for a future switch.
+    const body =
+      'buffer' in source
+        ? source.buffer
+        : await fs.readFile(source.path);
+    const blob = await put(`attachments/${id}-${safeFilename}`, body, {
+      access: 'private',
+      addRandomSuffix: true,
+    });
+    // With `addRandomSuffix` the stored pathname differs from
+    // the one we passed in — `blob.pathname` is the truth.
+    return blob.pathname;
+  }
+
+  async getStream(storagePath: string): Promise<AttachmentStream> {
+    const { get } = loadBlobSdk();
+    const result = await get(storagePath, { access: 'private' });
+    if (!result) {
+      throw enoent(`blob not found: ${storagePath}`);
+    }
+    return {
+      stream: Readable.fromWeb(
+        result.stream as unknown as Parameters<typeof Readable.fromWeb>[0],
+      ),
+      sizeBytes: result.blob.size,
+    };
+  }
+
+  async delete(storagePath: string): Promise<void> {
+    try {
+      const { del } = loadBlobSdk();
+      await del(storagePath, { access: 'private' });
+    } catch (err) {
+      console.error(
+        `[attachmentStorage] failed to delete blob ${storagePath}:`,
+        err,
+      );
+    }
+  }
+}
+
+/**
+ * Build an `ENOENT` error so the controller's existing
+ * missing-bytes branch works identically for both backends.
+ */
+function enoent(message: string): NodeJS.ErrnoException {
+  const err = new Error(message) as NodeJS.ErrnoException;
+  err.code = 'ENOENT';
+  return err;
+}
+
+/**
+ * Lazy-load `@vercel/blob`. Requiring it at module scope would
+ * pull the SDK into every local dev boot, and it is a Vercel-only
+ * dependency.
+ */
+type BlobSdk = {
+  put: (
+    pathname: string,
+    body: Buffer,
+    options: { access: 'private'; addRandomSuffix: boolean },
+  ) => Promise<{ pathname: string; url: string }>;
+  get: (
+    pathname: string,
+    options: { access: 'private' },
+  ) => Promise<{
+    blob: { size: number };
+    stream: unknown;
+  } | null>;
+  del: (pathname: string, options: { access: 'private' }) => Promise<void>;
+};
+
+let blobSdk: BlobSdk | null = null;
+
+function loadBlobSdk(): BlobSdk {
+  if (blobSdk) return blobSdk;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    blobSdk = require('@vercel/blob') as BlobSdk;
+  } catch (err) {
+    throw new Error(
+      '[attachmentStorage] ATTACHMENT_STORAGE_BACKEND="blob" requires the @vercel/blob package: ' +
+        String(err),
+    );
+  }
+  return blobSdk;
+}
+
+/**
+ * The active storage singleton.
+ *
+ * Local dev resolves `backend/uploads/` relative to the project
+ * root (the cwd when `npm run dev` is invoked). The directory is
+ * auto-created by the `LocalFsStorage` constructor.
  */
 const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
 
-export const attachmentStorage: AttachmentStorage = new LocalFsStorage(
-  UPLOADS_DIR,
-);
+export const attachmentStorage: AttachmentStorage =
+  resolveStorageBackend() === 'blob'
+    ? new VercelBlobStorage()
+    : new LocalFsStorage(UPLOADS_DIR);

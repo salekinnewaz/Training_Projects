@@ -85,6 +85,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
+import { environment } from '../../../environments/environment';
 import { ApiError } from '../../services/api-error';
 import {
   CreateTicketPayload,
@@ -102,7 +103,21 @@ import { FileDropComponent } from '../../components/organisms/file-drop/file-dro
 const STORAGE_KEY = 'hd:draft:create-ticket';
 const TITLE_MAX = 120;
 const DESCRIPTION_MAX = 5000;
-const FILE_MAX_BYTES = 10 * 1024 * 1024;
+/**
+ * Mirrors the backend's `MAX_UPLOAD_BYTES` (10 MB locally, 4 MB
+ * in production). The server is the source of truth; this is a
+ * UX optimization that avoids a wasted round-trip.
+ */
+const FILE_MAX_BYTES = environment.maxAttachmentBytes;
+
+/**
+ * Render the cap for the UI copy: `"10 MB"` / `"4 MB"` — never
+ * `"10.0 MB"`.
+ */
+function formatMaxSize(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  return `${Number.isInteger(mb) ? mb : Number(mb.toFixed(1))} MB`;
+}
 
 interface DraftPayload {
   title: string;
@@ -251,7 +266,7 @@ const PRIORITY_OPTIONS = [
                 </file-drop>
               </div>
               <p class="form-helper" data-testid="attachment-helper">
-                (optional, 10 MB max)
+                (optional, {{ formatMaxSize() }} max)
               </p>
             </form-field>
           </div>
@@ -496,6 +511,14 @@ export class CreateTicketPageComponent implements OnInit, OnDestroy {
   readonly attachmentDisabled = signal<boolean>(false);
 
   // ── Template helpers ──────────────────────────────────────────────
+  /**
+   * The attachment size cap rendered for the helper text under
+   * the drop zone — `"10 MB"` locally, `"4 MB"` in production.
+   */
+  formatMaxSize(): string {
+    return formatMaxSize(FILE_MAX_BYTES);
+  }
+
   canSubmit(): boolean {
     return (
       !this.submitting() &&
@@ -607,15 +630,15 @@ export class CreateTicketPageComponent implements OnInit, OnDestroy {
   }
 
   onFilePicked(file: File | null): void {
-    // Per spec: the page owns the > 10 MB error. Read the size off
-    // the File before passing it through to submit. The drop zone
-    // is disabled in HD-008, so this branch is exercised once HD-011
-    // turns the zone on — but it's wired now so flipping the flag
-    // is the only change needed.
+    // Per spec: the page owns the oversized-file error. Read the
+    // size off the File before passing it through to submit. The
+    // drop zone is disabled in HD-008, so this branch is exercised
+    // once HD-011 turns the zone on — but it's wired now so
+    // flipping the flag is the only change needed.
     this.attachmentError.set(null);
     if (file && file.size > FILE_MAX_BYTES) {
       this.attachmentError.set(
-        'File is larger than 10 MB. Pick a smaller file.',
+        `File is larger than ${formatMaxSize(FILE_MAX_BYTES)}. Pick a smaller file.`,
       );
       this.attachment.set(null);
       return;

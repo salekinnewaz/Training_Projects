@@ -27,7 +27,10 @@
 
 import { Attachment, Ticket } from '../models';
 import { HttpError } from '../utils/errors';
-import { attachmentStorage } from '../utils/attachmentStorage';
+import {
+  activeStorageBackend,
+  attachmentStorage,
+} from '../utils/attachmentStorage';
 
 export interface CreateAttachmentInput {
   filename: string;
@@ -62,6 +65,7 @@ export async function createAttachment(
     sizeBytes: input.sizeBytes,
     mimetype: input.mimetype,
     storagePath: '',
+    backendKind: activeStorageBackend(),
     uploadedById: input.uploadedById,
   });
 
@@ -74,9 +78,13 @@ export async function createAttachment(
     await row.update({ storagePath });
     return row;
   } catch (err) {
-    // Storage failed. Best-effort: delete the row so the
-    // caller doesn't see a phantom attachment. The buffer
-    // / temp file (if any) is GC'd by V8 / multer respectively.
+    // Storage failed. Log the underlying cause so an operator
+    // can tell a missing credential from a transient network
+    // failure — the user-facing message is identical either way.
+    console.error('[attachmentService] failed to persist file bytes:', err);
+    // Best-effort: delete the row so the caller doesn't see a
+    // phantom attachment. The buffer / temp file (if any) is
+    // GC'd by V8 / multer respectively.
     await row.destroy().catch((destroyErr) => {
       console.error(
         '[attachmentService] failed to delete row after storage failure:',
