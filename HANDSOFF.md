@@ -1337,3 +1337,202 @@ One commit on top of the three that were already sitting unpushed
 
 Total: **652/652 QA gate checks**, **610/610** Angular,
 **189/189** backend, **145** E2E passed / 1 skipped / 0 failed.
+
+---
+
+## Iteration 21 — 2026-11-09 — Fix `POST /api/attachments` 500 on Vercel: Vercel Blob storage backend, env-derived upload cap, and two latent path bugs
+
+### The symptom
+
+`POST https://helpdesk-lite-tawny.vercel.app/api/attachments` returned
+**HTTP 500** with `{"error":"storage_failed"}`. Every other API
+endpoint was healthy — it was the attachment path only.
+
+### Root cause — confirmed empirically, not inferred
+
+A probe endpoint was deployed to the live Vercel runtime and read back
+the ground truth:
+
+```
+cwd            /var/task
+/var/task      NOT WRITABLE (EROFS)      <- read-only filesystem
+/var/task/uploads  NOT WRITABLE (ENOENT)
+/tmp           WRITABLE
+/tmp/uploads   WRITABLE
+```
+
+`backend/src/utils/attachmentStorage.ts:169` computed
+`const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads')`, which
+resolves to `/var/task/uploads` on Vercel. `LocalFsStorage.put()` then
+called `fs.writeFile(dest, source.buffer)` against a directory that can
+never exist → the write failed → `attachmentService.createAttachment`
+caught it, destroyed the row, and threw `HttpError(500,
+'storage_failed')`.
+
+`/tmp` is **not** a valid substitute: it is ephemeral per function
+instance, so files written there do not survive a recycle.
+
+### A second, independent limit
+
+| Upload | Result |
+|---|---|
+| 100 KB / 1 MB / 3 MB | reached the app → `500 storage_failed` |
+| 5 MB | `413 FUNCTION_PAYLOAD_TOO_LARGE` — Vercel rejects it **before** the app |
+
+Vercel rejects request bodies over **4.5 MB** with an opaque platform
+413. The application can never see those bodies, so the app's own cap
+has to sit below that limit for the client to get an actionable error.
+
+### A wrong claim in the docs, corrected
+
+`DEPLOY_VERCEL.md:462` said "Vercel rewrites do **not** forward
+multipart/form-data bodies". **That claim was wrong for this setup** — a
+4 MB multipart body demonstrably reached multer and was parsed; the
+failure was at the filesystem write, not at the rewrite. The section now
+carries a dated correction, because the wrong claim would have led the
+next reader to re-derive the wrong architecture (a CORS workaround for
+something that was never a CORS problem).
+
+### The fix
+
+The storage interface was already the intended seam — `DEPLOY_VERCEL.md`
+recommended Vercel Blob ("Option A"), and `attachmentStorage.ts`
+documented the interface as the place to "swap in S3 (or any other blob
+store)". So this **adds** an implementation rather than replacing one:
+
+- **`VercelBlobStorage`** writes to a **private** Blob store. The blob
+  URL is not publicly reachable, so bytes are fetched through the
+  Function and streamed to the client — which is exactly what the
+  existing auth-gated `GET /api/attachments/:id` already does. **Zero
+  wire-contract change, zero frontend change.**
+- **Backend selection** by `ATTACHMENT_STORAGE_BACKEND` (`fs` | `blob`).
+  Unset means `fs`, so local dev stays zero-config. Any other value is a
+  **boot error**, not a silent fallback — the silent fallback is exactly
+  what made the outage invisible until the first upload.
+- **Boot guard** in `server.ts`: on Vercel with the `fs` backend the app
+  refuses to start, so a missing env var surfaces in the deploy log
+  immediately rather than as a 500 days later.
+- **Env-derived upload cap**: `MAX_UPLOAD_BYTES` → else `VERCEL === '1'
+  ? 4 MB : 10 MB`. The frontend mirrors it via
+  `environment.maxAttachmentBytes` (10 MB dev / 4 MB prod). Because the
+  *dev* cap is unchanged, every existing spec asserting the literal
+  `'File is larger than 10 MB. Pick a smaller file.'` keeps passing
+  verbatim — that is the whole reason for deriving the cap rather than
+  hard-coding 4 MB.
+- **`backend_kind`** on every attachment row (new column, migration
+  `20260915000009`). The `fs` and `blob` path formats are incompatible,
+  so a row written by one must never be read by the other.
+
+### Two latent path bugs fixed alongside
+
+1. **Doubled prefix.** `getStream` did `path.join(baseDir, storagePath)`
+   where `baseDir` is `<cwd>/uploads`, so the seeded rows'
+   `uploads/seed/x.png` resolved to `<cwd>/uploads/uploads/seed/x.png` — a
+   file that never existed. Every seeded attachment 500'd with
+   `storage_missing` on every platform.
+2. **Path traversal.** `path.join` alone would let a `storage_path` of
+   `../../etc/passwd` escape the base dir. The resolved path is now
+   verified to stay inside the base dir; a violation is rejected as
+   ENOENT.
+
+### Production changes
+
+- **Blob store created**: `helpdesk-attachments` (`store_gSWzpUglA1tyzx7P`),
+  region `iad1`, **private**. The access mode and region are immutable
+  after creation. Connecting it to the project made Vercel inject
+  `BLOB_READ_WRITE_TOKEN` automatically on Production, Preview and
+  Development.
+- **`ATTACHMENT_STORAGE_BACKEND=blob`** set on Production and Preview.
+- **Migration `...09-add-attachment-backend-kind`** applied to production
+  Neon (now 10/10).
+- **The 2 broken seeded rows deleted** and their tickets unlinked:
+  ```sql
+  UPDATE tickets SET attachment_id = NULL WHERE attachment_id IN (1,2);
+  DELETE FROM attachments WHERE id IN (1,2);
+  ```
+  Both rows pointed at files that were never written anywhere, so they
+  already 500'd with `storage_missing` everywhere.
+
+### Verification — production
+
+| Check | Result |
+|---|---|
+| `POST /api/attachments` 100 KB PNG | **201** (was 500) |
+| `GET /api/attachments/:id` | **200**, bytes identical to the upload, correct `Content-Type` / `Content-Length` / `Content-Disposition` |
+| `POST /api/attachments` 3 MB | **201** |
+| `POST /api/attachments` 4.3 MB | **413 `file_too_large`** — *our* envelope, `"File is larger than 4 MB."` |
+| `POST /api/attachments` 5 MB | 413 `FUNCTION_PAYLOAD_TOO_LARGE` — the platform's ceiling; the app never sees the body |
+| `GET /api/attachments/1` and `/2` (deleted seeds) | **404**, not `storage_missing` |
+| Row `backend_kind` | `blob` |
+| `storage_path` | blob *pathname*, not a URL (`attachments/16-...png`) |
+
+### Verification — local (filesystem backend unchanged)
+
+| Check | Result |
+|---|---|
+| `POST /api/attachments` | **201** |
+| `GET /api/attachments/:id` | **200**, bytes identical |
+| `POST` an 11 MB file | **413** `"File is larger than 10 MB. Pick a smaller file."` |
+| Migration `down` then `up` | both clean |
+
+### Verification — suites
+
+| Suite | Result |
+|---|---|
+| Backend Jest (unit) | **179 passed** (was 153 — 26 new) |
+| Backend Jest (integration) | **36 passed** |
+| Frontend Karma | **610 SUCCESS**, 0 failed |
+| Playwright (full suite) | **145 passed**, 1 skipped, 0 failed |
+| QA verify gates | **all 7 green** — 170/170, 62/62, 97/97, 49/49, 68/68, 57/57, 149/149 |
+| Backend typecheck + build | clean |
+| Frontend production build | clean |
+
+Total: **652/652 QA gate checks**, **610/610** Angular,
+**215/215** backend, **145** E2E passed / 1 skipped / 0 failed.
+
+### New test files
+
+- `backend/src/utils/attachmentStorage.spec.ts` — backend resolution
+  (including "an invalid value must not silently fall back to `fs`"),
+  the `fs` prefix/traversal fixes, and the blob SDK against a mock.
+- `backend/src/services/attachmentService.spec.ts` — the two-phase
+  insert/update, `backend_kind` recording, and row destruction on
+  storage failure. The service was mocked wholesale in the controller
+  and route specs, so the real implementation previously had **no**
+  coverage at all.
+
+### Things worth knowing next time
+
+- **A `Content-Length` pre-check must drain the request before
+  responding.** Rejecting an oversized upload without draining the body
+  closes the socket while the client is still writing it, and the
+  client gets a connection reset instead of the 413. The `drainRequest`
+  helper in `attachmentsController.ts` exists for this reason — the
+  route spec caught it as a `write EPIPE`.
+- **The 4 MB production cap is a product regression** vs the documented
+  10 MB. The architecturally correct fix is client-direct upload via
+  `@vercel/blob`'s `handleUpload()` (presigned PUT), which bypasses the
+  4.5 MB platform limit entirely and keeps the full 10 MB. Bigger
+  change: a new sign route, a frontend two-phase rewrite, and
+  `backend/src/routes/attachments.spec.ts` must be rewritten.
+  Recommend as a separate story.
+
+### Flagged, not fixed
+
+1. **`attachmentStorage.delete()` has no call sites** and there is no
+   `DELETE /api/attachments/:id` route, so blob bytes are never
+   reclaimed. The Hobby Blob tier is **1 GB/month** and exceeding it is
+   a **hard block** (access stops until the 30-day window resets, not
+   overage billing). This is what will eventually exhaust the cap —
+   worth a follow-up story.
+2. **`storagePath` leaks into the ticket-detail wire shape**
+   (`backend/src/controllers/ticketsController.ts:106`) while the
+   attachments controller deliberately omits it. A genuine
+   inconsistency, but separable from this fix — it needs a frontend
+   model + spec-fixture change.
+
+### Commits
+
+- `d739ffb` — `fix(attachments): store upload bytes in Vercel Blob so
+  production uploads work`
+

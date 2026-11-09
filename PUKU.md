@@ -26,6 +26,18 @@ had never been created on prod, so `/api/notifications` and
 (`...07-create-notifications`, `...08-ticket-priority-nullable`) are
 now applied to Neon. See `HANDSOFF.md` → `## Iteration 20`.
 
+**Iteration 21 (2026-11-09)** fixed the last production 500:
+`POST /api/attachments` was failing because the Vercel serverless
+filesystem is **read-only** (`/var/task` → EROFS) and the storage
+backend wrote there. Attachment bytes now go to a **private Vercel Blob
+store** on production (`ATTACHMENT_STORAGE_BACKEND=blob`), selected
+through the existing storage interface in
+`backend/src/utils/attachmentStorage.ts`. The app **refuses to boot**
+on Vercel with the `fs` backend, so a missing env var fails loudly
+instead of silently breaking uploads. The upload cap is env-derived —
+**4 MB in production** (Vercel rejects bodies over 4.5 MB before the
+app sees them), 10 MB locally. See `HANDSOFF.md` → `## Iteration 21`.
+
 `RESUME-TOMORROW.md` is now **stale** on the "uncommitted working
 tree" and "the only job left is to commit" points — the tree is clean
 and the work is published. Treat its §4 inventory and §7 action list
