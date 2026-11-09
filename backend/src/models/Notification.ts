@@ -24,6 +24,7 @@ import sequelize from '../config/database';
  * additive; the dropdown falls back to a neutral icon for unknown
  * types. */
 export type NotificationType =
+  | 'ticket_created'
   | 'ticket_assigned'
   | 'ticket_status_changed'
   | 'ticket_priority_changed'

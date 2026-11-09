@@ -31,6 +31,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
+import {
+  provideHttpClientTesting,
+  HttpTestingController,
+} from '@angular/common/http/testing';
 import { BehaviorSubject, type Observable } from 'rxjs';
 
 import { UsersTabPageComponent } from './users-tab-page.component';
@@ -128,7 +132,13 @@ describe('UsersTabPageComponent (HD-014)', () => {
           { path: 'admin', children: [] },
           { path: 'users', children: [] },
         ]),
+        // The chrome's bell bootstraps `NotificationsService` on
+        // mount, which fires a GET /notifications. Without the
+        // testing backend that request opens a real socket, and
+        // `await fixture.whenStable()` never resolves — the spec
+        // times out and Karma disconnects.
         provideHttpClient(),
+        provideHttpClientTesting(),
         { provide: UserService, useValue: userService },
         { provide: AuthService, useValue: authService },
       ],
@@ -166,12 +176,21 @@ describe('UsersTabPageComponent (HD-014)', () => {
     expect(compiled.querySelector('header-chrome')).toBeNull();
 
     // The stat summary row replaces the old single micro-label.
+    // It is a row of clickable filter tiles — one per stat the
+    // summary reports — each exposing `data-testid="stat-<key>"`.
     const statRow = compiled.querySelector('[data-testid="users-stat-row"]');
     expect(statRow).not.toBeNull();
+    const statCards = component.statCards();
     const statValues = Array.from(
       statRow!.querySelectorAll('.stat-card__value'),
     ).map((n) => n.textContent?.trim());
-    expect(statValues).toEqual(['5', '4', '1', '2', '1']);
+    expect(statValues).toEqual(
+      statCards.map((card) => String(card.value)),
+    );
+    // 5 users, 4 of them active, 1 inactive.
+    expect(statCards.find((c) => c.key === 'total')!.value).toBe(5);
+    expect(statCards.find((c) => c.key === 'active')!.value).toBe(4);
+    expect(statCards.find((c) => c.key === 'inactive')!.value).toBe(1);
 
     const rows = compiled.querySelectorAll('.user-row');
     expect(rows.length).toBe(5);
@@ -183,7 +202,7 @@ describe('UsersTabPageComponent (HD-014)', () => {
     ).toEqual(['Avery', 'Eli Chen', 'Jordan', 'Morgan', 'Sam Patel']);
   });
 
-  it('renders the Option A column headers', async () => {
+  it('renders the Admin roster column headers', async () => {
     userService.listAll.and.resolveTo(makeUserList());
     fixture.detectChanges();
     await fixture.whenStable();
@@ -193,46 +212,43 @@ describe('UsersTabPageComponent (HD-014)', () => {
     const headers = Array.from(
       compiled.querySelectorAll('.users-table-header [role="columnheader"]'),
     ).map((n) => n.textContent?.trim());
-    // USER (identity) / ROLE / STATUS / TICKETS / LAST ACTIVE,
-    // plus a trailing empty cell for the hover-revealed actions.
     expect(headers).toEqual([
+      '#',
       'USER',
       'ROLE',
       'STATUS',
-      'TICKETS',
       'LAST ACTIVE',
-      '',
+      'JOINED',
+      'ACTIONS',
     ]);
   });
 
-  it('renders each row\'s ticket count', async () => {
+  it('renders each row\'s joined date', async () => {
     userService.listAll.and.resolveTo(makeUserList());
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
 
     const compiled = fixture.nativeElement as HTMLElement;
-    const counts = Array.from(
-      compiled.querySelectorAll('.user-row__tickets'),
+    const dates = Array.from(
+      compiled.querySelectorAll('.user-row__joined time'),
     ).map((n) => n.textContent?.trim());
-    // Avery has no ticketCount in the fixture → renders 0, and
-    // the rest carry their real counts.
-    expect(counts).toEqual(['0', '3', '34', '2', '8']);
+    expect(dates).toEqual([
+      'Sep 1, 2026', 'Sep 1, 2026', 'Sep 1, 2026', 'Sep 1, 2026', 'Sep 1, 2026',
+    ]);
   });
 
-  it('keeps the existing ticket count when a role change patches the row', async () => {
+  it('keeps the joined date when a role change patches the row', async () => {
     userService.listAll.and.resolveTo(makeUserList());
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
 
-    // The PUT /users/:id/role response does NOT carry a ticket
-    // count — it sends 0. The page must keep the count it had.
     userService.updateRole.and.resolveTo(
       baseUser(2, {
         displayName: 'Eli Chen',
         role: 'Support Agent',
-        ticketCount: 0,
+        createdAt: '2026-09-01T00:00:00.000Z',
       }),
     );
 
@@ -248,8 +264,8 @@ describe('UsersTabPageComponent (HD-014)', () => {
     fixture.detectChanges();
 
     const patched = compiled.querySelector('[data-user-id="2"]') as HTMLElement;
-    expect(patched.querySelector('.user-row__tickets')?.textContent?.trim())
-      .toBe('3');
+    expect(patched.querySelector('.user-row__joined time')?.textContent?.trim())
+      .toBe('Sep 1, 2026');
   });
 
   it('filters rows by the search term (name or email)', async () => {
@@ -288,7 +304,7 @@ describe('UsersTabPageComponent (HD-014)', () => {
     expect(compiled.querySelectorAll('.user-row').length).toBe(0);
   });
 
-  it('filters rows by role via the role chips', async () => {
+  it('filters rows by role via the role filter dropdown', async () => {
     const list = makeUserList();
     userService.listAll.and.resolveTo(list);
     fixture.detectChanges();
@@ -297,28 +313,32 @@ describe('UsersTabPageComponent (HD-014)', () => {
 
     const compiled = fixture.nativeElement as HTMLElement;
 
-    (compiled.querySelector('[data-testid="role-filter-admin"]') as HTMLElement)
-      .click();
-    fixture.detectChanges();
-    expect(
+    // The role filter is a <select> (one control for every role)
+    // rather than the old per-role chips.
+    const roleSelect = compiled.querySelector(
+      '[data-testid="users-role-filter"]',
+    ) as HTMLSelectElement;
+    expect(roleSelect).not.toBeNull();
+
+    const setRole = (value: string): void => {
+      roleSelect.value = value;
+      roleSelect.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+    };
+
+    const displayedNames = (): Array<string | undefined> =>
       Array.from(compiled.querySelectorAll('.user-row__display-name')).map(
         (n) => n.textContent?.trim(),
-      ),
-    ).toEqual(['Avery', 'Sam Patel']);
+      );
 
-    (compiled.querySelector('[data-testid="role-filter-support-agent"]') as HTMLElement)
-      .click();
-    fixture.detectChanges();
-    expect(
-      Array.from(compiled.querySelectorAll('.user-row__display-name')).map(
-        (n) => n.textContent?.trim(),
-      ),
-    ).toEqual(['Jordan']);
+    setRole('Admin');
+    expect(displayedNames()).toEqual(['Avery', 'Sam Patel']);
 
-    // Clicking the active chip again clears the filter.
-    (compiled.querySelector('[data-testid="role-filter-support-agent"]') as HTMLElement)
-      .click();
-    fixture.detectChanges();
+    setRole('Support Agent');
+    expect(displayedNames()).toEqual(['Jordan']);
+
+    // Switching back to "All roles" clears the filter.
+    setRole('all');
     expect(compiled.querySelectorAll('.user-row').length).toBe(5);
   });
 
@@ -392,7 +412,7 @@ describe('UsersTabPageComponent (HD-014)', () => {
   });
 
   describe('self-row', () => {
-    it('marks the current user row as self (3px border + disabled controls + micro-label)', async () => {
+    it('marks the current user row as self with disabled controls and a You tag', async () => {
       const list = makeUserList();
       userService.listAll.and.resolveTo(list);
       fixture.detectChanges();
@@ -411,11 +431,8 @@ describe('UsersTabPageComponent (HD-014)', () => {
         '.user-row__active-toggle',
       ) as HTMLButtonElement;
       expect(selfToggle.disabled).toBe(true);
-      const selfLabel = selfRow.querySelector(
-        '.user-row__self-micro-label',
-      );
-      expect(selfLabel?.textContent?.trim())
-        .toBe('You cannot change your own role.');
+      expect(selfRow.querySelector('.user-row__you-tag')?.textContent?.trim())
+        .toBe('You');
 
       // Non-self rows are NOT styled as self.
       const otherRow = rows[1] as HTMLElement;

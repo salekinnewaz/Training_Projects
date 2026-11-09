@@ -31,12 +31,12 @@
  *
  * LAYOUT (Option A — "Command Center")
  * ────────────────────────────────────
- *   ┌────────────────────────────────────────────────────────┐
- *   │ [8 Total] [7 Active] [1 Inactive] [1 Admins] [3 Agents]│
+ *   ┌──────────────────────────────────────────────────────┐
+ *   │ [8 Total] [7 Active] [1 Inactive] [2 Admins]           │
  *   │ [ Search… ]  [All][Employee][Support Agent][Admin]     │
  *   │ ────────────────────────────────────────────────────── │
- *   │ USER                  ROLE      STATUS  TICKETS  LAST…  │
- *   │ [AP] Avery Patel      [Admin]  ● Active     12  2m ago  │
+ *   │ #  USER             ROLE      STATUS  LAST ACTIVE JOINED│
+ *   │ 1  [AP] Avery Patel [Admin]  ● Active  2m ago  Jan 12   │
  *   │      admin@company.com                                  │
  *   └────────────────────────────────────────────────────────┘
  *
@@ -77,6 +77,7 @@ import {
   OnInit,
   computed,
   inject,
+  output,
   signal,
 } from '@angular/core';
 
@@ -95,6 +96,7 @@ type RenderState = 'loading' | 'error' | 'success';
 const ALL_ROLES = 'all';
 
 type RoleFilter = typeof ALL_ROLES | UserRole;
+type UserSort = 'recent' | 'name';
 
 interface ConfirmContext {
   readonly kind: 'role-demote' | 'admin-deactivate';
@@ -137,22 +139,27 @@ function slugifyRole(role: string): string {
           </div>
           <div class="users-table-wrap" aria-busy="true" aria-label="Loading users">
             <div class="users-table-header" aria-hidden="true">
+              <span>#</span>
               <span>USER</span>
               <span>ROLE</span>
               <span>STATUS</span>
-              <span>TICKETS</span>
               <span>LAST ACTIVE</span>
-              <span></span>
+              <span>JOINED</span>
+              <span>ACTIONS</span>
             </div>
             <ul class="users-table">
               @for (_ of skeletonArray(); track $index) {
                 <li class="user-row-skel" aria-hidden="true">
-                  <div class="bar bar-avatar"></div>
-                  <div class="bar bar-name"></div>
+                  <div class="bar bar-number"></div>
+                  <div class="user-row-skel__identity">
+                    <div class="bar bar-avatar"></div>
+                    <div class="bar bar-name"></div>
+                  </div>
                   <div class="bar bar-role"></div>
                   <div class="bar bar-status"></div>
-                  <div class="bar bar-tickets"></div>
                   <div class="bar bar-time"></div>
+                  <div class="bar bar-joined"></div>
+                  <div class="bar bar-actions"></div>
                 </li>
               }
             </ul>
@@ -187,6 +194,22 @@ function slugifyRole(role: string): string {
                 [attr.aria-pressed]="isFilterActive(card.filter)"
                 (click)="toggleRoleFilter(card.filter)"
               >
+                <span class="stat-card__icon" aria-hidden="true">
+                  @switch (card.key) {
+                    @case ('total') {
+                      <svg viewBox="0 0 24 24" focusable="false"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.5a5.5 5.5 0 0 1 11 0V19zM16 5.5a3 3 0 0 1 0 5.8M17 14a4.5 4.5 0 0 1 3.5 4.4V19h-4"/></svg>
+                    }
+                    @case ('active') {
+                      <svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="7" r="3.5"/><path d="M4 20v-1.5a8 8 0 0 1 16 0V20z"/></svg>
+                    }
+                    @case ('inactive') {
+                      <svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="8" r="3.5"/><path d="M4 20v-1a8 8 0 0 1 16 0v1z"/><path d="m18 4 3 3m0-3-3 3"/></svg>
+                    }
+                    @default {
+                      <svg viewBox="0 0 24 24" focusable="false"><path d="M12 3 20 6v5c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6z"/><path d="m9 12 2 2 4-4"/></svg>
+                    }
+                  }
+                </span>
                 <span class="stat-card__value">{{ card.value }}</span>
                 <span class="stat-card__label">{{ card.label }}</span>
               </button>
@@ -213,19 +236,43 @@ function slugifyRole(role: string): string {
               />
             </div>
 
-            <div class="users-filter-group" role="group" aria-label="Filter by role">
-              @for (opt of roleFilterOptions; track opt.value) {
-                <button
-                  type="button"
-                  class="filter-chip"
-                  [class.filter-chip--active]="roleFilter() === opt.value"
-                  [attr.aria-pressed]="roleFilter() === opt.value"
-                  [attr.data-testid]="'role-filter-' + slugifyRole(opt.value)"
-                  (click)="setRoleFilter(opt.value)"
-                >
-                  {{ opt.label }}
-                </button>
-              }
+            <div class="users-filter-group" role="group" aria-label="User filters">
+              <select
+                class="users-filter-select"
+                aria-label="Filter users by role"
+                [value]="roleFilter()"
+                data-testid="users-role-filter"
+                (change)="onRoleFilterSelect($event)"
+              >
+                @for (opt of roleFilterOptions; track opt.value) {
+                  <option [value]="opt.value">{{ opt.label }}</option>
+                }
+              </select>
+              <select
+                class="users-filter-select"
+                aria-label="Filter users by status"
+                [value]="statusFilter()"
+                data-testid="users-status-filter"
+                (change)="onStatusFilterSelect($event)"
+              >
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+              <select
+                class="users-filter-select users-filter-select--sort"
+                aria-label="Sort users"
+                [value]="sortOrder()"
+                data-testid="users-sort"
+                (change)="onSortSelect($event)"
+              >
+                <option value="recent">Recently active</option>
+                <option value="name">Name A–Z</option>
+              </select>
+              <button class="users-export" type="button" (click)="exportUsers()">
+                <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M10 2v10m0 0 4-4m-4 4L6 8M3 13v4h14v-4"/></svg>
+                Export
+              </button>
             </div>
           </div>
 
@@ -243,17 +290,19 @@ function slugifyRole(role: string): string {
           } @else {
             <div class="users-table-wrap">
               <div class="users-table-header" role="row">
+                <span role="columnheader">#</span>
                 <span role="columnheader">USER</span>
                 <span role="columnheader">ROLE</span>
                 <span role="columnheader">STATUS</span>
-                <span role="columnheader">TICKETS</span>
                 <span role="columnheader">LAST ACTIVE</span>
-                <span role="columnheader"></span>
+                <span role="columnheader">JOINED</span>
+                <span role="columnheader">ACTIONS</span>
               </div>
               <ul class="users-table" role="rowgroup">
-                @for (u of filteredUsers(); track u.id) {
+                @for (u of filteredUsers(); track u.id; let i = $index) {
                   <user-row
                     [user]="u"
+                    [rowNumber]="i + 1"
                     [isSelf]="u.id === currentUserId()"
                     [isUpdating]="isUpdating(u.id)"
                     [errorMessage]="rowError(u.id)"
@@ -264,6 +313,10 @@ function slugifyRole(role: string): string {
                 }
               </ul>
             </div>
+            <footer class="users-table-footer" aria-live="polite">
+              Showing {{ filteredUsers().length === 0 ? 0 : 1 }}–{{ filteredUsers().length }}
+              of {{ users().length }} users
+            </footer>
           }
         }
       }
@@ -301,12 +354,16 @@ export class UsersTabPageComponent implements OnInit {
   readonly updatingIds = signal<Set<number>>(new Set());
   readonly rowErrors = signal<Record<number, string>>({});
   readonly confirmCtx = signal<ConfirmContext | null>(null);
+  readonly usersCountChanged = output<number>();
 
   /** The live search term. Bound to the toolbar's search input. */
   readonly searchQuery = signal('');
 
   /** The live role filter. `ALL_ROLES` means "no filter". */
   readonly roleFilter = signal<RoleFilter>(ALL_ROLES);
+  /** Active and inactive are independent of the role filter. */
+  readonly statusFilter = signal<'all' | 'active' | 'inactive'>('all');
+  readonly sortOrder = signal<UserSort>('recent');
 
   /**
    * The current user's id. Used to compute `isSelf` for each row.
@@ -349,7 +406,7 @@ export class UsersTabPageComponent implements OnInit {
   readonly slugifyRole = slugifyRole;
 
   /**
-   * The five stat cards. Each carries the counts for the whole
+   * The four stat cards. Each carries the counts for the whole
    * team (not the filtered view) so the summary stays stable
    * while the Admin narrows the list — the filtered count is
    * reported separately in the toolbar.
@@ -360,9 +417,7 @@ export class UsersTabPageComponent implements OnInit {
     value: number;
     filter: RoleFilter | 'none' | 'active' | 'inactive';
     /**
-     * The colour accent for the tile's number. Option A colours
-     * the value so each tile reads at a glance: green = healthy,
-     * grey = inactive, amber = Admin, indigo = Support Agent.
+   * The colour accent for the tile's value and icon.
      */
     tone: 'plain' | 'ok' | 'off' | 'adm' | 'agt';
   }[]>(() => {
@@ -396,19 +451,12 @@ export class UsersTabPageComponent implements OnInit {
         filter: 'Admin',
         tone: 'adm',
       },
-      {
-        key: 'agents',
-        label: 'Support agents',
-        value: list.filter((u) => u.role === 'Support Agent').length,
-        filter: 'Support Agent',
-        tone: 'agt',
-      },
     ];
   });
 
   /**
    * The rows actually rendered: the user's list narrowed by the
-   * search term and the role filter.
+   * search term, role and status filters, then sorted.
    *
    * The search matches display name OR email, case-insensitively.
    */
@@ -416,14 +464,26 @@ export class UsersTabPageComponent implements OnInit {
     const list = this.users();
     const q = this.searchQuery().trim().toLowerCase();
     const role = this.roleFilter();
+    const status = this.statusFilter();
 
-    return list.filter((u) => {
+    const matches = list.filter((u) => {
       if (role !== ALL_ROLES && u.role !== role) return false;
+      if (status === 'active' && !u.isActive) return false;
+      if (status === 'inactive' && u.isActive) return false;
       if (!q) return true;
       return (
         u.displayName.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q)
+        u.email.toLowerCase().includes(q) ||
+        u.role.toLowerCase().includes(q)
       );
+    });
+    return matches.sort((a, b) => {
+      if (this.sortOrder() === 'name') {
+        return a.displayName.localeCompare(b.displayName);
+      }
+      const aActive = a.lastActiveAt ? new Date(a.lastActiveAt).getTime() : 0;
+      const bActive = b.lastActiveAt ? new Date(b.lastActiveAt).getTime() : 0;
+      return bActive - aActive || a.displayName.localeCompare(b.displayName);
     });
   });
 
@@ -466,41 +526,76 @@ export class UsersTabPageComponent implements OnInit {
     this.roleFilter.set(this.roleFilter() === role ? ALL_ROLES : role);
   }
 
+  onRoleFilterSelect(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    if (value === ALL_ROLES || value === 'User' || value === 'Support Agent' || value === 'Admin') {
+      this.roleFilter.set(value);
+    }
+  }
+
+  onStatusFilterSelect(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    if (value === 'all' || value === 'active' || value === 'inactive') {
+      this.statusFilter.set(value);
+    }
+  }
+
+  onSortSelect(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    if (value === 'recent' || value === 'name') this.sortOrder.set(value);
+  }
+
+  exportUsers(): void {
+    const columns = ['Name', 'Email', 'Role', 'Status', 'Last active', 'Joined'];
+    const rows = this.filteredUsers().map((u) => [
+      u.displayName,
+      u.email,
+      u.role,
+      u.isActive ? 'Active' : 'Inactive',
+      u.lastActiveAt ?? '',
+      u.createdAt,
+    ]);
+    const escape = (value: string) => `"${value.replaceAll('"', '""')}"`;
+    const csv = [columns, ...rows].map((row) => row.map(escape).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'helpdesk-users.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   /**
-   * The stat cards act as filter shortcuts. Clicking a card
-   * toggles the matching role filter on and off; clicking the
-   * "Total users" card clears every filter.
+   * The stat cards act as role and status filter shortcuts.
+   * Clicking Total users clears the roster filters and search.
    */
   toggleRoleFilter(filter: RoleFilter | 'none' | 'active' | 'inactive'): void {
     if (filter === 'none') {
       this.roleFilter.set(ALL_ROLES);
+      this.statusFilter.set('all');
+      this.searchQuery.set('');
       return;
     }
     if (filter === 'active' || filter === 'inactive') {
-      // Status filters are not part of the role filter, so the
-      // card simply clears the role filter and leaves the status
-      // narrowing to the table itself. Clicking it again is a
-      // no-op — the cards are role shortcuts, not status filters.
-      this.roleFilter.set(ALL_ROLES);
+      this.statusFilter.set(this.statusFilter() === filter ? 'all' : filter);
       return;
     }
     this.roleFilter.set(this.roleFilter() === filter ? ALL_ROLES : filter);
   }
 
   /**
-   * Whether a stat card's filter is currently applied. Only the
-   * role cards can be "active"; the count cards are informational.
+   * Whether a role or status filter card is currently applied.
    */
   isFilterActive(filter: RoleFilter | 'none' | 'active' | 'inactive'): boolean {
-    if (filter === 'none' || filter === 'active' || filter === 'inactive') {
-      return false;
-    }
+    if (filter === 'none') return false;
+    if (filter === 'active' || filter === 'inactive') return this.statusFilter() === filter;
     return this.roleFilter() === filter;
   }
 
   clearFilters(): void {
     this.searchQuery.set('');
     this.roleFilter.set(ALL_ROLES);
+    this.statusFilter.set('all');
   }
 
   /**
@@ -630,6 +725,7 @@ export class UsersTabPageComponent implements OnInit {
     try {
       const data = await this.userService.listAll();
       this.users.set(data);
+      this.usersCountChanged.emit(data.length);
       this.renderState.set('success');
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {

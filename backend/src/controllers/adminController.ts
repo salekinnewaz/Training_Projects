@@ -165,6 +165,31 @@ export const getDashboardHandler = asyncHandler(
  *   }
  *
  * Admin only — the same inline gate as `getDashboardHandler`.
+ *
+ * @openapi
+ * /admin/workspace:
+ *   get:
+ *     summary: Admin Workspace dashboard bundle
+ *     description: |
+ *       Returns the six widgets of the WDS-2026 Admin Workspace in
+ *       ONE response — the summary counters, the Recent Tickets
+ *       rows, the Users Overview breakdown, the Priority
+ *       distribution, the Ticket Trends series and the Recent
+ *       Users. They always render together, so a partial render
+ *       would be a worse UX than a single failure state. Admin
+ *       only.
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: The Admin Workspace bundle.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AdminWorkspaceResponse'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  */
 export const getWorkspaceHandler = asyncHandler(
   async (req: Request, res: Response) => {

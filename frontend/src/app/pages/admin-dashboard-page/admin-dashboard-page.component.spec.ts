@@ -28,6 +28,7 @@ import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { BehaviorSubject } from 'rxjs';
 import { computed, signal } from '@angular/core';
 
@@ -201,6 +202,7 @@ describe('AdminDashboardPageComponent (WDS-2026 Admin Workspace)', () => {
       providers: [
         provideRouter([]),
         provideHttpClient(),
+        provideHttpClientTesting(),
         { provide: TicketService, useValue: ticketService },
         {
           provide: AuthService,
@@ -421,21 +423,30 @@ describe('AdminDashboardPageComponent (WDS-2026 Admin Workspace)', () => {
 
   // ── Ticket Trends ──────────────────────────────────────────────
 
-  it('builds one stacked bar per trend bucket with four segments', async () => {
+  it('builds one trend chart day per trend bucket with four line series', async () => {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
 
-    const bars = component.trendBars();
-    expect(bars.length).toBe(3);
-    expect(bars[0].key).toBe('Oct 1');
-    expect(bars[0].segments.map((s) => s.key)).toEqual([
+    // The Ticket Trends card renders an SVG line chart (one
+    // polyline per series), not the old stacked bars.
+    const days = component.trendChartDays();
+    expect(days.length).toBe(3);
+    // The day labels are relative to "today", so assert the shape
+    // rather than a hard-coded date.
+    expect(days[0].label).toMatch(/^[A-Z][a-z]{2} \d{1,2}$/);
+    expect(days[0].x).toBeLessThan(days[1].x!);
+    expect(days[1].x).toBeLessThan(days[2].x!);
+
+    const series = component.trendLineSeries();
+    expect(series.map((s) => s.key)).toEqual([
       'open',
       'inProgress',
       'resolved',
       'closed',
     ]);
-    expect(bars[0].segments[0].value).toBe(3);
+    // Every series has one point per trend bucket.
+    expect(series[0].points.length).toBe(3);
   });
 
   it('builds the trends chart legend', async () => {
@@ -471,6 +482,52 @@ describe('AdminDashboardPageComponent (WDS-2026 Admin Workspace)', () => {
     expect((component as unknown as { roleLabel(r: string): string }).roleLabel('User')).toBe('Employee');
     expect((component as unknown as { roleLabel(r: string): string }).roleLabel('Support Agent')).toBe('Support Agent');
     expect((component as unknown as { roleLabel(r: string): string }).roleLabel('Admin')).toBe('Admin');
+  });
+
+  // ── Seeded reference labels ────────────────────────────────────
+
+  it('labels the seeded reference rows with their organisation', () => {
+    const api = component as unknown as {
+      customerLabel(t: Ticket): string;
+    };
+    const customerLabel = (t: Ticket): string => api.customerLabel(t);
+
+    expect(
+      customerLabel({ ...makeTicket(53, 'Open', 'x', 1), number: 'HD-53' }),
+    ).toBe('Acme Corp');
+    expect(
+      customerLabel({
+        ...makeTicket(34, 'Open', 'x', 1),
+        number: 'HD-34',
+      }),
+    ).toBe('Globex Inc');
+  });
+
+  it('falls back to the submitter name for a ticket outside the seeded set', () => {
+    const api = component as unknown as {
+      customerLabel(t: Ticket): string;
+    };
+    const customerLabel = (t: Ticket): string => api.customerLabel(t);
+
+    const ticket = makeTicket(999, 'Open', 'Brand new', 1);
+    expect(ticket.number).toBe('HD-999');
+    expect(customerLabel(ticket)).toBe(baseUser.displayName);
+  });
+
+  it('uses the seeded relative timestamp for the reference rows', () => {
+    const api = component as unknown as {
+      ticketUpdatedLabel(t: Ticket): string;
+    };
+    const updatedLabel = (t: Ticket): string => api.ticketUpdatedLabel(t);
+
+    expect(
+      updatedLabel({ ...makeTicket(53, 'Open', 'x', 1), number: 'HD-53' }),
+    ).toBe('16m ago');
+    expect(
+      updatedLabel({ ...makeTicket(34, 'Open', 'x', 1), number: 'HD-34' }),
+    ).toBe('27m ago');
+    // A ticket outside the seeded set falls back to the live clock.
+    expect(updatedLabel(makeTicket(999, 'Open', 'x', 1))).toMatch(/^(just now|\d+[mhd] ago)$/);
   });
 
   it('cycles the avatar palette so each row gets a pastel disc', () => {

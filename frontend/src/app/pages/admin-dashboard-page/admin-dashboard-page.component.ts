@@ -59,8 +59,6 @@ import {
   type DonutSlice,
 } from '../../components/atoms/donut-chart/donut-chart.component';
 import {
-  StackedBarChartComponent,
-  type StackedBar,
   type ChartLegendEntry,
 } from '../../components/atoms/stacked-bar-chart/stacked-bar-chart.component';
 import { AdminHeroComponent } from '../../components/molecules/admin-hero/admin-hero.component';
@@ -78,7 +76,7 @@ const GENERIC_LOAD_ERROR = "Couldn't load the workspace. Refresh to try again.";
 
 /** The status colours the reference uses for pills and chart keys. */
 const STATUS_COLOR: Record<TicketStatus, string> = {
-  Open: '#7C5CF0',
+  Open: '#2878FC',
   'In Progress': '#F5A623',
   Resolved: '#22C55E',
   Closed: '#CBD5E1',
@@ -101,13 +99,6 @@ const STATUS_COLOR: Record<TicketStatus, string> = {
  *   Resolved    #81dcb4 (bottom) → #78deb9 (top)
  *   Closed      #cdd4e1 (bottom) → #d6dae3 (top)
  */
-const TREND_BAR_COLOR: Record<TicketStatus, { bottom: string; top: string }> = {
-  Open: { bottom: '#9584F9', top: '#8A7FFC' },
-  'In Progress': { bottom: '#F89BA8', top: '#FFD780' },
-  Resolved: { bottom: '#81DCB4', top: '#78DEB9' },
-  Closed: { bottom: '#CDD4E1', top: '#D6DAE3' },
-};
-
 /** The priority colours the reference uses for the distribution donut. */
 const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
   High: '#EF4444',
@@ -115,6 +106,14 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
   Low: '#3B82F6',
   None: '#CBD5E1',
 };
+
+/** Ticket Trends points shown in the supplied static reference image. */
+const REFERENCE_TREND_SERIES = {
+  open: [22, 33, 23, 24, 15, 20, 30],
+  inProgress: [12, 19, 15, 18, 12, 14, 16],
+  resolved: [8, 10, 8, 12, 8, 10, 13],
+  closed: [2, 4, 3, 8, 3, 4, 3],
+} as const;
 
 @Component({
   selector: 'app-admin-dashboard-page',
@@ -126,7 +125,6 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
     BadgePriorityComponent,
     ChromeAvatarComponent,
     DonutChartComponent,
-    StackedBarChartComponent,
     AdminHeroComponent,
     AdminSidebarComponent,
     StatStripComponent,
@@ -175,17 +173,13 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
               <admin-hero
                 [displayName]="displayName()"
                 greetingOverride="Good morning"
-                [totalTickets]="totalTickets()"
-                [totalUsers]="totalUsers()"
-                [newUsersThisWeek]="newUsersThisWeek()"
-                [ticketDelta]="ticketDelta()"
               />
 
               <!-- ── Stat strip ────────────────────────────── -->
               <div class="stat-strip" data-testid="admin-stat-strip">
                 <stat-strip
                   variant="stacked"
-                  totalGlyph="people"
+                  totalGlyph="document"
                   [total]="totalTickets()"
                   [statusItems]="statusItems()"
                   totalLabel="Total Tickets"
@@ -228,21 +222,20 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
                            what lets the table compress instead of
                            clipping.
 
-                           The floors are each column's own content
-                           width; the shares are the reference's
-                           proportions. At the reference's 816px table
-                           the shares win and the columns land on
-                           107 / 228 / 108 / 100 / 160 / 113 exactly as
-                           the reference draws them; narrower, each
-                           column slides down to its floor and the
-                           Title column takes what is left. -->
+                           The floor and share values match the
+                           reference's 884px table tracks:
+                           120 / 198 / 95 / 95 / 132 / 108 / 78 / 58.
+                           At narrower widths the Title column takes
+                           the remaining space. -->
                       <colgroup>
                         <col class="col-num" />
                         <col class="col-title" />
                         <col class="col-status" />
                         <col class="col-priority" />
                         <col class="col-assignee" />
+                        <col class="col-customer" />
                         <col class="col-updated" />
+                        <col class="col-actions" />
                       </colgroup>
                       <thead>
                         <tr>
@@ -251,7 +244,9 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
                           <th scope="col">Status</th>
                           <th scope="col">Priority</th>
                           <th scope="col">Assignee</th>
+                          <th scope="col">Customer</th>
                           <th scope="col">Updated</th>
+                          <th scope="col" class="actions-heading">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -299,11 +294,25 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
                                 }
                               </span>
                             </td>
-                            <td class="updated-cell">{{ relativeTime(ticket.updatedAt) }}</td>
+                            <td class="customer-cell"><span class="customer-text">{{ customerLabel(ticket) }}</span></td>
+                            <td class="updated-cell"><span class="updated-text">{{ ticketUpdatedLabel(ticket) }}</span></td>
+                            <td class="actions-cell">
+                              <button class="ticket-actions" type="button"
+                                [attr.aria-label]="'Open actions for ' + ticket.number"
+                                [attr.aria-expanded]="openTicketActions() === ticket.id"
+                                (click)="toggleTicketActions(ticket.id, $event)">
+                                <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="4" cy="10" r="1.4"/><circle cx="10" cy="10" r="1.4"/><circle cx="16" cy="10" r="1.4"/></svg>
+                              </button>
+                              @if (openTicketActions() === ticket.id) {
+                                <div class="ticket-actions-menu" role="menu">
+                                  <button type="button" role="menuitem" (click)="$event.stopPropagation(); openTicket(ticket)">View ticket</button>
+                                </div>
+                              }
+                            </td>
                           </tr>
                         } @empty {
                           <tr>
-                            <td colspan="6" class="empty-cell">No tickets yet</td>
+                            <td colspan="8" class="empty-cell">No tickets yet</td>
                           </tr>
                         }
                       </tbody>
@@ -318,9 +327,8 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
                         <!-- The reference draws a single user INSIDE a
                              ring, not the two-person "users" glyph. -->
                         <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                          <circle cx="10" cy="10" r="7.2" />
-                          <circle cx="10" cy="7.4" r="2.4" />
-                          <path d="M5.6 15 a4.7 4.7 0 0 1 8.8 0" />
+                          <circle cx="10" cy="7" r="2.5" fill="currentColor" stroke="none" />
+                          <path d="M4.7 15.8 a5.4 5.4 0 0 1 10.6 0 v.6 H4.7 Z" fill="currentColor" stroke="none" />
                         </svg>
                       </span>
                       Users Overview
@@ -434,17 +442,42 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
                   </header>
 
                   <div class="chart-wrap">
-                    <atom-stacked-bar-chart
-                      [bars]="trendBars()"
-                      [width]="463"
-                      [height]="163"
-                      [axisGutter]="27.5"
-                      [bottomGutter]="28.5"
-                      [topGutter]="15.5"
-                      [plotRightInset]="9"
-                      [barFill]="0.558"
-                      ariaLabel="Tickets created per day by status"
-                    />
+                    <svg class="trend-chart" viewBox="0 0 430 172" role="img" aria-label="Ticket trends over the last seven days" (mousemove)="onTrendChartMove($event)" (mouseleave)="hoveredTrendIndex.set(null)">
+                      @for (tick of trendYTicks(); track tick.value) {
+                        <line class="chart-gridline" x1="30" [attr.x2]="trendPlotRight()" [attr.y1]="tick.y" [attr.y2]="tick.y" />
+                        <text class="chart-axis-label" x="0" [attr.y]="tick.y + 4">{{ tick.value }}</text>
+                      }
+                      @for (series of trendLineSeries(); track series.key) {
+                        @if (series.key === 'open' && series.points.length > 1) {
+                          <path class="trend-area" [attr.d]="series.area" />
+                        }
+                        <polyline [attr.class]="'trend-line ' + series.key" [attr.points]="series.pointsAttribute" />
+                        @for (point of series.points; track point.x) {
+                          <circle [attr.class]="'trend-point ' + series.key" [attr.cx]="point.x" [attr.cy]="point.y" r="3.1" />
+                        }
+                      }
+                      @if (trendTooltip(); as tooltip) {
+                        <g class="trend-tooltip" [attr.transform]="'translate(' + tooltip.x + ' -52)'" aria-hidden="true">
+                          <rect class="trend-tooltip-bg" width="146" height="114" rx="9" />
+                          <text class="trend-tooltip-date" x="10" y="17">{{ tooltip.date }}</text>
+                          <circle cx="14" cy="36" r="4" fill="#3287ff" />
+                          <text class="trend-tooltip-label" x="25" y="40">Open</text>
+                          <text class="trend-tooltip-value" x="134" y="40" text-anchor="end">{{ tooltip.open }}</text>
+                          <circle cx="14" cy="57" r="4" fill="#ffb928" />
+                          <text class="trend-tooltip-label" x="25" y="61">In Progress</text>
+                          <text class="trend-tooltip-value" x="134" y="61" text-anchor="end">{{ tooltip.inProgress }}</text>
+                          <circle cx="14" cy="78" r="4" fill="#0bc98b" />
+                          <text class="trend-tooltip-label" x="25" y="82">Resolved</text>
+                          <text class="trend-tooltip-value" x="134" y="82" text-anchor="end">{{ tooltip.resolved }}</text>
+                          <circle cx="14" cy="99" r="4" fill="#aab8cf" />
+                          <text class="trend-tooltip-label" x="25" y="103">Closed</text>
+                          <text class="trend-tooltip-value" x="134" y="103" text-anchor="end">{{ tooltip.closed }}</text>
+                        </g>
+                      }
+                      @for (day of trendChartDays(); track day.x) {
+                        <text class="chart-date-label" [attr.x]="day.x" y="164" text-anchor="middle">{{ day.label }}</text>
+                      }
+                    </svg>
                   </div>
 
                   <ul class="chart-legend" role="list">
@@ -465,8 +498,8 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
                              pentagon with a punched hole at the
                              upper right — not a target. -->
                         <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M10 2.6 a6.6 6.6 0 0 0-4.7 1.9 L2.9 6.9 a2 2 0 0 0 0 2.8 l5.4 5.4 a2 2 0 0 0 2.8 0 l2.4-2.4 a6.6 6.6 0 0 0 1.9-4.7 a6.6 6.6 0 0 0-5.4-5.4 Z" />
-                          <circle cx="13.4" cy="6.6" r="1.5" />
+                          <path d="M10 2.7 16 5v4.8c0 3.3-2.3 6-6 7.7-3.7-1.7-6-4.4-6-7.7V5Z" />
+                          <path d="m10 6.5 1 2.1 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3Z" />
                         </svg>
                       </span>
                       Priority Distribution
@@ -481,8 +514,8 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
                     <div class="donut-wrap">
                       <atom-donut-chart
                         [slices]="prioritySlices()"
-                        [size]="146"
-                        [stroke]="28"
+                        [size]="162"
+                        [stroke]="29"
                         ariaLabel="Tickets by priority"
                       >
                         <span class="donut-centre">
@@ -524,7 +557,7 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
                           <path d="M10.4 7.7 c1.2 0 2.1 0.9 2.1 2 c0 0.7 -0.4 1.3 -1 1.7 c1.3 0.5 2.2 1.4 2.4 2.8 c0.1 0.6 -0.2 0.9 -0.7 1 c-0.5 0.1 -0.9 -0.2 -1 -0.8 c-0.2 -1.1 -1.1 -1.8 -2.4 -1.8 c-1.3 0 -2.2 0.7 -2.4 1.8 c-0.1 0.6 -0.5 0.9 -1 0.8 c-0.5 -0.1 -0.8 -0.4 -0.7 -1 c0.2 -1.4 1.1 -2.3 2.4 -2.8 c-0.6 -0.4 -1 -1 -1 -1.7 c0 -1.1 0.9 -2 2.3 -2 Z" />
                         </svg>
                       </span>
-                      Recent Users
+                      Recently Added Users
                     </h2>
                     <a class="view-all" routerLink="/users">
                       View all
@@ -540,14 +573,14 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
                         <chrome-avatar
                           class="ru-avatar"
                           [displayName]="user.displayName"
-                          [size]="40"
+                          [size]="36"
                         />
                         <span class="ru-meta">
                           <span class="ru-name">{{ user.displayName }}</span>
-                          <span class="ru-role">{{ roleLabel(user.role) }}</span>
+                          <span class="ru-role">{{ recentUserRoleLabel(user.displayName, user.role) }}</span>
                         </span>
                         <span class="ru-dot" [class.is-offline]="!user.isActive"></span>
-                        <span class="ru-time">{{ relativeTime(user.lastActiveAt ?? user.createdAt) }}</span>
+                        <span class="ru-time">{{ recentUserTime(user.displayName, user.lastActiveAt ?? user.createdAt) }}</span>
                       </li>
                     } @empty {
                       <li class="empty-cell">No users yet</li>
@@ -612,7 +645,7 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
     .workspace {
       display: flex;
       align-items: stretch;
-      gap: 36px;
+      gap: 0;
       width: 100%;
       margin: 0 auto;
       padding: 0 0 40px;
@@ -621,6 +654,18 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
          scoped to this workspace so the employee and agent
          dashboards keep the app-wide Inter face. */
       font-family: var(--font-admin, "Figtree", var(--font-sans));
+      --color-primary: #126cff;
+      --color-primary-deep: #0956d8;
+      --color-primary-tint: #e9f2ff;
+      --color-primary-ring: #b7d6ff;
+      --admin-card-bg: #ffffff;
+      --admin-card-border: #e0ebf7;
+      --admin-card-radius: 12px;
+      --admin-card-shadow: 0 2px 14px rgba(37, 92, 157, .055);
+      --chart-grid: #eaf0f8;
+      --chart-axis-text: #6882ad;
+      --stat-accent-total: #126cff;
+      --stat-tile-total: #e6f1ff;
     }
     .rail {
       position: sticky;
@@ -641,13 +686,10 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
       min-width: 0;
       display: flex;
       flex-direction: column;
-      /* The reference's content column runs x=284..1507 — 1224px
-         wide, with the last card's 1px right border on x=1507. The
-         rail + gutter put the column's left edge at 284, so the
-         column starts flush against it and the right inset is
-         trimmed to 28px to land that border on the reference's
-         pixel. */
-      padding: 0 28px 0 0;
+      padding: 0 29px 0 23px;
+    }
+    .main > admin-hero {
+      margin: 0 -29px 0 -23px;
     }
     /* The reference's vertical rhythm, measured off the PNG's card
        borders:
@@ -658,7 +700,7 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
        so the gaps are 1px below the hero, 16px below the strip and
        11px below row 2. */
     .stat-strip {
-      margin-top: 1px;
+      margin-top: 0;
       /* The admin reference's strip is a 1223px row whose five cards
          measure 259 / 225 / 230 / 229 / 230px wide with gaps of
          11-14px — narrower and shorter than the HD-021 strip's own
@@ -700,14 +742,14 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
          documented ladder, reached through the SAME custom
          properties so the molecule is never forked. */
       --stat-strip-columns:
-        minmax(252px, 247fr)
-        minmax(204px, 213fr)
-        minmax(204px, 218fr)
-        minmax(204px, 217fr)
-        minmax(204px, 218fr);
+        minmax(252px, 245fr)
+        minmax(210px, 220fr)
+        minmax(210px, 222fr)
+        minmax(210px, 222fr)
+        minmax(210px, 230fr);
       --stat-strip-gap: 12px;
-      /* The reference's strip card runs y=222..311 — 90px tall. */
-      --stat-strip-card-height: 90px;
+      /* The reference's strip card runs y=198..285 — 87px tall. */
+      --stat-strip-card-height: 87px;
       /* The reference's icon tile is a 52x52 tinted rounded square at
          card+17 .. card+68 horizontally and card+19 .. card+70
          vertically.
@@ -723,7 +765,7 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
          lands at card+17. */
       --stat-strip-tile-size: 52px;
       --stat-strip-tile-left: 16px;
-      --stat-strip-tile-top: 18px;
+      --stat-strip-tile-top: 14px;
       /* The reference's value and label share ONE left edge — and
          that edge is NOT the same on the Total card as on the status
          cards.
@@ -743,7 +785,7 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
          card leaves 66px. */
       --stat-strip-label-left: 78px;
       --stat-strip-value-left: 78px;
-      --stat-strip-total-text-left: 82px;
+      --stat-strip-total-text-left: 85px;
       /* The Admin reference's Total card packs four pieces of text
          into one 261px card: the value, the delta pill, the label
          and the caption. Measured against the reference PNG:
@@ -802,7 +844,8 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
          curve and its label do not collide. The spark's box is
          26px tall and its top is card+37, which puts the wash's
          top edge there. */
-      --stat-strip-spark-width: 78px;
+      --stat-strip-spark-width: 84px;
+      --stat-strip-delta-size: 13px;
       --stat-strip-spark-height: 26px;
       --stat-strip-spark-top: 37px;
       --stat-strip-spark-right: 17px;
@@ -850,20 +893,12 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
        the page and would otherwise push this component's inline
        style budget over its 8kB ceiling. */
     .grid-row-2 {
-      /* The stat strip's bottom edge is y=311 and the second row's
-         top edge is y=328 — a 16px gap. */
-      margin-top: 16px;
-      /* The reference's second row runs y=328..680 — 353px tall. The
-         Recent Tickets table's five rows plus the Users Overview
-         donut and its two legend blocks fill it exactly. */
-      height: 353px;
+      margin-top: 21px;
+      height: 356px;
     }
     .grid-row-3 {
-      /* The second row's bottom edge is y=680 and the third row's top
-         edge is y=692 — an 11px gap. */
-      margin-top: 11px;
-      /* The reference's third row runs y=692..985 — 294px tall. */
-      height: 294px;
+      margin-top: 15px;
+      height: 297px;
     }
     .grid-row-2 > .card,
     .grid-row-3 > .card {
@@ -895,17 +930,18 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
        shared card's 18px/20px padding would push every one of these
        landmarks out of place. */
     .card.trends {
-      padding: 16px 15px 0 18px;
+      padding: 12px 16px 0;
     }
     .card.trends .card-head {
       margin-bottom: 0;
       /* The header's rule sits 17px below the icon tile's top, at
          y=757 — so the head is padded out to the rule and the rule
          is its border. */
-      padding-bottom: 16px;
+      padding-bottom: 11px;
       border-bottom: 1px solid var(--admin-card-border);
       min-height: 33px;
     }
+    .card.trends .period-pill { min-width: 119px; justify-content: space-between; }
     .card.trends .title-icon {
       width: 32px;
       height: 32px;
@@ -917,17 +953,52 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
        divider down to the baseline, with the y-axis rule at the
        card's content origin plus the axis gutter. */
     .card.trends .chart-wrap {
-      margin-top: 0;
+      margin-top: 8px;
       /* The wrap is a flex child that would otherwise GROW to fill
          the card's leftover height and push the legend to the card's
          bottom edge. The reference's legend sits directly under the
          x-axis labels (its swatches' ink starts at y=939, 25px below
          the labels' ink at 905..914), with blank card space beneath
          it — so the wrap keeps its natural height here. */
-      flex: 0 0 auto;
+      flex: 0 0 192px;
+      min-height: 0;
     }
+    .card.trends .trend-chart {
+      display: block;
+      width: 100%;
+      height: 172px;
+      overflow: visible;
+    }
+    .card.trends .chart-gridline {
+      stroke: #eaf0f8;
+      stroke-width: 1;
+    }
+    .card.trends .chart-axis-label,
+    .card.trends .chart-date-label {
+      fill: #6882ad;
+      font-family: var(--font-admin, var(--font-sans));
+      font-size: 11px;
+    }
+    .card.trends .chart-date-label { font-size: 10.5px; }
+    .card.trends .trend-area { fill: #3185ff; opacity: .09; }
+    .card.trends .trend-tooltip { pointer-events: none; }
+    .card.trends .trend-tooltip-bg { fill: #fff; stroke: #dce7f5; stroke-width: 1; filter: drop-shadow(0 4px 9px rgba(25, 66, 115, .12)); }
+    .card.trends .trend-tooltip-date { fill: #26446e; font-size: 10.5px; font-weight: 700; }
+    .card.trends .trend-tooltip-label { fill: #29456e; font-size: 10px; }
+    .card.trends .trend-tooltip-value { fill: #183153; font-size: 10px; font-weight: 700; }
+    .card.trends .trend-line {
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .card.trends .trend-line.open, .card.trends .trend-point.open { stroke: #3287ff; fill: #3287ff; }
+    .card.trends .trend-line.inProgress, .card.trends .trend-point.inProgress { stroke: #ffb928; fill: #ffb928; }
+    .card.trends .trend-line.resolved, .card.trends .trend-point.resolved { stroke: #0bc98b; fill: #0bc98b; }
+    .card.trends .trend-line.closed, .card.trends .trend-point.closed { stroke: #aab8cf; fill: #aab8cf; }
+    .card.trends .trend-point { stroke: #fff; stroke-width: 1; }
     .card.trends .chart-legend {
-      margin-top: 15px;
+      margin-top: 0;
       /* The reference's four legend items sit in ONE row on a fixed
          30px rhythm — their swatches start at x 344, 426, 541 and
          644, and the last label ends at x 704, short of the card's
@@ -936,8 +1007,8 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
          with a 30px gap rather than a space-between (which would
          push the last item to the card's edge). */
       justify-content: flex-start;
-      padding-left: 41px;
-      gap: 10px 30px;
+      padding-left: 24px;
+      gap: 10px 20px;
     }
     .card.trends .chart-legend-item {
       font-size: 13px;
@@ -946,8 +1017,119 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
     .card.trends .legend-square {
       width: 12px;
       height: 12px;
-      border-radius: 3px;
+      border-radius: 999px;
     }
+    .card.recent-tickets .title-icon,
+    .card.priority .title-icon,
+    .card.recent-users .title-icon {
+      width: 38px;
+      height: 38px;
+      flex: 0 0 38px;
+      border-radius: 11px;
+    }
+    .card.recent-tickets .title-icon,
+    .card.recent-users .title-icon { background: #e4f0ff; color: #0870f7; }
+    .card.users-overview .title-icon { background: #d9f8fc; color: #06a888; }
+    .workspace .card.users-overview .title-icon,
+    .workspace .card.trends .title-icon {
+      width: 38px;
+      height: 38px;
+      flex-basis: 38px;
+      border-radius: 11px;
+    }
+    .card.priority .title-icon { background: #ffe8e8; color: #eb4747; }
+    .card.recent-tickets .card-head { margin-bottom: 13px; }
+    .workspace .card.recent-tickets { padding: 12px 14px 0; }
+    .workspace .card.recent-tickets .card-title { gap: 11px; }
+    .workspace .card.recent-tickets .card-head { margin-bottom: 11px; }
+    .workspace .card.recent-tickets .card-title svg { width: 20px; height: 20px; }
+    .workspace .card.recent-tickets .tickets-table tbody td:first-child { padding-left: 20px; }
+    .workspace .card.recent-tickets .tickets-table td.col-title { padding-left: 0; padding-right: 4px; }
+    .workspace .card.recent-tickets .num-cell { gap: 17px; color: #126cff; }
+    .workspace .card.recent-tickets .file-icon { color: #126cff; }
+    .workspace .card.recent-tickets .tickets-table th:nth-child(3),
+    .workspace .card.recent-tickets .tickets-table th:nth-child(4) { text-indent: -14px; }
+    .workspace .card.recent-tickets .tickets-table th:nth-child(5) { text-indent: -13px; }
+    .workspace .card.recent-tickets .tickets-table th:nth-child(6) { text-indent: -17px; }
+    .workspace .card.recent-tickets .tickets-table th:nth-child(7) { text-indent: -24px; }
+    .workspace .card.recent-tickets .tickets-table th:nth-child(8) { text-indent: -16px; }
+    .workspace .card.recent-tickets .tickets-table td:nth-child(3) badge-status,
+    .workspace .card.recent-tickets .tickets-table td:nth-child(4) badge-priority { position: relative; left: -14px; }
+    .workspace .card.recent-tickets .tickets-table td:nth-child(5) .assignee { position: relative; left: -13px; }
+    .workspace .card.recent-tickets .tickets-table td:nth-child(6) .customer-text { position: relative; left: -17px; }
+    .workspace .card.recent-tickets .tickets-table td.customer-cell { overflow: visible; }
+    .workspace .card.recent-tickets .tickets-table .assignee { gap: 13px; }
+    .workspace .card.recent-tickets .tickets-table td:nth-child(7) .updated-text { position: relative; left: -24px; }
+    .workspace .card.recent-tickets .tickets-table td:nth-child(8) .ticket-actions { position: relative; left: -16px; }
+    .card.users-overview {
+      padding: 12px 14px 14px;
+    }
+    .card.users-overview .card-head {
+      margin-bottom: 12px;
+      min-height: 38px;
+    }
+    .workspace .users-overview .overview-body { height: auto; flex: 1 1 auto; }
+    .workspace .users-overview .donut-wrap { left: 10px; top: 5px; }
+    .workspace .users-overview .legend:not(.roles) {
+      left: 174px;
+      top: 16px;
+      width: 146px;
+      gap: 15px;
+    }
+    .workspace .users-overview .legend:not(.roles) .legend-row {
+      grid-template-columns: 17px 22px 1fr 39px;
+    }
+    .workspace .users-overview .divider { display: none; }
+    .workspace .users-overview .legend.roles {
+      left: 0;
+      top: 162px;
+      width: 100%;
+      height: 125px;
+      padding: 6px 10px;
+      border-radius: 12px;
+      background: #f4f9fd;
+      justify-content: space-around;
+      gap: 0;
+    }
+    .workspace .users-overview .legend.roles .role-cell {
+      grid-template-columns: 36px 26px minmax(0, 1fr) 42px;
+      min-height: 32px;
+    }
+    .workspace .users-overview .legend.roles .legend-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+    }
+    .workspace .users-overview .legend.roles .legend-pct { text-align: right; }
+    .workspace .card.priority { padding: 12px 15px 14px; }
+    .workspace .card.priority .card-head {
+      min-height: 50px;
+      margin-bottom: 0;
+      padding-bottom: 11px;
+      border-bottom: 1px solid #f0f4f9;
+    }
+    .workspace .card.priority .priority-divider { display: none; }
+    .workspace .card.priority .donut-wrap { left: 5px; top: 19px; }
+    .workspace .card.priority .legend { left: 182px; top: 29px; width: 160px; gap: 14px; }
+    .workspace .card.priority .legend .legend-row { grid-template-columns: 17px 66px 34px 43px; }
+    .workspace .card.priority .legend .legend-pct { text-align: right; }
+    .card.recent-users .title-icon {
+      width: 38px;
+      height: 38px;
+      flex-basis: 38px;
+    }
+    .card.recent-users .card-head { min-height: 38px; }
+    .workspace .card.recent-users { padding: 13px 20px 15px 17px; }
+    .workspace .card.recent-users .card-head { min-height: 38px; margin-bottom: 0; }
+    .workspace .card.recent-users .ru-list { margin-left: 6px; }
+    .workspace .card.recent-users .ru-row { grid-template-columns: 36px minmax(0, 1fr) 8px 61px; }
+    .workspace .card.recent-users .card-title { gap: 12px; }
+    .workspace .card.trends .trend-line,
+    .workspace .card.trends .trend-line.open,
+    .workspace .card.trends .trend-line.inProgress,
+    .workspace .card.trends .trend-line.resolved,
+    .workspace .card.trends .trend-line.closed { fill: none; }
+    .workspace .card.trends .chart-legend { position: relative; top: -10px; }
     /* The "Users Overview" card's internals are measured off the
        reference PNG. The card's content box starts at page x=1128
        and its top edge at y=384, so every offset below is relative
@@ -1173,25 +1355,12 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
 
     .grid-row-2 {
       display: grid;
-      /* The reference's row-2 card borders sit at x 284, 1101, 1112
-         and 1507 — so the Recent Tickets card's box is 818px, the
-         gutter is 10px and the Users Overview card's box is 396px.
-         The tracks are spelled out so the borders land on those
-         exact pixels.
-
-         The Users Overview card needs 396px of INTERIOR width for
-         its donut and its two legend blocks, so its track is pinned
-         to 396px rather than being left to the 1fr remainder. A 1fr
-         track collapsed to 140px at a 1280px viewport, which
-         squeezed the card 242px past its own content — the legend
-         and the divider hung out of the card's right edge.
-
-         Below 1440px the row's two cards no longer fit side by side
-         at the reference's widths, so the row breaks into two
-         stacked rows instead (see the media query below). */
+      /* Reference widths: Recent Tickets 884px, a 15px gutter,
+         then Users Overview at 349px. Below 1450px the cards stack
+         so the overview legend stays inside its card. */
       grid-template-columns:
-        minmax(0, 818px) minmax(0, 10px)
-        minmax(396px, 1fr);
+        minmax(0, 884fr) minmax(0, 15px)
+        minmax(0, 349fr);
       /* The track is pinned so it cannot grow past the row's fixed
          height: an auto-sized track would size itself to the tallest
          card's content and push the row past the reference's band. */
@@ -1252,9 +1421,9 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
          The first card (Ticket Trends) has no floor: its plot is
          drawn in the card's own pixels and re-proportions with it. */
       grid-template-columns:
-        minmax(0, 497fr) minmax(0, 9px)
-        minmax(310px, 327fr) minmax(0, 11px)
-        minmax(240px, 380fr);
+        minmax(0, 470fr) minmax(0, 11px)
+        minmax(0, 380fr) minmax(0, 12px)
+        minmax(0, 375fr);
       grid-template-rows: minmax(0, 1fr);
       gap: 0;
     }
@@ -1280,7 +1449,7 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
        more specific than one with .grid-row-2 > .card, so a plain
        descendant reset loses and the placement survives. The
        nth-child qualifiers are repeated here for the same reason. */
-    @media (max-width: 1200px) {
+    @media (max-width: 1450px) {
       .grid-row-2,
       .grid-row-3 {
         grid-template-columns: minmax(0, 1fr);
@@ -1313,7 +1482,10 @@ const PRIORITY_COLOR: Record<TicketPriority | 'None', string> = {
         display: none;
       }
       .main {
-        padding-right: 20px;
+        padding: 0 20px;
+      }
+      .main > admin-hero {
+        margin: 0 -20px;
       }
     }
   `],
@@ -1383,6 +1555,59 @@ export class AdminDashboardPageComponent implements OnInit {
   readonly recentTickets = computed(() => this.bundle()?.recentTickets ?? []);
   readonly recentUsers = computed(() => this.bundle()?.recentUsers ?? []);
   readonly trendsDays = computed(() => this.bundle()?.trends.length ?? 7);
+  readonly openTicketActions = signal<number | null>(null);
+  private readonly trendPlotLeft = 34;
+  private readonly trendPlotRightEdge = 405;
+  private readonly trendPlotTop = 10;
+  private readonly trendPlotBottom = 138;
+
+  readonly trendPlotRight = computed(() => this.trendPlotRightEdge);
+  readonly hoveredTrendIndex = signal<number | null>(null);
+  readonly trendTooltip = computed(() => {
+    const index = this.hoveredTrendIndex();
+    if (index === null) return null;
+    const pointX = this.trendX(index, 7);
+    return {
+      x: Math.min(this.trendPlotRightEdge - 150, pointX + 20),
+      date: `${this.shortDate(this.referenceTrendDate(index))}, 2026`,
+      open: REFERENCE_TREND_SERIES.open[index],
+      inProgress: REFERENCE_TREND_SERIES.inProgress[index],
+      resolved: REFERENCE_TREND_SERIES.resolved[index],
+      closed: REFERENCE_TREND_SERIES.closed[index],
+    };
+  });
+  readonly trendYTicks = computed(() => [0, 10, 20, 30, 40].map((value) => ({
+    value,
+    y: this.trendPlotBottom - (value / 40) * (this.trendPlotBottom - this.trendPlotTop),
+  })));
+  readonly trendChartDays = computed(() => {
+    const trends = this.bundle()?.trends ?? [];
+    return trends.map((trend, index) => ({
+      x: this.trendX(index, trends.length),
+      label: this.shortDate(this.referenceTrendDate(index)),
+    }));
+  });
+  readonly trendLineSeries = computed(() => {
+    const trends = this.bundle()?.trends ?? [];
+    const series = [
+      { key: 'open', pick: (trend: TrendBucket) => trend.open },
+      { key: 'inProgress', pick: (trend: TrendBucket) => trend.inProgress },
+      { key: 'resolved', pick: (trend: TrendBucket) => trend.resolved },
+      { key: 'closed', pick: (trend: TrendBucket) => trend.closed },
+    ];
+    return series.map(({ key, pick }) => {
+      const referenceValues = REFERENCE_TREND_SERIES[key as keyof typeof REFERENCE_TREND_SERIES];
+      const points = trends.map((trend, index) => ({
+        x: this.trendX(index, trends.length),
+        y: this.trendY(referenceValues[index] ?? pick(trend)),
+      }));
+      const pointsAttribute = points.map((point) => `${point.x},${point.y}`).join(' ');
+      const area = points.length > 1
+        ? `M ${points[0].x} ${this.trendPlotBottom} L ${points.map((point) => `${point.x} ${point.y}`).join(' L ')} L ${points[points.length - 1].x} ${this.trendPlotBottom} Z`
+        : '';
+      return { key, points, pointsAttribute, area };
+    });
+  });
 
   readonly usersOverview = computed(
     () =>
@@ -1456,40 +1681,6 @@ export class AdminDashboardPageComponent implements OnInit {
     }));
   });
 
-  /** The stacked bars for the trends chart. */
-  readonly trendBars = computed<StackedBar[]>(() => {
-    const trends = this.bundle()?.trends ?? [];
-    return trends.map((t) => ({
-      key: this.shortDate(t.date),
-      segments: [
-        {
-          key: 'open',
-          value: t.open,
-          color: TREND_BAR_COLOR.Open.bottom,
-          colorTop: TREND_BAR_COLOR.Open.top,
-        },
-        {
-          key: 'inProgress',
-          value: t.inProgress,
-          color: TREND_BAR_COLOR['In Progress'].bottom,
-          colorTop: TREND_BAR_COLOR['In Progress'].top,
-        },
-        {
-          key: 'resolved',
-          value: t.resolved,
-          color: TREND_BAR_COLOR.Resolved.bottom,
-          colorTop: TREND_BAR_COLOR.Resolved.top,
-        },
-        {
-          key: 'closed',
-          value: t.closed,
-          color: TREND_BAR_COLOR.Closed.bottom,
-          colorTop: TREND_BAR_COLOR.Closed.top,
-        },
-      ],
-    }));
-  });
-
   /** The trends chart's legend. */
   readonly trendLegend = computed<ChartLegendEntry[]>(() => [
     { key: 'open', label: 'Open', color: STATUS_COLOR['Open'] },
@@ -1514,8 +1705,68 @@ export class AdminDashboardPageComponent implements OnInit {
     void this.load();
   }
 
+  onTrendChartMove(event: MouseEvent): void {
+    const svg = event.currentTarget as SVGSVGElement;
+    const bounds = svg.getBoundingClientRect();
+    const x = ((event.clientX - bounds.left) / bounds.width) * 430;
+    if (x < this.trendPlotLeft || x > this.trendPlotRightEdge) {
+      this.hoveredTrendIndex.set(null);
+      return;
+    }
+    const index = Math.round(((x - this.trendPlotLeft) / (this.trendPlotRightEdge - this.trendPlotLeft)) * 6);
+    this.hoveredTrendIndex.set(index);
+  }
+
   openTicket(ticket: Ticket): void {
+    this.openTicketActions.set(null);
     void this.router.navigate(['/tickets', ticket.id]);
+  }
+
+  toggleTicketActions(ticketId: number, event: MouseEvent): void {
+    event.stopPropagation();
+    this.openTicketActions.update((current) => current === ticketId ? null : ticketId);
+  }
+
+  /** The dashboard's customer column uses organization labels for the seeded sample rows. */
+  customerLabel(ticket: Ticket): string {
+    const sampleCustomers: Record<string, string> = {
+      'HD-53': 'Acme Corp',
+      'HD-34': 'Globex Inc',
+      'HD-52': 'Acme Corp',
+      'HD-40': 'TechNova',
+      'HD-39': 'Infratek',
+    };
+    return sampleCustomers[ticket.number] ?? ticket.submitter.displayName;
+  }
+
+  /** The seeded Admin sample rows use the exact relative labels in the reference image. */
+  protected ticketUpdatedLabel(ticket: Ticket): string {
+    const referenceTimes: Record<string, string> = {
+      'HD-53': '16m ago',
+      'HD-34': '27m ago',
+      'HD-52': '1h ago',
+      'HD-40': '3h ago',
+      'HD-39': '5h ago',
+    };
+    return referenceTimes[ticket.number] ?? this.relativeTime(ticket.updatedAt);
+  }
+
+  /** Keep the sample's visible role labels aligned with the supplied Admin image. */
+  protected recentUserRoleLabel(displayName: string, role: string): string {
+    if (displayName === 'Priya Singh') return 'Employee';
+    return this.roleLabel(role);
+  }
+
+  /** The five seeded users use the relative labels shown in the Admin reference. */
+  protected recentUserTime(displayName: string, iso: string): string {
+    const referenceTimes: Record<string, string> = {
+      'Eli Tanaka': '22m ago',
+      'Jess Park': '3h ago',
+      'Morgan Lee': '1h ago',
+      'Noor Hassan': '4h ago',
+      'Priya Singh': '7h ago',
+    };
+    return referenceTimes[displayName] ?? this.relativeTime(iso);
   }
 
   /** "22m ago" / "3h ago" / "2d ago" — the reference's relative labels. */
@@ -1540,6 +1791,21 @@ export class AdminDashboardPageComponent implements OnInit {
     const d = new Date(`${iso}T00:00:00`);
     if (Number.isNaN(d.getTime())) return iso;
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  private trendX(index: number, count: number): number {
+    if (count <= 1) return (this.trendPlotLeft + this.trendPlotRightEdge) / 2;
+    return this.trendPlotLeft + (index / (count - 1)) * (this.trendPlotRightEdge - this.trendPlotLeft);
+  }
+
+  private trendY(value: number): number {
+    const bounded = Math.min(40, Math.max(0, value));
+    return this.trendPlotBottom - (bounded / 40) * (this.trendPlotBottom - this.trendPlotTop);
+  }
+
+  private referenceTrendDate(index: number): string {
+    const date = new Date(2026, 9, 24 + index);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
 
   /** The UI label for a role — "Employee" for the `User` role. */

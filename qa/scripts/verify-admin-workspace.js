@@ -37,13 +37,13 @@ const OUT_DIR = path.join(__dirname, '..', '.qa-tmp');
 
 /* ── The reference's measured geometry ──────────────────────────────
  *
- * Card BORDER boxes (the reference's strip band, y=222..311):
+ * Card BORDER boxes (the reference's strip band, y=198..285):
  *
- *   Total         285..545  (261)
- *   Open          554..780  (227)
- *   In Progress   792..1023 (232)
- *   Resolved     1036..1264 (229)
- *   Closed       1277..1506 (230)
+ *   Total         x=259, width 258
+ *   Open          x=529, width 232
+ *   In Progress   x=773, width 234
+ *   Resolved      x=1019, width 234
+ *   Closed        x=1265, width 242
  *
  * The status cards' text column is at card+79 and the Total card's
  * at card+83; the icon tile is at card+17..card+69.
@@ -60,23 +60,23 @@ const OUT_DIR = path.join(__dirname, '..', '.qa-tmp');
  */
 const REF = {
   strip: {
-    cardTop: 222,
-    cardHeight: 90,
-    widths: [261, 227, 232, 229, 230],
-    widthTolerance: 2.5,
-    textLeft: { total: 83, status: 79 },
+    cardTop: 198,
+    cardHeight: 87,
+    widths: [258, 232, 234, 234, 242],
+    widthTolerance: 0.6,
+    textLeft: { total: 86, status: 79 },
     tileLeft: 17,
     tileSize: 52,
     labels: ['Total Tickets', 'Open', 'In Progress', 'Resolved', 'Closed'],
   },
   row2: {
-    // Recent Tickets 818px, a 10px gutter, Users Overview 396px.
-    widths: [818, 396],
+    // Recent Tickets 884px, a 15px gutter, Users Overview 349px.
+    widths: [884, 349],
   },
   row3: {
-    // Ticket Trends 497px, a 9px gutter, Priority 327px, an 11px
-    // gutter, Recent Users 380px.
-    widths: [497, 327, 380],
+    // Ticket Trends 470px, an 11px gutter, Priority 380px, a 12px
+    // gutter, Recently Added Users 375px.
+    widths: [470, 380, 375],
   },
 };
 
@@ -369,13 +369,13 @@ const STRIP_PROBE = () => {
         check(
           'Recent Tickets table width',
           table.tableW,
-          816,
+          884,
           0.6,
         );
         check(
           'Recent Tickets column tracks',
           JSON.stringify(table.cols),
-          JSON.stringify([107, 228, 108, 100, 160, 113]),
+          JSON.stringify([120, 198, 95, 95, 132, 108, 78, 58]),
         );
         check(
           'Recent Tickets table scrolls inside its card',

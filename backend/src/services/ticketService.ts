@@ -38,6 +38,12 @@ import {
   ActivityLog,
   sequelize,
 } from '../models';
+import {
+  activeAdminIds,
+  activeOwnerId,
+  activeStaffIds,
+  notifyUsers,
+} from './notificationService';
 import type { CreateTicketInput } from '../utils/validation/ticketValidation';
 import { nextTicketNumber } from '../utils/ticketNumber';
 import { HttpError } from '../utils/errors';
@@ -253,6 +259,22 @@ export async function createTicket(
         `Ticket ${String(created.id)} disappeared immediately after insert.`,
       );
     }
+
+    // New ticket → every active Support Agent AND every active
+    // Admin. Admins own the whole dashboard, so they need to see
+    // the ticket the moment it lands.
+    const staffIds = await activeStaffIds(tx);
+    await notifyUsers(
+      staffIds,
+      {
+        type: 'ticket_created',
+        title: `New ticket ${reloaded.number}`,
+        body: reloaded.title,
+        ticketId: reloaded.id,
+        actorId: submitterId,
+      },
+      tx,
+    );
 
     return reloaded;
   });
@@ -485,6 +507,68 @@ export async function updateTicket(
       }
     }
 
+    // ── Notification emission ──────────────────────────────────
+    // The ticket submitter hears about EVERY activity on their own
+    // ticket; the current owner hears about changes to the ticket
+    // they hold; Admins hear about everything they oversee.
+    const ownerId = await activeOwnerId(previous.ownerId, tx);
+    const adminIds = await activeAdminIds(tx);
+
+    if (input.status !== undefined && input.status !== previous.status) {
+      await notifyUsers(
+        [current.submitterId, ...(ownerId ? [ownerId] : []), ...adminIds],
+        {
+          type: 'ticket_status_changed',
+          title: `${current.number} status changed`,
+          body: `${previous.status} → ${input.status}`,
+          ticketId: id,
+          actorId,
+        },
+        tx,
+      );
+    }
+
+    if (
+      input.priority !== undefined &&
+      input.priority !== previous.priority
+    ) {
+      await notifyUsers(
+        [current.submitterId, ...(ownerId ? [ownerId] : []), ...adminIds],
+        {
+          type: 'ticket_priority_changed',
+          title: `${current.number} priority changed`,
+          body: `${previous.priority ?? 'unset'} → ${input.priority}`,
+          ticketId: id,
+          actorId,
+        },
+        tx,
+      );
+    }
+
+    if (input.ownerId !== undefined && input.ownerId !== previous.ownerId) {
+      const newOwnerId = await activeOwnerId(input.ownerId, tx);
+      const previousOwnerId = await activeOwnerId(previous.ownerId, tx);
+      const isReassign = previous.ownerId !== null;
+      await notifyUsers(
+        [
+          current.submitterId,
+          ...(newOwnerId ? [newOwnerId] : []),
+          ...(previousOwnerId ? [previousOwnerId] : []),
+          ...adminIds,
+        ],
+        {
+          type: 'ticket_assigned',
+          title: isReassign
+            ? `${current.number} reassigned`
+            : `${current.number} assigned`,
+          body: current.title,
+          ticketId: id,
+          actorId,
+        },
+        tx,
+      );
+    }
+
     const reloaded = await reloadWithAssociations(id, tx);
     if (!reloaded) {
       throw new HttpError(404, 'not_found', 'Ticket not found.');
@@ -598,6 +682,14 @@ export async function addComment(
       );
     }
 
+    const author = await User.findByPk(authorId, {
+      attributes: ['id', 'role', 'displayName'],
+      transaction: tx,
+    });
+    if (!author) {
+      throw new HttpError(404, 'not_found', 'Comment author not found.');
+    }
+
     const created = await Comment.create(
       { ticketId, authorId, body },
       { transaction: tx },
@@ -631,6 +723,49 @@ export async function addComment(
         'Comment created but not retrievable.',
       );
     }
+
+    // ── Comment recipient resolution ───────────────────────────
+    //
+    //   User comments  → the ticket's owner (when it has one) AND
+    //                    every active Support Agent / Admin. The
+    //                    owner is not the only person who needs to
+    //                    see a user reply: the wider agent pool
+    //                    picks it up when the owner is unavailable,
+    //                    and Admins oversee every ticket.
+    //
+    //   Staff comments → the ticket submitter (they own the
+    //                    conversation) AND the ticket's owner AND
+    //                    every active Admin. An Admin's comment
+    //                    therefore reaches the submitter exactly
+    //                    like an agent's does.
+    let recipientIds: number[];
+    const ownerId = await activeOwnerId(ticket.ownerId, tx);
+
+    if (author.role === 'User') {
+      recipientIds = [
+        ...(ownerId ? [ownerId] : []),
+        ...(await activeStaffIds(tx)),
+      ];
+    } else {
+      recipientIds = [
+        ticket.submitterId,
+        ...(ownerId ? [ownerId] : []),
+        ...(await activeAdminIds(tx)),
+      ];
+    }
+
+    await notifyUsers(
+      recipientIds,
+      {
+        type: 'comment_added',
+        title: `New comment on ${ticket.number}`,
+        body,
+        ticketId: ticket.id,
+        actorId: authorId,
+      },
+      tx,
+    );
+
     return full;
   });
 }
@@ -679,6 +814,21 @@ export async function reopenTicket(
         payload: { reopenedBy: actorId },
       },
       { transaction: tx },
+    );
+
+    // A reopened ticket needs the holder to pick it back up, and
+    // Admins to see the ticket return to the live queue.
+    const ownerId = await activeOwnerId(current.ownerId, tx);
+    await notifyUsers(
+      [...(ownerId ? [ownerId] : []), ...(await activeAdminIds(tx))],
+      {
+        type: 'ticket_status_changed',
+        title: `${current.number} reopened`,
+        body: 'Resolved → Open',
+        ticketId: id,
+        actorId,
+      },
+      tx,
     );
 
     const reloaded = await reloadWithAssociations(id, tx);
@@ -731,6 +881,21 @@ export async function confirmCloseTicket(
         payload: { closedBy: actorId },
       },
       { transaction: tx },
+    );
+
+    // The ticket's owner and the Admins get the close confirmation —
+    // the ticket is terminal, so this is the last event they see.
+    const ownerId = await activeOwnerId(current.ownerId, tx);
+    await notifyUsers(
+      [...(ownerId ? [ownerId] : []), ...(await activeAdminIds(tx))],
+      {
+        type: 'ticket_status_changed',
+        title: `${current.number} closed`,
+        body: 'Resolved → Closed',
+        ticketId: id,
+        actorId,
+      },
+      tx,
     );
 
     const reloaded = await reloadWithAssociations(id, tx);

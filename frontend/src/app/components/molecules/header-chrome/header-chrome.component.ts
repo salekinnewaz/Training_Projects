@@ -191,7 +191,7 @@ import { NotificationsPanelComponent } from '../notifications-panel/notification
           aria-haspopup="menu"
           aria-controls="profile-menu"
         >
-          <chrome-avatar [displayName]="u.displayName" [size]="28" />
+          <chrome-avatar [displayName]="u.displayName" [size]="isAdmin() ? 40 : 28" />
           <span class="profile-name">{{ u.displayName }}</span>
           <caret-down />
         </button>
@@ -584,7 +584,7 @@ import { NotificationsPanelComponent } from '../notifications-panel/notification
 
     /* ── Admin variant ───────────────────────────────────────────
        The Admin Workspace's chrome is drawn differently from the
-       employee and agent chrome: a 40px brand tile, a larger
+       employee and agent chrome: a 38px brand tile, a larger
        wordmark, a filled role pill instead of nav links, a wide
        blue-tinted search field, and a lavender avatar.
 
@@ -592,25 +592,47 @@ import { NotificationsPanelComponent } from '../notifications-panel/notification
        employee dashboard and the agent queue keep the chrome they
        have always had. */
     .chrome.is-admin {
+      position: relative;
+      isolation: isolate;
       grid-template-columns: auto auto 1fr auto minmax(0, auto);
       column-gap: 12px;
-      background: linear-gradient(180deg, #f9fbfd 0%, #fbfbfe 100%);
+      padding: 0 23px 0 28px;
+      background: linear-gradient(90deg, transparent 0 236px, #ffffff 236px 100%);
+      border-bottom-color: transparent;
+      box-shadow: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    .chrome.is-admin::before {
+      content: '';
+      position: absolute;
+      z-index: -1;
+      left: 10px;
+      top: 15px;
+      width: 198px;
+      height: 50px;
+      border-radius: 14px 14px 0 0;
+      background: linear-gradient(180deg, #111b2e 0%, #121d31 100%);
     }
     .chrome.is-admin .brand {
-      gap: 12px;
+      gap: 10px;
+      transform: translateY(8px);
     }
     .chrome.is-admin .brand-mark {
-      width: 40px;
-      height: 40px;
-      border-radius: 12px;
+      width: 27px;
+      height: 27px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, #704cff 0%, #4a2bd9 100%);
+      box-shadow: 0 3px 11px rgba(87, 61, 239, .42);
     }
     .chrome.is-admin .brand-mark svg {
-      width: 26px;
-      height: 26px;
+      width: 18px;
+      height: 18px;
     }
     .chrome.is-admin .brand-wordmark {
-      font-size: 18px;
+      font-size: 12px;
       letter-spacing: -0.02em;
+      color: #f6f8ff;
     }
     /* The role pill replaces the nav links in the admin design. */
     .role-pill {
@@ -626,27 +648,48 @@ import { NotificationsPanelComponent } from '../notifications-panel/notification
       letter-spacing: 0.01em;
       white-space: nowrap;
     }
+    .chrome.is-admin .role-pill {
+      height: 16px;
+      padding: 0 6px;
+      border-radius: 5px;
+      font-size: 9px;
+      transform: translateY(8px);
+      background: linear-gradient(135deg, #2ac5bf 0%, #119caa 100%);
+      color: #efffff;
+    }
     .chrome.is-admin .chrome-search {
-      max-width: none;
+      max-width: 676px;
+      margin-left: 133px;
       height: 40px;
       padding: 0 14px;
-      background: #f0f4fe;
-      border: 1px solid transparent;
+      background: #f6f9ff;
+      border: 1px solid #dce8f7;
       border-radius: 10px;
     }
     .chrome.is-admin .chrome-search:focus-within {
-      background: #f0f4fe;
+      background: #f6f9ff;
       border-color: var(--color-primary);
     }
     .chrome.is-admin .search-input::placeholder {
-      color: #8a93a8;
+      color: #617da9;
     }
     /* The admin avatar is a pale lavender disc with purple
        initials; the shared atom paints a grey disc, so the
        admin-specific colours are applied here. */
     .chrome.is-admin .profile-trigger chrome-avatar {
-      background: #e8e9fe;
-      color: #4f46e5;
+      --color-disabled: #c9ddfb;
+      color: #123d79;
+    }
+    .chrome.is-admin .profile-trigger {
+      height: 48px;
+      padding-left: 15px;
+      gap: 16px;
+      transform: translateX(2px);
+      border-left: 1px solid #dce8f7;
+      border-radius: 0;
+    }
+    .chrome.is-admin .notification-trigger {
+      transform: translateX(-9px);
     }
   `],
 })
@@ -720,8 +763,9 @@ export class HeaderChromeComponent implements OnInit {
     });
   }
 
-  /** Bootstrap the bell on mount so the red dot is accurate from the
-   * first paint, not only after the user clicks it.
+  /** Bootstrap the feed and polling on mount so newly-created ticket
+   * and comment notifications reach the bell without requiring the
+   * user to open the dropdown first.
    *
    * Specs that stub `NotificationsService` instead of the real thing
    * (like this component's own spec) get a guard above and skip the
@@ -729,11 +773,13 @@ export class HeaderChromeComponent implements OnInit {
    * `HttpClient` will throw synchronously when the service resolves
    * it — that surfaces as a console warning, not a test failure. */
   ngOnInit(): void {
-    const svc = this.notifications as unknown as { refresh?: () => Promise<void> };
-    if (typeof svc.refresh === 'function') {
-      // Swallow the rejection — failing to load notifications on
-      // mount never blocks the chrome; the bell simply stays in
-      // its last-known state until the user clicks it.
+    const svc = this.notifications as unknown as {
+      startPolling?: () => void;
+      refresh?: () => Promise<void>;
+    };
+    if (typeof svc.startPolling === 'function') {
+      svc.startPolling();
+    } else if (typeof svc.refresh === 'function') {
       Promise.resolve(svc.refresh()).catch(() => {
         /* no bell data available (no HttpClient / offline) */
       });
@@ -798,11 +844,8 @@ export class HeaderChromeComponent implements OnInit {
    * refresh on open so freshly-arrived items appear without
    * waiting for the next 30s tick.
    *
-   * First click also starts the polling loop — startPolling is
-   * idempotent, so subsequent clicks are harmless. Lazy
-   * start-on-first-interaction keeps the service free of timers
-   * during page-spec setup, where an HttpClient-required side
-   * effect would cascade-fail the suite.
+   * startPolling is idempotent. The mount path starts it for signed-in
+   * users; this call also safely recovers if another flow stopped it.
    */
   onNotificationClick(): void {
     if (this.dropdownOpen()) this.dropdownOpen.set(false);
@@ -847,6 +890,8 @@ export class HeaderChromeComponent implements OnInit {
     this.logoutError.set(null);
     try {
       await this.auth.logout();
+      const svc = this.notifications as unknown as { stopPolling?: () => void };
+      svc.stopPolling?.();
       this.logoutDialogOpen.set(false);
       this.dropdownOpen.set(false);
       await this.router.navigate(['/login']);

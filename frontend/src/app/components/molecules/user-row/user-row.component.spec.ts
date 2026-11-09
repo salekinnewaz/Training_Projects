@@ -3,7 +3,7 @@
  *
  * Verifies the per-row markup + interaction wiring:
  *   - non-self row: avatar + identity (name + email stacked) +
- *     role select + status toggle + tickets + last-active all
+ *     role select + status + last-active + joined date + actions
  *     rendered.
  *   - self row: 3px left border class, disabled atom-select,
  *     disabled status toggle, micro-label visible.
@@ -18,8 +18,7 @@
  *     time.
  *   - active toggle aria-label flips between "Deactivate <name>"
  *     and "Activate <name>" based on `user.isActive`.
- *   - ticketCount renders in its own column; a missing count
- *     falls back to 0 (never blank).
+ *   - last-active and joined dates render in their own columns.
  */
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -97,7 +96,7 @@ describe('UserRowComponent (HD-014)', () => {
       .toBe('Inactive');
   });
 
-  it('renders the self-row styling + disabled controls + micro-label when isSelf=true', () => {
+  it('renders self-row styling + disabled controls + You tag when isSelf=true', () => {
     fixture.componentRef.setInput('user', baseUser);
     fixture.componentRef.setInput('isSelf', true);
     fixture.detectChanges();
@@ -109,8 +108,9 @@ describe('UserRowComponent (HD-014)', () => {
     expect(select.disabled).toBe(true);
     const toggle = el.querySelector('.user-row__active-toggle') as HTMLButtonElement;
     expect(toggle.disabled).toBe(true);
-    const label = el.querySelector('.user-row__self-micro-label');
-    expect(label?.textContent?.trim()).toBe('You cannot change your own role.');
+    const youTag = el.querySelector('.user-row__you-tag');
+    expect(youTag?.textContent?.trim()).toBe('You');
+    expect(youTag?.getAttribute('title')).toBe('You cannot change your own role');
   });
 
   it('renders the updating class + disables controls when isUpdating=true', () => {
@@ -231,23 +231,13 @@ describe('UserRowComponent (HD-014)', () => {
     expect(el.querySelector('.user-row > .user-row__email')).toBeNull();
   });
 
-  it('renders the ticket count in its own column', () => {
+  it('renders the joined date in its own column', () => {
     fixture.componentRef.setInput('user', baseUser);
     fixture.detectChanges();
 
     const el = fixture.nativeElement as HTMLElement;
-    const tickets = el.querySelector('.user-row__tickets');
-    expect(tickets?.textContent?.trim()).toBe('12');
-  });
-
-  it('falls back to 0 when the ticket count is missing', () => {
-    const { ticketCount: _omitted, ...withoutCount } = baseUser;
-    fixture.componentRef.setInput('user', withoutCount as UserPublic);
-    fixture.detectChanges();
-
-    const el = fixture.nativeElement as HTMLElement;
-    // Never blank — a missing count must not leave a ragged gap.
-    expect(el.querySelector('.user-row__tickets')?.textContent?.trim()).toBe('0');
+    expect(el.querySelector('.user-row__joined time')?.textContent?.trim())
+      .toBe('Sep 1, 2026');
   });
 
   it('renders an actions cell that is present in the DOM', () => {

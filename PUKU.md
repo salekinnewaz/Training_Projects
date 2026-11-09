@@ -11,19 +11,35 @@ The **WDS-2026 Admin Workspace** (Admin Dashboard widget grid) rework
 is now **functionally and geometrically complete** (Iteration 16 in
 `HANDSOFF.md`): the Users Overview card no longer overflows its card,
 the stat strip no longer truncates, and all three "View all" links are
-live. It is still **uncommitted**, so the working tree below still
-matters.
+live.
+
+**Iteration 19 (2026-11-06)** added the **notification matrix** for
+all three roles. The recipient rules now live in
+`backend/src/services/notificationService.ts`; Admins are notified of
+every ticket event, and the ticket submitter is notified of every
+activity on their own ticket. See `HANDSOFF.md` → `## Iteration 19`.
+
+It is still **uncommitted**, so the working tree below still matters.
 
 **Do not discard the uncommitted working tree.** It contains new
 untracked components (`donut-chart/`, `stacked-bar-chart/`,
-`admin-hero/`, `admin-sidebar/`, `adminDashboardService.ts`) that are
-not in git and would be lost.
+`admin-hero/`, `admin-sidebar/`, `adminDashboardService.ts`,
+`notificationService.ts`) that are not in git and would be lost.
 
 ## Standing rules for this repo
 
 - `HANDSOFF.md` is the **QA loop log** — append every iteration to it
   as an `## Iteration N — <date> — <title>` section. `HANDOFF.md`
   (no "S") is the *developer* handoff; they are different documents.
+- The frontend suite runs with
+  `npx ng test --watch=false --browsers=ChromeHeadlessDesktop`.
+  Plain `ChromeHeadless` defaults to a ~741px viewport, which trips
+  the stat-strip's responsive breakpoints and produces three phantom
+  geometry failures that are not real bugs.
+- Any page spec that renders the shared chrome must provide
+  `provideHttpClientTesting()`. Without it the bell's leading-edge
+  fetch opens a real socket and Karma reports "Disconnected, because
+  no message in 30000 ms".
 - The reference wireframes in `design-process/D-UX-Design/wireframes/`
   are the source of truth for geometry. Measure against them; do not
   eyeball.

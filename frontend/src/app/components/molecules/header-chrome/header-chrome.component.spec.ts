@@ -71,10 +71,10 @@ function makeNotificationsStub(): unknown {
     }),
     markRead: jasmine.createSpy('markRead').and.resolveTo(),
     markAllRead: jasmine.createSpy('markAllRead').and.resolveTo(),
-    // startPolling is a no-op in the stub — the chrome lazily calls
-    // it on first bell click so the spec doesn't have to manage a
-    // real setInterval.
+    // startPolling is a no-op in the stub — the chrome starts it on
+    // mount without creating a real setInterval in the spec.
     startPolling: jasmine.createSpy('startPolling').and.callFake(() => {}),
+    stopPolling: jasmine.createSpy('stopPolling').and.callFake(() => {}),
     // Test hook: flip the unread count to drive the red dot.
     __setUnread: (n: number) => unread.set(n),
   };
@@ -512,19 +512,21 @@ describe('HeaderChromeComponent', () => {
     expect(bell.getAttribute('aria-label')?.toLowerCase()).toContain('unread');
   });
 
-  it('clicking the notification bell toggles the dropdown panel and lazily starts polling', () => {
+  it('starts polling on mount and clicking the bell opens the notification panel', () => {
     seedUser(makeUser());
     fixture = TestBed.createComponent(HeaderChromeComponent);
     fixture.detectChanges();
+
+    const svc = TestBed.inject(NotificationsService) as jasmine.SpyObj<NotificationsService>;
+    expect(svc.startPolling).toHaveBeenCalled();
 
     const bell = fixture.nativeElement.querySelector('.notification-trigger') as HTMLButtonElement;
     bell.click();
     fixture.detectChanges();
     // Service's togglePanel was invoked; the chrome delegates the
     // opening logic to the service rather than re-implementing it.
-    // The first click also kicks off the 30s polling loop so the
-    // red dot stays live while the panel is closed.
-    const svc = TestBed.inject(NotificationsService) as jasmine.SpyObj<NotificationsService>;
+    // Polling remains active while the panel is closed so the red
+    // dot updates as new ticket activity arrives.
     expect(svc.togglePanel).toHaveBeenCalled();
     expect(svc.startPolling).toHaveBeenCalled();
   });

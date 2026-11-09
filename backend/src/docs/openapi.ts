@@ -235,6 +235,70 @@ const sharedComponents = {
         closed: { $ref: '#/components/schemas/DashboardBucket' },
       },
     },
+    AdminWorkspaceResponse: {
+      type: 'object',
+      required: [
+        'summary',
+        'recentTickets',
+        'usersOverview',
+        'priorities',
+        'trends',
+        'recentUsers',
+      ],
+      properties: {
+        summary: {
+          type: 'object',
+          properties: {
+            totalTickets: { type: 'integer', example: 156 },
+            recentTickets: { type: 'integer', example: 42 },
+            previousTickets: { type: 'integer', example: 33 },
+            totalUsers: { type: 'integer', example: 27 },
+            newUsersThisWeek: { type: 'integer', example: 4 },
+            counts: { type: 'object', additionalProperties: true },
+          },
+        },
+        recentTickets: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Ticket' },
+        },
+        usersOverview: {
+          type: 'object',
+          properties: {
+            total: { type: 'integer', example: 27 },
+            active: { type: 'integer', example: 22 },
+            inactive: { type: 'integer', example: 5 },
+            byRole: { type: 'object', additionalProperties: true },
+          },
+        },
+        priorities: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              priority: { type: 'string', example: 'high' },
+              count: { type: 'integer', example: 18 },
+            },
+          },
+        },
+        trends: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              date: { type: 'string', example: '2026-10-30' },
+              open: { type: 'integer', example: 4 },
+              inProgress: { type: 'integer', example: 2 },
+              resolved: { type: 'integer', example: 6 },
+              closed: { type: 'integer', example: 1 },
+            },
+          },
+        },
+        recentUsers: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/User' },
+        },
+      },
+    },
 
     // ── Response envelopes ────────────────────────────────────────
     HealthResponse: {

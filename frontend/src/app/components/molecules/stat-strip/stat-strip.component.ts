@@ -230,6 +230,11 @@ export type StatStripVariant = 'columns' | 'stacked';
               stroke-dasharray="1.3 1.2"
             />
           </svg>
+        } @else if (totalGlyph() === 'document') {
+          <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2.8h8l4 4v14.4H6z" />
+            <path d="M14 2.8v4h4M9 11h6M9 14.5h6" />
+          </svg>
         } @else {
           <!-- A SOLID clipboard, matching the reference's filled
                "assignment" glyph: a purple body with a light interior
@@ -701,6 +706,19 @@ export type StatStripVariant = 'columns' | 'stacked';
          instead would resolve against that padding box and put
          the bound 91px too far left. */
       right: calc(var(--label-right-inset, 13px) - 1px);
+      /* The right offset above is a FIXED card offset, so on a card
+         narrower than 'label-left + the offset it resolves NEGATIVE
+         and pushes the label's right edge past the card's own edge.
+         At 320px the Admin's status card is 118px wide while the
+         reference geometry assumes 146px, so "Resolved" hung 30px
+         off the card and pushed the whole page into a horizontal
+         scroll.
+
+         Clamping the width to the space left after the left offset
+         keeps the box inside the card on every width: the used
+         width becomes min(reference width, card - label-left), and
+         the label ellipsises rather than escaping. */
+      max-width: calc(100% - var(--stat-strip-label-left, 81px));
       line-height: 1.25;
       /* The sparkline is absolutely positioned, so the text needs
          to sit above it in the paint order. */
@@ -768,6 +786,12 @@ export type StatStripVariant = 'columns' | 'stacked';
          ellipsises rather than colliding. */
       right: auto;
       width: 44px;
+      /* Same clamp as the label: the value's column is a FIXED
+         44px, so on a card narrower than 'value-left + 44' it
+         hangs off the card's right edge. At 320px the Admin's
+         status card is 118px wide and the value starts at 78px,
+         so the column overran the card by 4px. */
+      max-width: calc(100% - var(--stat-strip-value-left, 81px));
       /* A fixed column can be too narrow for a long number, so the
          value needs the same clipping treatment as the label. */
       overflow: hidden;
@@ -1083,8 +1107,8 @@ export type StatStripVariant = 'columns' | 'stacked';
          inside the border box. A 12.5px/600 face has a 15.6px line
          box whose caps start 3px below the box's top, so the label's
          box starts at card+55 — 54px from the padding box. */
-      --stat-strip-value-top: 22px;
-      --stat-strip-label-top: 54px;
+      --stat-strip-value-top: 19px;
+      --stat-strip-label-top: 49px;
     }
     /* The Admin reference's card labels are a little smaller than
        the HD-021 ones: "Total Tickets" measures 72px of ink over a
@@ -1174,11 +1198,23 @@ export type StatStripVariant = 'columns' | 'stacked';
        cards (and further right on the wider cards the strip grows
        into at its three-column step). */
     :host([data-variant='stacked']) .card.status .spark {
-      right: 11px;
+      right: 16px;
       width: min(
         var(--stat-strip-spark-width, 78px),
-        calc(100% - 158px)
+        calc(100% - 148px)
       );
+    }
+    :host([data-variant='stacked']) .card.status[data-accent='open'] .spark {
+      right: 17px;
+      width: 82px;
+    }
+    :host([data-variant='stacked']) .card.status[data-accent='resolved'] .spark {
+      right: 18px;
+      width: 70px;
+    }
+    :host([data-variant='stacked']) .card.status[data-accent='closed'] .spark {
+      right: 21px;
+      width: 78px;
     }
     /* The aside becomes a two-row grid: the delta pill on the
        value's row, the caption on the label's row. Both are
@@ -1200,11 +1236,11 @@ export type StatStripVariant = 'columns' | 'stacked';
        second, with the second row starting at card+49 so the
        caption's 12.5px caps land on card+58. */
     :host([data-variant='stacked']) .aside {
-      right: 16px;
-      top: 18px;
+      right: 19px;
+      top: 13px;
       bottom: auto;
       display: grid;
-      grid-template-rows: 31px 30px;
+      grid-template-rows: 25px 25px;
       align-items: start;
       justify-items: end;
       gap: 0;
@@ -1212,11 +1248,8 @@ export type StatStripVariant = 'columns' | 'stacked';
     :host([data-variant='stacked']) .delta {
       grid-row: 1;
       align-self: start;
-      /* 29px tall — the reference's pill is a 29px-tinted lozenge.
-         A 15px face has a 22.5px line box, so 3px of vertical
-         padding gets there. */
-      padding: 3px 10px;
-      /* 15px — the reference's "12%" measures 11px of ink. */
+      /* The reference's pill is a compact 24px-tall lozenge. */
+      padding: 2px 8px;
       font-size: var(--stat-strip-delta-size, 15px);
     }
     :host([data-variant='stacked']) .caption {
@@ -1226,7 +1259,7 @@ export type StatStripVariant = 'columns' | 'stacked';
          15.6px line box whose caps sit 3px below its top, so the
          box starts at card+55. The second grid row starts at
          card+49, so the box is pushed 6px down inside it. */
-      margin-top: 6px;
+      margin-top: 7px;
       font-size: var(--stat-strip-caption-size, 12.5px);
     }
   `],
@@ -1268,7 +1301,7 @@ export class StatStripComponent {
    * `people` is the Admin Workspace reference's disc with a group
    * outline cut out of it.
    */
-  readonly totalGlyph = input<'clipboard' | 'ticket' | 'people'>('clipboard');
+  readonly totalGlyph = input<'clipboard' | 'ticket' | 'people' | 'document'>('clipboard');
 
   /** Thousands-separated value. */
   protected format(n: number): string {

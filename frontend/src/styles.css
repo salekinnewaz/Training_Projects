@@ -160,18 +160,18 @@
      The Admin Workspace is a sidebar + widget-grid layout, so it
      needs its own small token family rather than borrowing the
      User/Agent surfaces. Sampled from the reference screenshot. */
-  --admin-sidebar-bg: #FAFBFE;
-  --admin-sidebar-border: #E9EDF5;
-  --admin-nav-text: #334155;
-  --admin-nav-muted-text: #64748B;
-  --admin-nav-hover-bg: #F1F4FB;
-  --admin-nav-active-bg: #F0EFFE;
-  --admin-nav-active-text: #4F3DF5;
-  --admin-badge-bg: #EEF1F8;
-  --admin-badge-text: #64748B;
-  --admin-section-label: #94A3B8;
-  --admin-footer-card-bg: #F4F7FF;
-  --admin-footer-card-border: #E4EAF8;
+  --admin-sidebar-bg: #FBFDFF;
+  --admin-sidebar-border: #E2ECF8;
+  --admin-nav-text: #243b65;
+  --admin-nav-muted-text: #617ba6;
+  --admin-nav-hover-bg: #EEF5FF;
+  --admin-nav-active-bg: #DDEBFF;
+  --admin-nav-active-text: #123f83;
+  --admin-badge-bg: #EAF2FC;
+  --admin-badge-text: #315786;
+  --admin-section-label: #617ba6;
+  --admin-footer-card-bg: #F4F9FF;
+  --admin-footer-card-border: #D8E8FC;
   --admin-footer-icon-bg: #FFF3D4;
   --admin-footer-icon: #E0A800;
   --admin-hero-subtitle: #4B5563;
@@ -191,8 +191,8 @@
        High       pill bg rgb(254,226,226), text rgb(190,44,44)
      These tokens are re-pointed at the admin scope only — the
      User/Agent pages keep the app-wide palette. */
-  --admin-status-open-bg: #E1E8FF;
-  --admin-status-open-text: #2D27FA;
+  --admin-status-open-bg: #E2EEFF;
+  --admin-status-open-text: #1265E9;
   --admin-status-in-progress-bg: #FEF9E8;
   --admin-status-in-progress-text: #C76704;
   --admin-status-resolved-bg: #DAF9E8;
@@ -1518,17 +1518,9 @@ a.admin-card-row:focus-visible {
    out of sync once (the skeleton kept the old column widths
    after the body changed).
 
-   USER | ROLE | STATUS | TICKETS | LAST ACTIVE | ACTIONS
-
-   The ROLE track is 224px because that column carries TWO
-   elements: the role badge (the read) and the compact select
-   (the control). The badge is 95px wide at its longest
-   ("Support Agent") and the compact select is a fixed 116px,
-   plus an 8px gap — so the track must be at least 219px or the
-   select OVERFLOWS its cell and paints over the STATUS column
-   next door, clipping "Active" to "ctive". */
+   # | USER | ROLE | STATUS | LAST ACTIVE | JOINED | ACTIONS */
 :root {
-  --users-grid: minmax(0, 2.4fr) 224px 120px 90px 120px 108px;
+  --users-grid: 34px minmax(210px, 2.3fr) 154px 108px 126px 132px 50px;
 }
 
 /* ── Users shell (standalone /users route) ──────────────────────
@@ -1538,13 +1530,39 @@ a.admin-card-row:focus-visible {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
-  gap: 20px;
+  gap: 12px;
+}
+.users-workspace {
+  display: flex;
+  align-items: stretch;
+  min-height: calc(100vh - var(--chrome-height));
+  width: 100%;
+  font-family: var(--font-admin, "Figtree", var(--font-sans));
+}
+.users-rail {
+  position: sticky;
+  top: var(--chrome-height);
+  align-self: flex-start;
+  height: calc(100vh - var(--chrome-height));
+  min-height: 0;
+  margin-left: -32px;
+  flex: 0 0 248px;
+}
+.users-workspace > admin-sidebar.users-rail {
+  height: calc(100vh - var(--chrome-height));
+}
+.users-rail > admin-sidebar { height: 100%; }
+.users-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 14px 36px 32px 56px;
+  background: linear-gradient(135deg, #f7faff, #f1f5ff 58%, #f8faff);
 }
 .users-shell__header {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 24px;
 }
 .users-shell__title-group {
   display: flex;
@@ -1554,7 +1572,7 @@ a.admin-card-row:focus-visible {
 }
 .users-shell__title {
   margin: 0;
-  font-size: 28px;
+  font-size: 34px;
   font-weight: 700;
   color: var(--color-text);
   letter-spacing: -0.02em;
@@ -1562,9 +1580,60 @@ a.admin-card-row:focus-visible {
 }
 .users-shell__subtitle {
   margin: 0;
-  font-size: 13px;
+  max-width: 620px;
+  font-size: 14px;
   color: var(--color-text-secondary);
-  font-weight: 500;
+  font-weight: 400;
+  line-height: 1.55;
+}
+.users-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #51668e;
+  font-size: 14px;
+}
+.users-breadcrumb a { color: #63779c; text-decoration: none; }
+.users-breadcrumb a:hover { color: var(--color-primary); }
+.users-title-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin-left: 8px;
+  border-radius: 14px;
+  background: #eceaff;
+  color: #553eff;
+  font-size: 27px;
+  vertical-align: middle;
+}
+.users-title-icon svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.users-invite {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(115deg, #354cff, #5938ef);
+  box-shadow: 0 8px 20px #4d45f333;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: not-allowed;
+  opacity: 1;
+}
+.users-invite span { font-size: 22px; line-height: 1; }
+@media (max-width: 900px) {
+  .users-rail { display: none; }
+  .users-main { padding: 20px 20px 32px; }
+}
+@media (max-width: 680px) {
+  .users-shell__header { align-items: flex-start; flex-direction: column; }
+  .users-shell__title { font-size: 30px; }
+  .users-stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* ── Stat summary row (Option A) ────────────────────────────────
@@ -1578,18 +1647,24 @@ a.admin-card-row:focus-visible {
    the summary should sit quietly above it. */
 .users-stat-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 .stat-card {
   all: unset;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 12px 14px;
-  background: var(--color-surface-subtle);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 12px;
+  position: relative;
+  min-height: 94px;
+  box-sizing: border-box;
+  justify-content: center;
+  gap: 4px;
+  padding: 16px 16px 16px 84px;
+  background: rgba(255, 255, 255, .92);
+  border: 1px solid #e1e9f8;
+  border-radius: 14px;
+  box-shadow: 0 5px 18px rgba(66, 96, 160, .06);
   cursor: pointer;
   transition:
     border-color var(--duration-fast) var(--ease-out),
@@ -1612,7 +1687,7 @@ a.admin-card-row:focus-visible {
    Support Agent. The label stays neutral so the tiles read as
    one system rather than five competing highlights. */
 .stat-card__value {
-  font-size: 22px;
+  font-size: 27px;
   font-weight: 700;
   line-height: 1.15;
   letter-spacing: -0.02em;
@@ -1624,19 +1699,30 @@ a.admin-card-row:focus-visible {
 .stat-card--adm .stat-card__value { color: #B45309; }
 .stat-card--agt .stat-card__value { color: var(--color-primary); }
 .stat-card__label {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #52678f;
 }
+.stat-card__icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); display: inline-flex; width: 54px; height: 54px; align-items: center; justify-content: center; border-radius: 13px; background: #e4f0ff; color: #1477f8; }
+.stat-card__icon svg { width: 27px; height: 27px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.stat-card--ok .stat-card__icon { background: #e1f8f0; color: #0da980; }
+.stat-card--off .stat-card__icon { background: #fce9ef; color: #e22b57; }
+.stat-card--adm .stat-card__icon { background: #fff0da; color: #f37620; }
 
 /* ── Toolbar: search + role filter chips ─────────────────────── */
 .users-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 16px 14px;
+  background: #ffffffd9;
+  border: 1px solid #e2eafb;
+  border-radius: 15px 15px 0 0;
+  box-shadow: 0 5px 18px rgba(66, 96, 160, .05);
   flex-wrap: wrap;
 }
 .users-search {
@@ -1646,7 +1732,7 @@ a.admin-card-row:focus-visible {
   min-width: 0;
   flex: 1 1 260px;
   max-width: 320px;
-  height: 34px;
+  height: 38px;
   padding: 0 12px;
   background: var(--color-surface-subtle);
   border: 1px solid var(--color-border);
@@ -1684,10 +1770,49 @@ a.admin-card-row:focus-visible {
 .users-filter-group {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
   flex-wrap: wrap;
 }
+.users-filter-select {
+  height: 38px;
+  min-width: 112px;
+  padding: 0 30px 0 12px;
+  appearance: none;
+  border: 1px solid #dce5f2;
+  border-radius: 9px;
+  color: #15233f;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23536b91' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.users-filter-select:focus-visible,
+.users-export:focus-visible { outline: 2px solid #7c75ff; outline-offset: 2px; }
+.users-filter-select--sort { min-width: 148px; }
+.users-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #dce5f2;
+  border-radius: 9px;
+  background: #fff;
+  color: #172642;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.users-export:hover { border-color: #aebfff; color: #4338f5; }
+.users-export svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .filter-chip {
   all: unset;
   display: inline-flex;
@@ -1791,37 +1916,53 @@ a.admin-card-row:focus-visible {
    table sits directly on the page background, separated only by
    a hairline rule under the header. */
 .users-table-wrap {
-  background: transparent;
-  border: 0;
+  background: rgba(255, 255, 255, .94);
+  border: 1px solid #e2eafb;
+  border-top: 0;
+  border-bottom: 0;
   border-radius: 0;
   overflow: visible;
-  box-shadow: none;
+  padding: 0 14px;
 }
 .users-table-header {
   display: grid;
-  /* USER | ROLE | STATUS | TICKETS | LAST ACTIVE | ACTIONS */
+  /* # | USER | ROLE | STATUS | LAST ACTIVE | JOINED | ACTIONS */
   grid-template-columns: var(--users-grid);
   align-items: center;
   gap: 14px;
   padding: 0 12px;
   height: 34px;
-  border-bottom: 1px solid var(--color-border);
+  background: #f4f7fc;
+  border-bottom: 1px solid #e5ebf6;
   margin-bottom: 4px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--color-muted);
+  color: #51678f;
 }
 .users-table {
   list-style: none;
   margin: 0;
   padding: 0;
 }
+.users-table-footer {
+  display: flex;
+  align-items: center;
+  min-height: 58px;
+  padding: 0 20px;
+  border: 1px solid #e2eafb;
+  border-top: 0;
+  border-radius: 0 0 15px 15px;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 8px 24px rgba(66, 96, 160, .06);
+  color: #3d5278;
+  font-size: 13px;
+  font-weight: 500;
+}
 
-/* Users tab row geometry (HD-014, Option A). One identity cell
-   (avatar + name + email stacked), then ROLE, STATUS, TICKETS,
-   LAST ACTIVE and a hover-revealed ACTIONS column.
+/* Users tab row geometry. One identity cell, a role select, status,
+   last-active time, joined date and a row action menu.
 
    Self-row gets a 3px primary left border per the design spec
    "self-row visual differentiator" §VisualTokens. */
@@ -1835,7 +1976,7 @@ a.admin-card-row:focus-visible {
   /* min-height, not height: the row must be able to hold a
      two-line error message if the text wraps on a narrow
      viewport. A fixed height clipped it. */
-  min-height: 58px;
+  min-height: 56px;
   border-bottom: 1px solid var(--color-border-subtle);
   font-size: 13.5px;
   transition: background-color var(--duration-fast) var(--ease-out);
@@ -1866,6 +2007,11 @@ a.admin-card-row:focus-visible {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+.user-row__number {
+  color: #5b729b;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 .user-row__identity-text {
   display: flex;
@@ -1917,30 +2063,12 @@ a.admin-card-row:focus-visible {
 .user-row__role {
   display: flex;
   align-items: center;
-  gap: 8px;
   min-width: 0;
-  /* Belt-and-braces: the badge + select are sized to fit the
-     track, but if a LONGER role name ever lands here the cell
-     must clip rather than overflow and paint over the STATUS
-     column next door. */
   overflow: hidden;
 }
-/* The role badge sits immediately left of the select. The badge is
-   the PRIMARY read (it shows the role name in full, never
-   truncated); the select beside it is the CONTROL that changes the
-   role and renders in compact mode (a narrow, fixed-width trigger).
-   On a narrow column the badge is dropped so the select's
-   affordance always survives. */
-.user-row__role-badge {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-@media (max-width: 1100px) {
-  .user-row__role-badge {
-    display: none;
-  }
-}
+.user-row__role--admin { --color-primary: #e97600; --color-primary-tint: #fff7e8; --color-primary-ring: #ffd06a; --color-border: #ffd06a; }
+.user-row__role--employee { --color-primary: #52698f; --color-primary-tint: #f1f5fa; --color-primary-ring: #d6e0ee; --color-border: #d6e0ee; }
+.user-row__role--agent { --color-primary: #284cff; --color-primary-tint: #eef2ff; --color-primary-ring: #c4ceff; --color-border: #c4ceff; }
 .user-row__status {
   display: flex;
   align-items: center;
@@ -1949,10 +2077,10 @@ a.admin-card-row:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: transparent;
+  background: #e5f8f1;
   border: 0;
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: 999px;
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -1960,7 +2088,7 @@ a.admin-card-row:focus-visible {
   /* The ACTIVE label uses the same green as its indicator dot.
      It was indigo (--color-primary) which read as "a link" and
      clashed with the green dot sitting right next to it. */
-  color: var(--color-text-soft);
+  color: #118c72;
   transition: background-color 120ms ease;
 }
 .user-row__active-toggle:hover:not(:disabled) {
@@ -1970,6 +2098,8 @@ a.admin-card-row:focus-visible {
   cursor: not-allowed;
   color: var(--color-disabled);
 }
+.user-row__active-toggle.is-active:disabled { color: #118c72; background: #e5f8f1; }
+.user-row__active-toggle.is-inactive:disabled { color: #d43856; background: #ffedf1; }
 .user-row__active-toggle:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: 2px;
@@ -1986,21 +2116,20 @@ a.admin-card-row:focus-visible {
   border: 1.5px solid var(--color-disabled);
 }
 .user-row__active-toggle.is-inactive {
-  color: var(--color-muted);
+  color: #d43856;
+  background: #ffedf1;
 }
 
-/* ── Tickets column ────────────────────────────────────────────
-   A workload signal, so it gets tabular numerals to keep the
-   column visually aligned when the counts differ in width. */
-.user-row__tickets {
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-soft);
-  font-weight: 600;
-}
 .user-row__last-active {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   font-size: 12.5px;
   color: var(--color-label);
 }
+.user-row__activity-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #0da582; }
+.user-row__activity-dot--inactive { background: #64789a; }
+.user-row__joined { font-size: 12.5px; color: var(--color-label); white-space: nowrap; }
 .user-row__never {
   color: var(--color-muted);
 }
@@ -2009,15 +2138,70 @@ a.admin-card-row:focus-visible {
    action cell is invisible until the row is hovered or a control
    inside it has focus (so keyboard users still get it). */
 .user-row__actions {
+  position: relative;
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease-out);
-}
-.user-row:hover .user-row__actions,
-.user-row:focus-within .user-row__actions {
   opacity: 1;
+}
+.user-row__actions-trigger {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 32px;
+  border: 1px solid #e3eaf6;
+  border-radius: 9px;
+  background: #fff;
+  color: #62789f;
+  font: 700 13px/1 var(--font-sans);
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+.user-row__actions-trigger:hover,
+.user-row__actions-trigger[aria-expanded="true"] {
+  border-color: #aebfff;
+  color: #4338f5;
+  background: #f8f9ff;
+}
+.user-row__actions-trigger:focus-visible {
+  outline: 2px solid #7c75ff;
+  outline-offset: 2px;
+}
+.user-row__actions-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  right: 0;
+  min-width: 180px;
+  padding: 5px;
+  border: 1px solid #e2e8f2;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(24, 43, 76, .16);
+}
+.user-row__actions-menu button,
+.user-row__actions-note {
+  display: block;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #243754;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  white-space: nowrap;
+}
+.user-row__actions-menu button { cursor: pointer; }
+.user-row__actions-menu button:hover:not(:disabled) { background: #f1f5fb; }
+.user-row__actions-menu button:disabled,
+.user-row__actions-note { color: #8794a9; }
+.user-row__actions-menu button:focus-visible {
+  outline: 2px solid #7c75ff;
+  outline-offset: -2px;
 }
 .user-row__actions-label {
   font-size: 12px;
@@ -2030,29 +2214,6 @@ a.admin-card-row:focus-visible {
   white-space: nowrap;
 }
 
-/* The self-row micro-label. It was absolutely positioned at
-   `bottom: -22px`, which made it float OVER the next row — a
-   visible overlap bug in the original design.
-
-   It now lives in the row's trailing cell, REPLACING the "Last
-   active" timestamp on the self row (the Admin knows exactly
-   when they were last active — it's now). The row therefore
-   keeps the SAME height as every other row instead of growing a
-   second line, and the table keeps a clean rhythm. */
-.user-row__self-micro-label {
-  margin: 0;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  font-style: italic;
-  /* The label is longer than the LAST ACTIVE track (120px), so it
-     WRAPS instead of overflowing into the ACTIONS column. Without
-     the wrap it painted over the neighbouring cell — the same
-     class of bug as the ROLE column painting over STATUS.
-     `line-height` is tightened so the wrapped label still sits
-     comfortably inside the row's 58px min-height. */
-  line-height: 1.35;
-  overflow-wrap: break-word;
-}
 /* The row error replaces the "Last active" cell too, so a failed
    inline action doesn't change the table's rhythm. */
 .user-row__error {
@@ -2103,6 +2264,8 @@ a.admin-card-row:focus-visible {
   border-radius: 4px;
   animation: admin-skel-pulse 1200ms ease-in-out infinite;
 }
+.user-row-skel__identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.user-row-skel .bar-number { width: 12px; height: 12px; }
 .user-row-skel .bar-avatar {
   width: 32px;
   height: 32px;
@@ -2120,14 +2283,13 @@ a.admin-card-row:focus-visible {
   height: 16px;
   width: 80%;
 }
-.user-row-skel .bar-tickets {
-  height: 14px;
-  width: 40%;
-}
 .user-row-skel .bar-time {
   height: 12px;
   width: 60%;
 }
+.user-row-skel .bar-joined { height: 12px; width: 72%; }
+.user-row-skel .bar-actions { width: 34px; height: 30px; border-radius: 8px; }
+
 
 /* ── Ticket Detail breadcrumb + back-link (wireframe gap) ────────
    Per UX wireframe audit, ticket detail pages show a small
@@ -2971,3 +3133,78 @@ a.admin-card-row:focus-visible {
   color: var(--color-text-soft);
   font-size: 14px;
 }
+
+/* The Admin dashboard's reference uses a wider eight-column summary table. */
+.workspace .card.recent-tickets .tickets-table {
+  min-width: 884px;
+}
+.workspace .card.recent-tickets .tickets-table col.col-num      { width: 120px; }
+.workspace .card.recent-tickets .tickets-table col.col-title    { width: 198px; }
+.workspace .card.recent-tickets .tickets-table col.col-status   { width: 95px; }
+.workspace .card.recent-tickets .tickets-table col.col-priority { width: 95px; }
+.workspace .card.recent-tickets .tickets-table col.col-assignee { width: 132px; }
+.workspace .card.recent-tickets .tickets-table col.col-customer { width: 108px; }
+.workspace .card.recent-tickets .tickets-table col.col-updated  { width: 78px; }
+.workspace .card.recent-tickets .tickets-table col.col-actions  { width: 58px; }
+.workspace .card.recent-tickets .tickets-table thead th { height: 36px; }
+.workspace .card.recent-tickets .tickets-table tbody td { height: 49px; }
+.workspace .card.recent-tickets .table-wrap { margin: 0 -14px; }
+.workspace .card.recent-tickets .tickets-table thead th.col-num { text-align: center; padding-left: 0; }
+.workspace .card.recent-tickets .tickets-table .num-cell { gap: 14px; }
+.workspace .card.recent-tickets .tickets-table .customer-cell {
+  overflow: visible !important;
+  color: #607aa6;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace .card.recent-tickets .tickets-table .actions-heading { text-align: center; }
+.workspace .card.recent-tickets .tickets-table .actions-cell {
+  position: relative;
+  padding: 0 8px;
+  text-align: center;
+}
+.workspace .ticket-actions {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #dfebf8;
+  border-radius: 9px;
+  background: #fff;
+  color: #47658e;
+  cursor: pointer;
+}
+.workspace .ticket-actions:hover,
+.workspace .ticket-actions[aria-expanded="true"] {
+  background: #f3f8ff;
+  border-color: #b9d4f5;
+}
+.workspace .ticket-actions svg { fill: currentColor; }
+.workspace .ticket-actions-menu {
+  position: absolute;
+  z-index: 10;
+  top: 40px;
+  right: 8px;
+  width: 116px;
+  padding: 4px;
+  border: 1px solid #dfebf8;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(24, 58, 98, .14);
+  text-align: left;
+}
+.workspace .ticket-actions-menu button {
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #203a63;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.workspace .ticket-actions-menu button:hover { background: #eef5ff; }

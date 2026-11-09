@@ -138,8 +138,8 @@ export interface SelectPlaceholderOption {
       border-color: var(--color-border-strong);
     }
     .select-wrap--compact select {
-      width: 116px;
-      padding: 0 30px 0 12px;
+      width: 142px;
+      padding: 0 24px 0 11px;
       font-size: 13px;
       font-weight: 600;
       color: var(--color-primary);

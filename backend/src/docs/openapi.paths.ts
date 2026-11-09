@@ -1180,5 +1180,32 @@ export const INLINED_OPENAPI_PATHS: Record<string, Record<string, unknown>> = {
         }
       }
     }
+  },
+  "/admin/workspace": {
+    "get": {
+      "summary": "Admin Workspace dashboard bundle",
+      "description": "Returns the six widgets of the WDS-2026 Admin Workspace in\nONE response — the summary counters, the Recent Tickets\nrows, the Users Overview breakdown, the Priority\ndistribution, the Ticket Trends series and the Recent\nUsers. They always render together, so a partial render\nwould be a worse UX than a single failure state. Admin\nonly.\n",
+      "tags": [
+        "Admin"
+      ],
+      "responses": {
+        "200": {
+          "description": "The Admin Workspace bundle.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminWorkspaceResponse"
+              }
+            }
+          }
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        },
+        "403": {
+          "$ref": "#/components/responses/Forbidden"
+        }
+      }
+    }
   }
 };

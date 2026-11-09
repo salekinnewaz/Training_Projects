@@ -7,7 +7,7 @@
  *   │ [AP] Avery Patel          [Admin ▾]   ● Active   12   2m ago  │
  *   │      admin@company.com                                     [⋯] │
  *   └────────────────────────────────────────────────────────────────┘
- *      USER              ROLE       STATUS      TICKETS  LAST ACTIVE  ACTIONS
+ *      #  USER            ROLE     STATUS    LAST ACTIVE    JOINED   ACTIONS
  *
  * WHY THE IDENTITY IS ONE CELL
  * ────────────────────────────
@@ -43,14 +43,17 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
+  HostListener,
   computed,
+  inject,
   input,
   output,
+  signal,
 } from '@angular/core';
 
 import type { UserPublic } from '../../../models/user';
 import type { UserRole } from '../../../models/enums';
-import { BadgeRoleComponent } from '../../atoms/badge-role/badge-role.component';
 import { ChromeAvatarComponent } from '../../atoms/chrome-avatar/chrome-avatar.component';
 import { SelectComponent } from '../../atoms/select/select.component';
 import type { SelectOption } from '../../atoms/select/select.component';
@@ -64,7 +67,7 @@ const ROLE_OPTIONS: SelectOption[] = [
 @Component({
   selector: 'user-row',
   standalone: true,
-  imports: [BadgeRoleComponent, ChromeAvatarComponent, SelectComponent],
+  imports: [ChromeAvatarComponent, SelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <li
@@ -73,17 +76,20 @@ const ROLE_OPTIONS: SelectOption[] = [
       [class.user-row--updating]="isUpdating()"
       [attr.data-user-id]="user().id"
     >
+      <span class="user-row__number">{{ rowNumber() }}</span>
       <!-- ── Identity: avatar + name + email, stacked ──────────── -->
       <div class="user-row__identity">
         <chrome-avatar
           [displayName]="user().displayName"
-          [size]="32"
+          [size]="36"
+          [style.--color-disabled]="avatarTone()"
+          [style.color]="avatarInk()"
         />
         <span class="user-row__identity-text">
           <span class="user-row__name">
             <span class="user-row__display-name">{{ user().displayName }}</span>
             @if (isSelf()) {
-              <span class="user-row__you-tag" title="This is you">You</span>
+              <span class="user-row__you-tag" title="You cannot change your own role">You</span>
             }
           </span>
           <span class="user-row__email">{{ user().email }}</span>
@@ -91,16 +97,17 @@ const ROLE_OPTIONS: SelectOption[] = [
       </div>
 
       <!-- ── Role: badge (the read) + select (the control) ─────── -->
-      <div class="user-row__role">
-        <span class="user-row__role-badge">
-          <badge-role [role]="user().role" />
-        </span>
+      <div
+        class="user-row__role"
+        [class.user-row__role--admin]="user().role === 'Admin'"
+        [class.user-row__role--agent]="user().role === 'Support Agent'"
+        [class.user-row__role--employee]="user().role === 'User'"
+      >
         <atom-select
           [id]="roleSelectId()"
           [value]="user().role"
           [options]="roleOptions"
           [compact]="true"
-          displayLabel="Change"
           [disabled]="isSelf() || isUpdating()"
           [attr.aria-label]="'Role for ' + user().displayName"
           (valueChange)="onRoleChange($event)"
@@ -128,23 +135,14 @@ const ROLE_OPTIONS: SelectOption[] = [
         </button>
       </div>
 
-      <!-- ── Tickets ────────────────────────────────────────────── -->
-      <div class="user-row__tickets" data-testid="user-row-tickets">
-        {{ ticketCount() }}
-      </div>
-
       <!-- ── Last active ────────────────────────────────────────── -->
       <div class="user-row__last-active">
-        @if (isSelf()) {
-          <!-- The self row's trailing cell carries the
-               self-protection note instead of the timestamp —
-               the Admin knows exactly when they were last
-               active (it's now). This keeps every row the same
-               height. -->
-          <p class="user-row__self-micro-label">
-            You cannot change your own role.
-          </p>
-        } @else if (user().lastActiveAt !== null && user().lastActiveAt !== undefined) {
+        @if (user().lastActiveAt) {
+          <span
+            class="user-row__activity-dot"
+            [class.user-row__activity-dot--inactive]="!user().isActive"
+            aria-hidden="true"
+          ></span>
           <time [attr.datetime]="user().lastActiveAt">
             {{ formattedLastActive() }}
           </time>
@@ -153,9 +151,41 @@ const ROLE_OPTIONS: SelectOption[] = [
         }
       </div>
 
+      <!-- ── Joined ─────────────────────────────────────────────── -->
+      <div class="user-row__joined">
+        <time [attr.datetime]="user().createdAt">{{ formattedJoined() }}</time>
+      </div>
+
       <!-- ── Actions (hover-revealed) ───────────────────────────── -->
       <div class="user-row__actions">
-        <span class="user-row__actions-label">Actions</span>
+        <button
+          type="button"
+          class="user-row__actions-trigger"
+          [attr.aria-label]="'Actions for ' + user().displayName"
+          [attr.aria-expanded]="actionsOpen()"
+          [attr.aria-controls]="'user-actions-' + user().id"
+          (click)="toggleActions($event)"
+        >
+          <span aria-hidden="true">•••</span>
+        </button>
+        @if (actionsOpen()) {
+          <div class="user-row__actions-menu" role="menu" [id]="'user-actions-' + user().id">
+            @if (isSelf()) {
+              <span class="user-row__actions-note" role="menuitem" aria-disabled="true">
+                You cannot change your own account
+              </span>
+            } @else {
+              <button
+                type="button"
+                role="menuitem"
+                [disabled]="isUpdating()"
+                (click)="onToggleClick()"
+              >
+                {{ user().isActive ? 'Deactivate user' : 'Activate user' }}
+              </button>
+            }
+          </div>
+        }
       </div>
 
       @if (errorMessage(); as err) {
@@ -170,11 +200,15 @@ const ROLE_OPTIONS: SelectOption[] = [
   `],
 })
 export class UserRowComponent {
+  private readonly host = inject(ElementRef<HTMLElement>);
+
   readonly user = input.required<UserPublic>();
   readonly isSelf = input<boolean>(false);
   readonly isUpdating = input<boolean>(false);
   readonly errorMessage = input<string | null>(null);
   readonly relativeTime = input<string | null>(null);
+  readonly rowNumber = input(0);
+  readonly actionsOpen = signal(false);
 
   readonly roleChange = output<UserRole>();
   readonly activeToggle = output<void>();
@@ -188,15 +222,11 @@ export class UserRowComponent {
    */
   readonly roleSelectId = computed(() => `user-row-role-${this.user().id}`);
 
-  /**
-   * The number of live tickets this user is connected to.
-   *
-   * `ticketCount` is OPTIONAL on `UserPublic` — `/api/auth/me`
-   * doesn't carry it, and the single-user PUT endpoints send `0`.
-   * A missing count renders as 0 rather than blank so the column
-   * never shows a ragged gap.
-   */
-  readonly ticketCount = computed(() => this.user().ticketCount ?? 0);
+  readonly avatarTone = computed(() => {
+    const tones = ['#86d5e9', '#c6d4ff', '#f2c3d4', '#9fe3cd', '#c6b5ff', '#ffd485', '#a8d8e7', '#bac6d8'];
+    return tones[this.user().id % tones.length] ?? tones[0];
+  });
+  readonly avatarInk = computed(() => this.user().id % 2 === 0 ? '#183f65' : '#154959');
 
   readonly activeAriaLabel = computed(() =>
     this.user().isActive
@@ -217,6 +247,14 @@ export class UserRowComponent {
     const iso = this.user().lastActiveAt;
     if (!iso) return null;
     return UserRowComponent.formatRelative(iso);
+  });
+
+  readonly formattedJoined = computed(() => {
+    const date = new Date(this.user().createdAt);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+    }).format(date);
   });
 
   onRoleChange(value: string): void {
@@ -257,6 +295,24 @@ export class UserRowComponent {
   }
 
   onToggleClick(): void {
+    this.actionsOpen.set(false);
     this.activeToggle.emit();
+  }
+
+  toggleActions(event: MouseEvent): void {
+    event.stopPropagation();
+    this.actionsOpen.update((open) => !open);
+  }
+
+  @HostListener('document:click', ['$event'])
+  closeActionsOnOutsideClick(event: MouseEvent): void {
+    if (!this.host.nativeElement.contains(event.target as Node)) {
+      this.actionsOpen.set(false);
+    }
+  }
+
+  @HostListener('document:keydown.escape')
+  closeActionsOnEscape(): void {
+    this.actionsOpen.set(false);
   }
 }
