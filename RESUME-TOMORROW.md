@@ -1,20 +1,29 @@
 # RESUME — Admin Workspace rework (session `30945ab7`)
 
-> **✅ This rework is COMPLETE as of Iteration 16 (2026-11-04), and
-> Iteration 19 (2026-11-06) added the notification matrix.**
+> **⚠️ MOSTLY STALE — read Iteration 20 first (2026-11-09).**
+> The work described here is now **committed and published**:
+> committed as `b6bea8d`, pushed to `origin/main`
+> (`d21256b..b6bea8d`), and deployed to Vercel production. The
+> working tree is **clean** — there is nothing uncommitted to
+> protect, and no commit is outstanding. §4's inventory and §7's
+> action list are **historical**.
+>
+> **Iteration 20 also repaired the production database.** The
+> `notifications` table had never been created on the production
+> Neon DB, so `GET /api/notifications` and `POST /api/tickets` were
+> returning HTTP 500 in production. Two migrations are now applied
+> to Neon. If you ever see `relation "notifications" does not
+> exist` (Postgres `42P01`), that is the cause — re-run
+> `npm run db:migrate --workspace backend` with `POSTGRES_URL_DIRECT`
+> set.
+>
 > The whole tree is green: **652/652 QA gate checks**, **610/610
 > Angular unit tests**, **189/189 backend tests** (153 unit + 36
 > integration), **145 Playwright E2E passed / 1 skipped / 0 failed**,
 > both `tsc --noEmit` runs clean, and `npm run build` clean on both
-> sides. Read **`HANDSOFF.md` → `## Iteration 16`** and
-> **`## Iteration 19`** for the full write-ups: what changed, why, and
-> the measurements.
->
-> The one remaining job is **to commit** the working tree (§4).
->
-> **Nothing is committed yet.** All of it is uncommitted working-tree
-> state (see §4). That is intentional and expected — do **not**
-> discard it.
+> sides. Read **`HANDSOFF.md` → `## Iteration 16`**, **`## Iteration
+> 19`** and **`## Iteration 20`** for the full write-ups.
+
 
 ---
 
@@ -143,7 +152,11 @@ immediately. This file + the task list above is the handoff.
 
 ---
 
-## 4. Uncommitted state — do NOT discard
+## 4. Uncommitted state — HISTORICAL (now committed)
+
+> **Iteration 20 (2026-11-09):** all of this is now committed
+> (`b6bea8d`) and pushed to `origin/main`. The tree is clean. The
+> inventory below is kept for reference only.
 
 Branch `main`, tracking `origin/main`, **no commits yet**. Working tree:
 
@@ -231,6 +244,11 @@ Disk is fine (137 GB free), so this is optional.
 ---
 
 ## 7. First five actions tomorrow
+
+> **Iteration 20 (2026-11-09):** this is DONE. The work was
+> committed (`b6bea8d`), pushed to `origin/main`, deployed to Vercel
+> production, and the production Neon schema was repaired. There is
+> no outstanding commit and the working tree is clean.
 
 **The work is done — the only thing left is to COMMIT it.** Steps
 below assume you have not committed yet.

@@ -2,10 +2,9 @@
 
 ## Current work in progress
 
-**There is an uncommitted working tree.** Before doing anything else,
-read **`RESUME-TOMORROW.md`** — it is a full handoff snapshot: what was
-built, what is broken, the exact open tasks, the measured reference
-geometry, and the uncommitted-file inventory.
+**The working tree is clean and everything is published.** The
+Admin Workspace rework and the notification matrix are **committed**
+(`b6bea8d`) and **pushed** to `origin/main` (`d21256b..b6bea8d`).
 
 The **WDS-2026 Admin Workspace** (Admin Dashboard widget grid) rework
 is now **functionally and geometrically complete** (Iteration 16 in
@@ -19,12 +18,19 @@ all three roles. The recipient rules now live in
 every ticket event, and the ticket submitter is notified of every
 activity on their own ticket. See `HANDSOFF.md` → `## Iteration 19`.
 
-It is still **uncommitted**, so the working tree below still matters.
+**Iteration 20 (2026-11-09)** committed all of it, deployed to Vercel
+(via the project's git integration — `git push origin main` is enough),
+and **repaired the production Neon schema**: the `notifications` table
+had never been created on prod, so `/api/notifications` and
+`POST /api/tickets` were 500ing in production. Two migrations
+(`...07-create-notifications`, `...08-ticket-priority-nullable`) are
+now applied to Neon. See `HANDSOFF.md` → `## Iteration 20`.
 
-**Do not discard the uncommitted working tree.** It contains new
-untracked components (`donut-chart/`, `stacked-bar-chart/`,
-`admin-hero/`, `admin-sidebar/`, `adminDashboardService.ts`,
-`notificationService.ts`) that are not in git and would be lost.
+`RESUME-TOMORROW.md` is now **stale** on the "uncommitted working
+tree" and "the only job left is to commit" points — the tree is clean
+and the work is published. Treat its §4 inventory and §7 action list
+as historical.
+
 
 ## Standing rules for this repo
 
