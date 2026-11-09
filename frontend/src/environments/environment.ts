@@ -21,6 +21,11 @@ export const environment = {
   // them (`localhost:4200` page → `127.0.0.1:3000` API) makes the
   // browser treat the calls as cross-site and withhold the cookie.
   apiBaseUrl: 'http://localhost:3000/api',
+  // Client-side attachment size cap. Mirrors the backend's
+  // `MAX_UPLOAD_BYTES` (10 MB outside Vercel). The server is
+  // the source of truth; this is a UX optimization that avoids
+  // a wasted round-trip.
+  maxAttachmentBytes: 10 * 1024 * 1024,
 } as const;
 
 export type Environment = typeof environment;

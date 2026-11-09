@@ -587,13 +587,13 @@ const sharedComponents = {
       },
     },
     PayloadTooLarge: {
-      description: 'Attachment exceeds the 10 MB cap.',
+      description: "Attachment exceeds the server's size cap.",
       content: {
         'application/json': {
           schema: { $ref: '#/components/schemas/ErrorBody' },
           example: {
             error: 'file_too_large',
-            message: 'File is larger than 10 MB. Pick a smaller file.',
+            message: 'File is larger than the allowed size. Pick a smaller file.',
           },
         },
       },

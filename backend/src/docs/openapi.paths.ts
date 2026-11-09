@@ -1008,7 +1008,7 @@ export const INLINED_OPENAPI_PATHS: Record<string, Record<string, unknown>> = {
   "/attachments": {
     "post": {
       "summary": "Upload an attachment",
-      "description": "Multipart upload of a single file ≤ 10 MB with a\nmimetype from the server's allowlist. Returns the\n`attachmentId` to be set on the subsequent\n`POST /tickets` call (two-step flow per design doc).\n\nAllowlist: `image/png`, `image/jpeg`, `image/gif`,\n`application/pdf`, `text/plain`, `application/zip`.\n",
+      "description": "Multipart upload of a single file within the server's\nconfigured size cap with a mimetype from the server's\nallowlist. Returns the\n`attachmentId` to be set on the subsequent\n`POST /tickets` call (two-step flow per design doc).\n\nAllowlist: `image/png`, `image/jpeg`, `image/gif`,\n`application/pdf`, `text/plain`, `application/zip`.\n",
       "tags": [
         "Attachments"
       ],
@@ -1138,7 +1138,7 @@ export const INLINED_OPENAPI_PATHS: Record<string, Record<string, unknown>> = {
           "$ref": "#/components/responses/NotFound"
         },
         "500": {
-          "description": "File metadata exists but the bytes are missing\non disk (orphan from a botched cleanup).\n",
+          "description": "File metadata exists but the stored bytes are\nmissing (`storage_missing`), or the file store is\nunreachable (`storage_unavailable`).\n",
           "content": {
             "application/json": {
               "schema": {
@@ -1146,7 +1146,7 @@ export const INLINED_OPENAPI_PATHS: Record<string, Record<string, unknown>> = {
               },
               "example": {
                 "error": "storage_missing",
-                "message": "File metadata exists but the bytes are missing on disk."
+                "message": "File metadata exists but the stored bytes are missing."
               }
             }
           }

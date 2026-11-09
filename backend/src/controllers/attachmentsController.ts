@@ -16,7 +16,9 @@
  *     they submitted; Support Agent / Admin can fetch any.
  *
  * Multer is configured with `memoryStorage` (the file sits in
- * a `Buffer` on `req.file.buffer`) and a 10 MB cap. The file
+ * a `Buffer` on `req.file.buffer`) and an environment-derived
+ * size cap (10 MB locally, 4 MB on Vercel — see
+ * `MAX_UPLOAD_BYTES`). The file
  * filter consults `ALLOWED_MIMETYPES`; anything else is
  * rejected with a `MulterError('LIMIT_UNEXPECTED_FILE')`
  * which the controller catches and re-throws as
@@ -24,8 +26,10 @@
  * frontend can render the same error envelope it does for
  * every other 4xx.
  *
- * The size cap is enforced by multer; when it trips, multer
- * throws `MulterError('LIMIT_FILE_SIZE')` which the controller
+ * The size cap is enforced twice: from the `Content-Length`
+ * header before multer buffers anything, and by multer's own
+ * `fileSize` limit. When multer's trips, it throws
+ * `MulterError('LIMIT_FILE_SIZE')` which the controller
  * re-throws as `HttpError(413, 'file_too_large', ...)`.
  */
 
@@ -56,7 +60,48 @@ const ALLOWED_MIMETYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Multer middleware: in-memory storage, 10 MB cap, mimetype
+ * The maximum upload size, in bytes.
+ *
+ * Derived from the environment so local dev and production can
+ * differ without a code change:
+ *
+ *   - `MAX_UPLOAD_BYTES` — explicit override, wins over everything.
+ *   - `VERCEL === '1'`   — 4 MB. Vercel rejects request bodies
+ *     larger than 4.5 MB with an opaque platform 413
+ *     (`FUNCTION_PAYLOAD_TOO_LARGE`) *before* the app sees
+ *     them, so our own cap has to be lower than that limit or
+ *     the client gets a platform error instead of our
+ *     actionable one.
+ *   - otherwise         — 10 MB, the documented MVP limit.
+ */
+export const MAX_UPLOAD_BYTES = resolveMaxUploadBytes();
+
+function resolveMaxUploadBytes(): number {
+  const raw = (process.env.MAX_UPLOAD_BYTES ?? '').trim();
+  if (raw !== '') {
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error(
+        `[attachments] MAX_UPLOAD_BYTES="${raw}" is not a positive integer.`,
+      );
+    }
+    return parsed;
+  }
+  return process.env.VERCEL === '1' ? 4 * 1024 * 1024 : 10 * 1024 * 1024;
+}
+
+/**
+ * Render a byte count as a whole-number MB string — `"10 MB"`,
+ * `"4 MB"` — never `"10.0 MB"`. The 413 copy is asserted
+ * verbatim by the specs, so the formatting has to be exact.
+ */
+export function formatBytes(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  return `${Number.isInteger(mb) ? mb : Number(mb.toFixed(1))} MB`;
+}
+
+/**
+ * Multer middleware: in-memory storage, size cap, mimetype
  * allowlist. The error handling for the cap and the filter
  * lives in the controller (see `runUpload`) so we can map
  * multer's `MulterError` codes to our typed `HttpError`
@@ -64,7 +109,7 @@ const ALLOWED_MIMETYPES: ReadonlySet<string> = new Set([
  */
 export const uploadMiddleware = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_BYTES },
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_MIMETYPES.has(file.mimetype)) {
       cb(null, true);
@@ -99,6 +144,16 @@ function runUpload(req: Request, res: Response): Promise<void> {
   if (req.file) {
     return Promise.resolve();
   }
+  const lengthError = checkContentLength(req);
+  if (lengthError) {
+    // Drain the request before responding. The client is still
+    // streaming the body; if we answer and close the socket
+    // mid-upload the client gets an EPIPE instead of our 413.
+    return drainRequest(req).then(
+      () => Promise.reject(lengthError),
+      () => Promise.reject(lengthError),
+    );
+  }
   return new Promise((resolve, reject) => {
     uploadMiddleware(req, res, (err: unknown) => {
       if (err instanceof multer.MulterError) {
@@ -107,7 +162,7 @@ function runUpload(req: Request, res: Response): Promise<void> {
             new HttpError(
               413,
               'file_too_large',
-              'File is larger than 10 MB. Pick a smaller file.',
+              `File is larger than ${formatBytes(MAX_UPLOAD_BYTES)}. Pick a smaller file.`,
             ),
           );
           return;
@@ -147,6 +202,75 @@ function runUpload(req: Request, res: Response): Promise<void> {
         resolve();
       }
     });
+  });
+}
+
+/**
+ * Reject an oversized upload from the `Content-Length` header,
+ * before multer buffers the body into memory.
+ *
+ * This is a best-effort early exit: browsers send
+ * `Content-Length` for `FormData` POSTs, so in practice the
+ * client gets *our* 413 with actionable copy rather than the
+ * platform's opaque `FUNCTION_PAYLOAD_TOO_LARGE`. A chunked
+ * request has no `Content-Length` and falls through to multer's
+ * own `fileSize` limit, which enforces the same cap.
+ *
+ * The header covers the whole multipart envelope, not just the
+ * file payload, so we allow a small margin for the boundary
+ * lines and part headers. Without the margin a file of exactly
+ * the cap would be rejected on the envelope's overhead.
+ */
+function checkContentLength(req: Request): HttpError | null {
+  const header = req.headers['content-length'];
+  if (typeof header !== 'string' || header === '') {
+    return null;
+  }
+  const declared = Number.parseInt(header, 10);
+  if (!Number.isFinite(declared) || declared <= 0) {
+    return null;
+  }
+  // ~64 KB of multipart envelope overhead is generous.
+  const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
+  if (declared > MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES) {
+    return new HttpError(
+      413,
+      'file_too_large',
+      `File is larger than ${formatBytes(MAX_UPLOAD_BYTES)}. Pick a smaller file.`,
+    );
+  }
+  return null;
+}
+
+/**
+ * Consume and discard the rest of the request body.
+ *
+ * Used before answering an oversized upload with 413: the client
+ * is still writing the body, so replying without draining closes
+ * the socket underneath it and the client sees a connection reset
+ * rather than the 413. Draining lets the response land.
+ *
+ * Best-effort — if the stream errors we still send the 413.
+ */
+function drainRequest(req: Request): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (req.readableEnded || req.destroyed) {
+      resolve();
+      return;
+    }
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    req.on('data', () => {
+      /* discard */
+    });
+    req.on('end', finish);
+    req.on('error', finish);
+    req.on('aborted', finish);
+    req.resume();
   });
 }
 
@@ -215,8 +339,10 @@ function serializeAttachment(att: {
 /**
  * POST /api/attachments — upload a single file (multipart).
  *
- * Request: `multipart/form-data` with one field `file` ≤ 10 MB
- * and mimetype in `ALLOWED_MIMETYPES`.
+ * Request: `multipart/form-data` with one field `file` no
+ * larger than the server's configured cap (10 MB in
+ * development, 4 MB in production) and mimetype in
+ * `ALLOWED_MIMETYPES`.
  *
  * Response: 201 with `{ id, filename, sizeBytes, mimetype }`.
  * The row's `storagePath` is internal — never returned.
@@ -227,8 +353,9 @@ function serializeAttachment(att: {
  *   post:
  *     summary: Upload an attachment
  *     description: |
- *       Multipart upload of a single file ≤ 10 MB with a
- *       mimetype from the server's allowlist. Returns the
+ *       Multipart upload of a single file within the server's
+ *       configured size cap with a mimetype from the server's
+ *       allowlist. Returns the
  *       `attachmentId` to be set on the subsequent
  *       `POST /tickets` call (two-step flow per design doc).
  *
@@ -310,7 +437,8 @@ export const uploadHandler = asyncHandler(
  *
  * Errors: 400 invalid id; 401 (handled by authMiddleware
  * upstream); 403 (User not the submitter, 404 to avoid
- * enumeration); 404 missing row; 500 storage_missing.
+ * enumeration); 404 missing row; 500 storage_missing /
+ * storage_unavailable.
  */
 /**
  * @openapi
@@ -377,15 +505,16 @@ export const uploadHandler = asyncHandler(
  *         $ref: '#/components/responses/NotFound'
  *       500:
  *         description: |
- *           File metadata exists but the bytes are missing
- *           on disk (orphan from a botched cleanup).
+ *           File metadata exists but the stored bytes are
+ *           missing (`storage_missing`), or the file store is
+ *           unreachable (`storage_unavailable`).
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorBody'
  *             example:
  *               error: storage_missing
- *               message: File metadata exists but the bytes are missing on disk.
+ *               message: File metadata exists but the stored bytes are missing.
  */
 export const downloadHandler = asyncHandler(
   async (req: Request, res: Response, _next: NextFunction) => {
@@ -415,10 +544,22 @@ export const downloadHandler = asyncHandler(
         throw new HttpError(
           500,
           'storage_missing',
-          'File metadata exists but the bytes are missing on disk.',
+          'File metadata exists but the stored bytes are missing.',
         );
       }
-      throw err;
+      // Anything else — a misconfigured store, a network failure,
+      // a missing credential — is a server fault, not a missing
+      // file. Log the underlying cause so an operator can tell
+      // the two apart, and return a distinct error code.
+      console.error(
+        '[attachments] failed to read attachment bytes:',
+        err,
+      );
+      throw new HttpError(
+        500,
+        'storage_unavailable',
+        'The file store is unavailable. Try again shortly.',
+      );
     }
 
     // Sanitize the filename for Content-Disposition: strip

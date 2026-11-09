@@ -8,6 +8,7 @@
 
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '../config/database';
+import type { StorageBackendKind } from '../utils/attachmentStorage';
 
 export interface AttachmentAttributes {
   id: number;
@@ -15,6 +16,12 @@ export interface AttachmentAttributes {
   sizeBytes: number;
   mimetype: string;
   storagePath: string;
+  /**
+   * Which storage backend wrote this row's bytes (`fs` or
+   * `blob`). Recorded so a row written by one backend is never
+   * read by the other — the two use incompatible path formats.
+   */
+  backendKind: StorageBackendKind;
   uploadedById: number;
   createdAt: Date;
 }
@@ -33,6 +40,7 @@ export class Attachment
   declare sizeBytes: number;
   declare mimetype: string;
   declare storagePath: string;
+  declare backendKind: StorageBackendKind;
   declare uploadedById: number;
   declare readonly createdAt: Date;
 }
@@ -61,6 +69,12 @@ Attachment.init(
       type: DataTypes.STRING(512),
       allowNull: false,
       field: 'storage_path',
+    },
+    backendKind: {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: 'fs',
+      field: 'backend_kind',
     },
     uploadedById: {
       type: DataTypes.INTEGER,

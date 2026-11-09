@@ -28,8 +28,26 @@ import apiRouter from './routes';
 import { getOpenApiSpec } from './docs/openapi';
 import { mountSwaggerUI } from './docs/swaggerUI';
 import { errorHandler } from './middleware/errorHandler';
+import { resolveStorageBackend } from './utils/attachmentStorage';
 
 dotenv.config();
+
+// ── Boot guard ─────────────────────────────────────────────────────
+// On Vercel the serverless filesystem is read-only except /tmp, and
+// /tmp is ephemeral per function instance — so attachment bytes
+// cannot be written there at all. The `fs` storage backend would
+// fail every upload with a 500 `storage_failed`.
+//
+// Refuse to boot rather than serve a broken upload endpoint: a
+// missing `ATTACHMENT_STORAGE_BACKEND` env var then surfaces in
+// the deploy log immediately, instead of as a mysterious 500
+// days later.
+if (process.env.VERCEL === '1' && resolveStorageBackend() === 'fs') {
+  throw new Error(
+    '[boot] ATTACHMENT_STORAGE_BACKEND must be "blob" on Vercel — ' +
+      'the serverless filesystem is read-only and /tmp is ephemeral.',
+  );
+}
 
 const app: Application = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);

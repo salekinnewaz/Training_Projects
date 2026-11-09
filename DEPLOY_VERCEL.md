@@ -7,7 +7,7 @@
 | Angular SPA  | **Vercel**          | $0    | Free static hosting, free TLS, global CDN, PR previews                            |
 | Express API  | **Vercel Functions**| $0    | Rewrite as serverless functions — fits Vercel cleanly                             |
 | Database     | **Neon Postgres**   | $0    | **512 MB free** (largest free tier of any managed Postgres), scales to zero, branching, 190 compute hrs/mo, no expiry, no card |
-| File uploads | **Vercel Blob**     | $0    | 500 MB free (or skip; backend attachments stay local)                            |
+| File uploads | **Vercel Blob**     | $0    | 1 GB/month free (or skip; backend attachments stay local)                         |
 
 **Why Neon over Vercel Postgres:** Neon IS what powers Vercel Postgres under the hood — same engine, same technology. Going direct gives you **2× the storage (512 MB vs 256 MB)**, more compute, and a free dashboard for browsing your data. The integration with Vercel is one env var away.
 
@@ -15,7 +15,7 @@
 
 1. **Sequelize dialect:** MySQL → Postgres. Same Sequelize API, only the driver and `dialect` change. Most model code is untouched.
 2. **Express app:** rewrite `backend/src/server.ts` into a Vercel Function (`api/index.ts`) that exports the Express app as a handler. ~10 lines of glue.
-3. **File attachments:** switch to **Vercel Blob** (`@vercel/blob`) so uploads work on serverless. Or remove attachments from the demo to skip the dependency.
+3. **File attachments:** switch to **Vercel Blob** (`@vercel/blob`) so uploads work on serverless. **Done** — see §5.
 
 Everything else (frontend, components, services) is unchanged.
 
@@ -219,14 +219,73 @@ Vercel project → Settings → Environment Variables:
 
 ---
 
-## 5. (Optional) File uploads — Vercel Blob
+## 5. File uploads — Vercel Blob
 
-The current backend has an `Attachment` model + multer-based upload. On Vercel Functions you can't write to the local disk, so:
+**This is implemented.** The backend stores attachment bytes through a
+small storage interface (`backend/src/utils/attachmentStorage.ts`) with two
+implementations, selected by the `ATTACHMENT_STORAGE_BACKEND` env var:
 
-- **Option A (recommended):** swap to **Vercel Blob** (`@vercel/blob`, free 500 MB). ~30 lines of code change in the upload route. Blob URLs are stored in the Attachment model.
-- **Option B:** skip attachments for the demo. Comment out the upload route, leave the model and UI in place, and ship without it.
+| Backend | Where the bytes live | When |
+| ------- | -------------------- | ---- |
+| `fs`    | `<cwd>/uploads/` on the local filesystem | local dev (the default — zero config) |
+| `blob`  | a **private** Vercel Blob store | production on Vercel |
 
-The rest of the app (tickets, comments, activity log, kanban) works without attachments touched.
+Why the switch is mandatory on Vercel: the serverless filesystem is
+**read-only except `/tmp`**, and `/tmp` is **ephemeral per function
+instance** — files written there do not survive a recycle. A probe
+endpoint on the live runtime confirms it:
+
+```
+cwd            /var/task
+/var/task      NOT WRITABLE (EROFS)
+/tmp           WRITABLE
+```
+
+So the `fs` backend cannot work on Vercel at all. The app refuses to
+boot there with `ATTACHMENT_STORAGE_BACKEND` unset or set to `fs`, so a
+missing env var surfaces in the deploy log immediately rather than as a
+500 on the first upload.
+
+Setup (already done for this project):
+
+```bash
+# The access mode and region are IMMUTABLE after creation.
+vercel blob create-store helpdesk-attachments --access private --region iad1 --yes
+vercel env add ATTACHMENT_STORAGE_BACKEND production   # value: blob
+vercel env add ATTACHMENT_STORAGE_BACKEND preview      # value: blob
+```
+
+Connecting a store to the project makes Vercel inject
+`BLOB_READ_WRITE_TOKEN` automatically — no secret to manage by hand.
+
+Downloads need **no** wire-contract change: the blob URL is not publicly
+reachable, and the existing auth-gated `GET /api/attachments/:id` route
+fetches the bytes through the Function and streams them to the client.
+
+### 5.1 The 4 MB production cap
+
+Vercel rejects request bodies larger than **4.5 MB** with an opaque
+platform 413 (`FUNCTION_PAYLOAD_TOO_LARGE`) *before* the app ever sees
+them. The backend therefore caps uploads at **4 MB in production** and
+**10 MB locally**, from one env-derived constant (`MAX_UPLOAD_BYTES`), so
+the client gets *our* actionable 413 rather than the platform's.
+
+The frontend mirrors the cap via `environment.maxAttachmentBytes`
+(`10 MB` in `environment.ts`, `4 MB` in `environment.prod.ts`).
+
+The architecturally correct fix — client-direct upload via
+`@vercel/blob`'s `handleUpload()` (presigned PUT), which bypasses the
+4.5 MB platform limit entirely and keeps the full 10 MB — is a separate
+story.
+
+### 5.2 Blob tier limits
+
+The Hobby Blob tier is **1 GB/month**. Exceeding it is a **hard block**,
+not overage billing: Blob access stops until the 30-day window resets.
+Note that `attachmentStorage.delete()` currently has **no call sites**
+and there is no `DELETE /api/attachments/:id` route, so blob bytes are
+never reclaimed. That is what will eventually exhaust the cap — worth a
+follow-up story.
 
 ---
 
@@ -289,7 +348,7 @@ git push origin main
 | Vercel (frontend)  | 100 GB bandwidth/mo                          | **$0**         |
 | Vercel Functions   | 100 GB-hrs/mo, 10s cold-start                | **$0**         |
 | Neon Postgres      | 512 MB storage, 191.9h compute/mo, scales to zero | **$0**         |
-| Vercel Blob (opt.) | 500 MB storage, 1 GB egress/mo               | **$0**         |
+| Vercel Blob        | 1 GB storage/mo, 1 GB egress/mo (Hobby)      | **$0**         |
 | **Total**          |                                              | **$0**         |
 
 > **Caveat:** Vercel Functions have a 10s execution time on the free plan (60s on Pro). Heavy synchronous work in any single request — large seed loads, big reports — would need Pro. For this app's CRUD + kanban + JWT auth flows, 10s is more than enough.
@@ -459,12 +518,17 @@ Keep `vercel.json` as in section 3.1 (no proxy), and set the backend's `FRONTEND
 
 ### 4.1 File uploads (attachments) — important note
 
-The current backend accepts attachments (see `backend/uploads/`). Vercel rewrites do **not** forward multipart/form-data bodies. If attachments matter for the demo:
+> **Correction (2026-11-09).** This section previously claimed that "Vercel
+> rewrites do **not** forward multipart/form-data bodies." **That claim was
+> wrong for this setup.** A 4 MB multipart body demonstrably reached
+> multer and was parsed — the failure was at the filesystem write, not at
+> the rewrite. The real limits are (a) the read-only serverless
+> filesystem and (b) Vercel's 4.5 MB request-body limit, both of which
+> are addressed in §5. No CORS workaround is needed for uploads.
 
-- **Use Option B (CORS)**, OR
-- **Upload directly to a presigned URL** (S3 / R2) — out of scope for this plan, but the right answer at scale
-
-For an MVP demo with small images, Option B is the path of least resistance.
+The backend accepts attachments and stores them through the storage
+interface in §5. Uploads work on Vercel with the `blob` backend set; the
+production size cap is 4 MB because of the platform's 4.5 MB body limit.
 
 ---
 

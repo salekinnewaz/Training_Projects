@@ -22,6 +22,13 @@
 export const environment = {
   production: true,
   apiBaseUrl: '/api',
+  // Client-side attachment size cap. Mirrors the backend's
+  // `MAX_UPLOAD_BYTES`, which is 4 MB on Vercel: the platform
+  // rejects request bodies larger than 4.5 MB before the app
+  // ever sees them, so the honest cap has to be lower than
+  // that limit or the client gets an opaque platform 413
+  // instead of our actionable one.
+  maxAttachmentBytes: 4 * 1024 * 1024,
 } as const;
 
 export type Environment = typeof environment;

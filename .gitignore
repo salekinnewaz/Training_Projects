@@ -129,3 +129,9 @@ qa/qa/
 # measuring the wordmark, badge and heading. Scratch — the
 # measurements taken from them live in the `verify-*.js` gates.
 qa/.crop-*.png
+
+# Local env files. `vercel blob create-store` writes a `.env.local`
+# holding BLOB_READ_WRITE_TOKEN — never commit it. `.env.example` is
+# the documented template and IS tracked, so re-include it.
+.env*
+!.env.example
