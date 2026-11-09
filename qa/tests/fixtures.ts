@@ -69,8 +69,13 @@ export async function logout(page: Page, who: SeededUser): Promise<void> {
   // label), then "Log out" inside the panel, then confirm in
   // the modal per header-profile-logout.md §"Logout confirmation
   // dialog".
+  // The chrome's profile trigger is labelled with the user's
+  // `displayName` — NOT their role. The admin's display name is
+  // "Avery Patel" (the "Admin" text next to the avatar in the admin
+  // chrome is a static role pill, not the trigger's label), so the
+  // admin's trigger must be matched by their real name.
   const names: Record<SeededUser, string> = {
-    admin: 'Admin',
+    admin: 'Avery Patel',
     sam: 'Sam Chen',
     morgan: 'Morgan Lee',
     eli: 'Eli Tanaka',

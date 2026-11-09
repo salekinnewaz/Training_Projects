@@ -18,7 +18,7 @@ table: **`verify-shared-table.js`**, which proves the reference's
 filter bar, ten columns and pagination against the live DOM for the
 **User** and the **Support Agent** — and that the two agree. (The
 Admin does **not** use the shared table; the Admin Workspace has its
-own six-column Recent Tickets widget, and scenario **5b** proves
+own eight-column Recent Tickets widget, and scenario **5b** proves
 both halves of that.)
 
 And a fourth, added with the WDS-2026 Admin Workspace:
@@ -255,7 +255,7 @@ Exits non-zero on any drift. Same requirements as `verify-strip.js`.
 The WDS-2026 reference defines **one** ticket-table layout, and it is
 used by the User's `/dashboard` and the Support Agent's `/tickets`.
 The **Admin** does NOT use it — the Admin Workspace replaced the
-Admin's Tickets tab with its own six-column Recent Tickets widget
+Admin's Tickets tab with its own eight-column Recent Tickets widget
 (see `verify-admin-workspace.js` below). This script proves the
 shared table is real on the two roles that use it, and that those
 two **agree** (68 checks):
@@ -267,7 +267,7 @@ two **agree** (68 checks):
 | 3 | A populated row — category glyph, number, title + muted description, both pills, customer, assignee, relative timestamp, kebab |
 | 4 | The pagination footer — "Showing 1–10 of N tickets", the numbered pager, the "10 / page" picker |
 | 5 | The User and the Agent render the SAME layout — the columns and the filter labels are compared role-to-role |
-| 5b | The **Admin's Workspace renders its OWN** six-column table (`#`, `Title`, `Status`, `Priority`, `Assignee`, `Updated`), does NOT render the shared table, the shared filter bar or any pagination — and navigating to `/tickets` DOES show the shared table |
+| 5b | The **Admin's Workspace renders its OWN** eight-column table (`#`, `Title`, `Status`, `Priority`, `Assignee`, `Customer`, `Updated`, `Actions`), does NOT render the shared table, the shared filter bar or any pagination — and navigating to `/tickets` DOES show the shared table |
 | 6 | The search filter narrows the rows |
 | 7 | Each dropdown filter narrows the rows |
 | 8 | The sort control reorders the rows |
@@ -388,24 +388,24 @@ geometry** and proves the live DOM still matches it (170 checks):
 ```js
 const REF = {
   strip: {
-    cardTop: 222, cardHeight: 90,
-    widths: [261, 227, 232, 229, 230],
-    widthTolerance: 2.5,
-    textLeft: { total: 83, status: 79 },
+    cardTop: 198, cardHeight: 87,
+    widths: [258, 232, 234, 234, 242],
+    widthTolerance: 0.6,
+    textLeft: { total: 86, status: 79 },
     tileLeft: 17, tileSize: 52,
     labels: ['Total Tickets','Open','In Progress','Resolved','Closed'],
   },
-  row2: { widths: [818, 396] },
-  row3: { widths: [497, 327, 380] },
+  row2: { widths: [884, 349] },
+  row3: { widths: [470, 380, 375] },
 };
 ```
 
 It asserts:
 
 - at **1536px** — the reference's own viewport — the widget grid
-  lands on the reference's card widths (row 2: 818 / 396, row 3:
-  497 / 327 / 380), the Recent Tickets table is 816px wide with the
-  column tracks `[107,228,108,100,160,113]`, and the table
+  lands on the reference's card widths (row 2: 884 / 349, row 3:
+  470 / 380 / 375), the Recent Tickets table is 884px wide with the
+  eight column tracks `[120,198,95,95,132,108,78,58]`, and the table
   **scrolls inside** its card (`overflow-x: auto`) rather than
   clipping;
 - at **1536 / 1440 / 1366 / 1280 / 1200 / 1100** — no card lets any
@@ -418,10 +418,8 @@ It asserts:
 node qa/scripts/verify-admin-workspace.js
 ```
 
-> The card **widths** are the one measurement the reference does not
-> pin to a single pixel: its borders are hand-drawn and anti-aliased,
-> so they are only measurable to ±1px. Everything else is asserted
-> exactly.
+> The stat-card widths allow 0.6px for fractional CSS grid tracks.
+> The other reference geometry is asserted exactly.
 
 > Row 3's grid is
 > `minmax(0, 497fr) minmax(0, 9px) minmax(310px, 327fr) minmax(0, 11px) minmax(240px, 380fr)`

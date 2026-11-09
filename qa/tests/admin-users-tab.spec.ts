@@ -3,9 +3,8 @@ import { test, expect, loginAs } from './fixtures';
 /**
  * Admin Users page — self-protection.
  *
- * Per users-tab.md the Admin viewing the page sees their own row with
- * DISABLED role dropdown + active toggle and a muted micro-label
- * "You cannot change your own role." The backend enforces the same
+ * The Admin viewing the page sees their own row with a "You" tag,
+ * disabled role dropdown and active toggle. The backend enforces the same
  * constraint (400), so this checks the UI half.
  *
  * THE USER IDS ARE NOT HARDCODED. The seeded admin is user 105 in
@@ -45,13 +44,12 @@ async function otherUser(
 }
 
 test.describe('Admin Users page — self-protection', () => {
-  test('self row controls are disabled with the micro-label', async ({ page }) => {
+  test('self row is marked with a You tag', async ({ page }) => {
     await loginAs(page, 'admin');
     await page.goto('/users');
     await page.waitForLoadState('networkidle');
 
-    const body = await page.locator('body').innerText();
-    expect(body).toMatch(/you cannot change your own role/i);
+    await expect(page.getByText('You', { exact: true })).toBeVisible();
   });
 
   test('self row role select and toggle are disabled', async ({ page }) => {

@@ -78,6 +78,8 @@ import {
 import type { TicketStatus } from '../../models/enums';
 
 import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
+import { AdminSidebarComponent } from '../../components/molecules/admin-sidebar/admin-sidebar.component';
+import type { AdminSidebarBadge } from '../../components/molecules/admin-sidebar/admin-sidebar.component';
 import { ButtonComponent } from '../../components/atoms/button/button.component';
 import {
   StatStripComponent,
@@ -108,124 +110,161 @@ const DEFAULT_FILTERS: SharedTicketFilterState = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AppChromeComponent,
+    AdminSidebarComponent,
     ButtonComponent,
     StatStripComponent,
     TicketTableComponent,
     TicketFilterBarComponent,
   ],
   template: `
-    <app-chrome>
-      <section class="page" data-testid="tickets-list-page">
-        @if (!canView()) {
-          <div class="forbidden" data-testid="tickets-forbidden">
-            <h2>Not available for your role</h2>
-            <p>The Tickets list is available to Support Agents and Admins.</p>
-          </div>
-        } @else {
-          <!-- ── Stat strip ─────────────────────────────────── -->
-          <header class="page-head">
-            <div>
-              <h1 class="page-title">Tickets</h1>
-              <p class="page-sub">
-                @if (stats(); as s) {
-                  {{ s.counts.total }} total · {{ s.counts.open }} open
-                } @else {
-                  Loading queue summary…
-                }
-              </p>
-            </div>
-            <!-- NO "New ticket" button here. Creating a ticket is the
-                 USER's action: /tickets/new is roleGuard(['User']),
-                 so an Agent or Admin clicking one would land on
-                 /forbidden — a dead-end CTA. The role-aware action
-                 matrix says "Admin = Agent", and the Agent's own
-                 actions are resolve / close / reassign / reprioritise
-                 from the kebab, not creating tickets. The User's
-                 Employee Dashboard carries the "Create Ticket" CTA
-                 instead, which is where ticket creation belongs. -->
-          </header>
-
-          @if (stats(); as s) {
-            <!-- ── Stat strip ───────────────────────────────────────
-                 The SAME <stat-strip> molecule the User's dashboard
-                 and the Admin's dashboard render — Total Tickets
-                 (with the period-over-period delta) plus one card
-                 per status bucket, each carrying a sparkline and a
-                 progress bar.
-
-                 The counts are TEAM-WIDE (GET /api/tickets/stats),
-                 which is the Agent's scope of the whole queue. -->
-            <div class="stat-strip" data-testid="stat-strip">
-              <stat-strip
-                [total]="s.counts.total"
-                [statusItems]="statusItems()"
-                totalLabel="Total Tickets"
-                [delta]="deltaPercent()"
-                [deltaLabel]="deltaLabel()"
-                caption="vs last month"
-              />
-            </div>
-          } @else if (!loading()) {
-            <!-- stats failed or came back empty — the strip is
-                 optional, the table below is the real content. -->
-            <div class="stat-strip-skeleton" aria-hidden="true">
-              @for (i of [1, 2, 3, 4, 5]; track i) {
-                <div class="skeleton-tile"></div>
-              }
-            </div>
-          }
-
-          <!-- ── Filter bar (shared with User/Admin) ────────── -->
-          <ticket-filter-bar
-            [filters]="filters()"
-            [customerOptions]="customerOptions()"
-            [applicationOptions]="applicationOptions()"
-            [assigneeOptions]="assigneeOptions()"
-            (filtersChange)="applyFilters($event)"
-            (moreFilters)="onMoreFilters()"
-          />
-
-          <!-- ── Table (shared with User/Admin) ─────────────── -->
-          @switch (renderState()) {
-            @case ('loading') {
-              <div class="table-skeleton" data-testid="tickets-skeleton">
-                @for (i of skeletonRows; track i) {
-                  <div class="skeleton-row"></div>
-                }
-              </div>
-            }
-            @case ('error') {
-              <div class="error-card" data-testid="tickets-error">
-                <h2>Couldn't load tickets</h2>
-                <p>{{ errorMessage() }}</p>
-                <atom-button variant="secondary" (pressed)="load()">Retry</atom-button>
-              </div>
-            }
-            @default {
-              <ticket-table
-                [rows]="pageRows()"
-                [page]="page()"
-                [pageCount]="pageCount()"
-                [totalItems]="filtered().length"
-                [pageSize]="pageSize()"
-                [selectedIds]="selected()"
-                (pageChange)="page.set($event)"
-                (pageSizeChange)="onPageSizeChange($event)"
-                (selectionChange)="selected.set($event)"
-                (rowClick)="openTicket($event)"
-                (resolveTicket)="resolveTicket($event)"
-                (closeTicket)="closeTicket($event)"
-                emptyMessage="No tickets match your filters"
-              />
-            }
-          }
+    <app-chrome [wide]="isAdmin()">
+      <div class="tickets-workspace" [class.is-admin]="isAdmin()">
+        @if (isAdmin()) {
+          <admin-sidebar class="users-rail tickets-rail" [badge]="sidebarBadge()" />
         }
-      </section>
+        <main class="users-main tickets-main">
+          <section class="page" data-testid="tickets-list-page">
+            @if (!canView()) {
+              <div class="forbidden" data-testid="tickets-forbidden">
+                <h2>Not available for your role</h2>
+                <p>The Tickets list is available to Support Agents and Admins.</p>
+              </div>
+            } @else {
+              <!-- ── Stat strip ─────────────────────────────────── -->
+              <header class="page-head">
+                <div>
+                  <h1 class="page-title">Tickets</h1>
+                  <p class="page-sub">
+                    @if (stats(); as s) {
+                      {{ s.counts.total }} total · {{ s.counts.open }} open
+                    } @else {
+                      Loading queue summary…
+                    }
+                  </p>
+                </div>
+                <!-- NO "New ticket" button here. Creating a ticket is the
+                     USER's action: /tickets/new is roleGuard(['User']),
+                     so an Agent or Admin clicking one would land on
+                     /forbidden — a dead-end CTA. The role-aware action
+                     matrix says "Admin = Agent", and the Agent's own
+                     actions are resolve / close / reassign / reprioritise
+                     from the kebab, not creating tickets. The User's
+                     Employee Dashboard carries the "Create Ticket" CTA
+                     instead, which is where ticket creation belongs. -->
+              </header>
+
+              @if (stats(); as s) {
+                <!-- ── Stat strip ───────────────────────────────────────
+                     The SAME <stat-strip> molecule the User's dashboard
+                     and the Admin's dashboard render — Total Tickets
+                     (with the period-over-period delta) plus one card
+                     per status bucket, each carrying a sparkline and a
+                     progress bar.
+
+                     The counts are TEAM-WIDE (GET /api/tickets/stats),
+                     which is the Agent's scope of the whole queue. -->
+                <div class="stat-strip" data-testid="stat-strip">
+                  <stat-strip
+                    [total]="s.counts.total"
+                    [statusItems]="statusItems()"
+                    totalLabel="Total Tickets"
+                    [delta]="deltaPercent()"
+                    [deltaLabel]="deltaLabel()"
+                    caption="vs last month"
+                  />
+                </div>
+              } @else if (!loading()) {
+                <!-- stats failed or came back empty — the strip is
+                     optional, the table below is the real content. -->
+                <div class="stat-strip-skeleton" aria-hidden="true">
+                  @for (i of [1, 2, 3, 4, 5]; track i) {
+                    <div class="skeleton-tile"></div>
+                  }
+                </div>
+              }
+
+              <!-- ── Filter bar (shared with User/Admin) ────────── -->
+              <ticket-filter-bar
+                [filters]="filters()"
+                [customerOptions]="customerOptions()"
+                [applicationOptions]="applicationOptions()"
+                [assigneeOptions]="assigneeOptions()"
+                (filtersChange)="applyFilters($event)"
+                (moreFilters)="onMoreFilters()"
+              />
+
+              <!-- ── Table (shared with User/Admin) ─────────────── -->
+              @switch (renderState()) {
+                @case ('loading') {
+                  <div class="table-skeleton" data-testid="tickets-skeleton">
+                    @for (i of skeletonRows; track i) {
+                      <div class="skeleton-row"></div>
+                    }
+                  </div>
+                }
+                @case ('error') {
+                  <div class="error-card" data-testid="tickets-error">
+                    <h2>Couldn't load tickets</h2>
+                    <p>{{ errorMessage() }}</p>
+                    <atom-button variant="secondary" (pressed)="load()">Retry</atom-button>
+                  </div>
+                }
+                @default {
+                  <ticket-table
+                    [rows]="pageRows()"
+                    [page]="page()"
+                    [pageCount]="pageCount()"
+                    [totalItems]="filtered().length"
+                    [pageSize]="pageSize()"
+                    [selectedIds]="selected()"
+                    (pageChange)="page.set($event)"
+                    (pageSizeChange)="onPageSizeChange($event)"
+                    (selectionChange)="selected.set($event)"
+                    (rowClick)="openTicket($event)"
+                    (resolveTicket)="resolveTicket($event)"
+                    (closeTicket)="closeTicket($event)"
+                    emptyMessage="No tickets match your filters"
+                  />
+                }
+              }
+            }
+          </section>
+        </main>
+      </div>
     </app-chrome>
   `,
   styles: [`
     :host {
       display: block;
+    }
+    /* Admin gets the same full-bleed workspace rail used by /users.
+       For agents these wrappers dissolve, preserving the existing
+       page-content flow and width exactly. */
+    .tickets-workspace:not(.is-admin),
+    .tickets-workspace:not(.is-admin) > .tickets-main {
+      display: contents;
+    }
+    .tickets-workspace.is-admin {
+      display: flex;
+      align-items: stretch;
+      min-height: calc(100vh - var(--chrome-height));
+      width: 100%;
+      font-family: var(--font-admin, "Figtree", var(--font-sans));
+    }
+    .tickets-workspace.is-admin > .tickets-main {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .tickets-workspace.is-admin > .tickets-rail {
+      height: calc(100vh - var(--chrome-height));
+    }
+    @media (max-width: 900px) {
+      .tickets-workspace.is-admin > .tickets-rail {
+        display: none;
+      }
+      .tickets-workspace.is-admin > .tickets-main {
+        padding: 20px;
+      }
     }
     .page {
       display: grid;
@@ -356,6 +395,14 @@ export class TicketsListPageComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+
+  protected readonly isAdmin = computed(
+    () => this.authService.userSnapshot()?.role === 'Admin',
+  );
+  protected readonly sidebarBadge = computed<AdminSidebarBadge>(() => {
+    const total = this.stats()?.counts.total;
+    return total === undefined ? {} : { tickets: total };
+  });
 
   protected readonly skeletonRows = [1, 2, 3, 4, 5, 6];
 

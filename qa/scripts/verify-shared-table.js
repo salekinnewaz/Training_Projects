@@ -9,9 +9,9 @@
  *
  * THE ADMIN IS NOT ONE OF THEM ANY MORE. The WDS-2026 Admin
  * Workspace replaced the Admin's two-tab Tickets / Users page with
- * a six-widget dashboard, and its "Recent Tickets" card is a
- * SIX-COLUMN summary table (number, title, status, priority,
- * assignee, updated) with no filter bar and no pagination — it
+ * a six-widget dashboard, and its "Recent Tickets" card is an
+ * EIGHT-COLUMN summary table (number, title, status, priority,
+ * assignee, customer, updated, actions) with no filter bar and no pagination — it
  * shows the ten most recently updated tickets and links out to the
  * full queue at /tickets, where the shared table still lives.
  *
@@ -34,7 +34,7 @@
  *      pagination, the "10 / page" picker.
  *   5. The two roles that render the shared table agree on it —
  *      the columns, the filter controls and the footer copy — and
- *      the Admin's Workspace renders its own six-column table
+ *      the Admin's Workspace renders its own eight-column table
  *      while the shared table stays reachable at /tickets.
  *   6. The search filter narrows the rows.
  *   7. Each dropdown filter narrows the rows.
@@ -276,15 +276,15 @@ async function filterLabels(page) {
   {
     const { context, page } = await signIn(browser, 'admin@company.com', '/admin');
 
-    // The Workspace's Recent Tickets card: six columns, no filter
+    // The Workspace's Recent Tickets card: eight columns, no filter
     // bar, no pagination.
     const workspaceHeaders = await page.$$eval(
       '[data-testid="admin-recent-tickets"] thead th',
       (ths) => ths.map((th) => (th.textContent || '').trim()),
     );
-    check('the Workspace renders a six-column table',
+    check('the Workspace renders an eight-column table',
       JSON.stringify(workspaceHeaders),
-      JSON.stringify(['#', 'Title', 'Status', 'Priority', 'Assignee', 'Updated']));
+      JSON.stringify(['#', 'Title', 'Status', 'Priority', 'Assignee', 'Customer', 'Updated', 'Actions']));
     check('the Workspace does NOT render the shared table',
       (await page.locator('[data-testid="ticket-table"]').count()), 0);
     check('the Workspace does NOT render the shared filter bar',

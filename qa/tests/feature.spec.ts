@@ -281,6 +281,24 @@ test.describe('Feature: Submission Confirmation', () => {
 });
 
 test.describe('Feature: Ticket Detail', () => {
+  test('Admin ticket detail keeps the full workspace rail', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.getByTestId('admin-nav-tickets').click();
+    await page.waitForURL(/\/tickets$/);
+    const firstTicket = page.locator('[data-testid="ticket-table"] tbody > tr').first();
+    await expect(firstTicket).toBeVisible({ timeout: 15_000 });
+    await firstTicket.click();
+    await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
+
+    const rail = page.locator('admin-sidebar .sidebar');
+    await expect(rail).toBeVisible();
+    const box = await rail.boundingBox();
+    expect(box?.x).toBe(10);
+    expect(box?.width).toBe(198);
+    expect(box?.height).toBeGreaterThan(800);
+    await expect(page.getByTestId('admin-nav-tickets')).toHaveClass(/active/);
+  });
+
   test('employee can open their own ticket', async ({ page }) => {
     await loginAs(page, 'jess');
     // Pick the first ticket from the dashboard.
@@ -342,6 +360,7 @@ test.describe('Feature: Ticket Detail', () => {
     await page.goto('/queue');
     await page.locator('article').first().click();
     await page.waitForURL(/\/tickets\/(HD-)?\d+/, { timeout: 10_000 });
+    await expect(page.locator('admin-sidebar')).toHaveCount(0);
     await expect(page.locator('select#meta-status')).toBeEnabled();
     await expect(page.locator('select#meta-priority')).toBeEnabled();
     await expect(page.locator('select#meta-assignee')).toBeEnabled();
@@ -476,6 +495,27 @@ test.describe('Feature: Admin Workspace (WDS-2026 Admin Workspace)', () => {
     }
   });
 
+  test('Admin sidebar uses the dark reference rail and highlights the selected route', async ({ page }) => {
+    await loginAs(page, 'admin');
+    const rail = page.locator('admin-sidebar .sidebar');
+    await expect(rail).toBeVisible();
+    await expect.poll(() => rail.evaluate((el) => getComputedStyle(el).backgroundImage))
+      .toContain('linear-gradient');
+    const railBox = await rail.boundingBox();
+    expect(railBox?.x).toBe(10);
+    expect(railBox?.width).toBe(198);
+
+    await page.getByTestId('admin-nav-users').click();
+    await page.waitForURL(/\/users/);
+    const activeUsers = page.getByTestId('admin-nav-users');
+    await expect(activeUsers).toBeVisible();
+    await expect.poll(() => activeUsers.evaluate((el) => getComputedStyle(el).backgroundImage))
+      .toContain('linear-gradient');
+    const activeBox = await activeUsers.boundingBox();
+    expect(activeBox?.x).toBe(25);
+    expect(activeBox?.width).toBe(169);
+  });
+
   test('the Workspace renders the shared stat strip, stacked variant', async ({ page }) => {
     await loginAs(page, 'admin');
     await expect(page.getByTestId('admin-stat-strip')).toBeVisible();
@@ -505,20 +545,22 @@ test.describe('Feature: Admin Workspace (WDS-2026 Admin Workspace)', () => {
     expect(clipped).toEqual([]);
   });
 
-  test('the Workspace renders its own six-column Recent Tickets table', async ({ page }) => {
+  test('the Workspace renders its own eight-column Recent Tickets table', async ({ page }) => {
     await loginAs(page, 'admin');
     await page.waitForSelector(
       '[data-testid="admin-recent-tickets"] thead th',
       { timeout: 10_000 },
     );
     const headers = page.locator('[data-testid="admin-recent-tickets"] thead th');
-    await expect(headers).toHaveCount(6);
+    await expect(headers).toHaveCount(8);
     await expect(headers.nth(0)).toHaveText('#');
     await expect(headers.nth(1)).toHaveText('Title');
     await expect(headers.nth(2)).toHaveText('Status');
     await expect(headers.nth(3)).toHaveText('Priority');
     await expect(headers.nth(4)).toHaveText('Assignee');
-    await expect(headers.nth(5)).toHaveText('Updated');
+    await expect(headers.nth(5)).toHaveText('Customer');
+    await expect(headers.nth(6)).toHaveText('Updated');
+    await expect(headers.nth(7)).toHaveText('Actions');
     // The shared ten-column table is NOT on this page.
     await expect(page.getByTestId('ticket-table')).toHaveCount(0);
     await expect(page.getByTestId('ticket-filter-bar')).toHaveCount(0);
@@ -530,12 +572,64 @@ test.describe('Feature: Admin Workspace (WDS-2026 Admin Workspace)', () => {
       '[data-testid="admin-recent-tickets"] tbody > tr',
       { timeout: 10_000 },
     );
-    const first = page.locator('[data-testid="admin-recent-tickets"] tbody > tr').first();
-    await expect(first.locator('.col-num')).toContainText(/HD-\d+/);
-    await expect(first.locator('.title-text')).not.toBeEmpty();
-    await expect(first.locator('badge-status')).toBeVisible();
-    await expect(first.locator('badge-priority')).toBeVisible();
-    await expect(first.locator('.updated-cell')).toContainText(/ago|just now/);
+
+    // The workspace shows the 5 NEWEST tickets, and other suites
+    // create fresh ones — so the top row is not a fixed ticket.
+    // Assert the column contract on every row rather than on a
+    // specific seeded one.
+    const rows = page.locator('[data-testid="admin-recent-tickets"] tbody > tr');
+    const count = await rows.count();
+    expect(count).toBeGreaterThan(0);
+
+    for (let i = 0; i < count; i++) {
+      const row = rows.nth(i);
+      await expect(row.locator('.col-num')).toContainText(/HD-\d+/);
+      await expect(row.locator('.title-text')).not.toBeEmpty();
+      await expect(row.locator('badge-status')).toBeVisible();
+      await expect(row.locator('badge-priority')).toBeVisible();
+      await expect(row.locator('.customer-cell')).not.toBeEmpty();
+      // Relative timestamps, not absolute ones. The exact value
+      // drifts as rows age, so assert the SHAPE ("16m ago",
+      // "7h ago") rather than a frozen string.
+      await expect(row.locator('.updated-cell')).toHaveText(/^(just now|\d+[mhd] ago)$/);
+    }
+
+    // The newest row's customer cell falls back to the submitter's
+    // name for any ticket that is not one of the seeded reference
+    // rows (HD-53 and friends).
+    const first = rows.first();
+    const firstNumber = (await first.locator('.col-num').innerText()).trim();
+    const expectedCustomer = await page.evaluate((num) => {
+      const seeded: Record<string, string> = {
+        'HD-53': 'Acme Corp',
+        'HD-34': 'Globex Inc',
+        'HD-52': 'Acme Corp',
+        'HD-40': 'TechNova',
+        'HD-39': 'Infratek',
+      };
+      return seeded[num] ?? null;
+    }, firstNumber);
+    if (expectedCustomer !== null) {
+      await expect(first.locator('.customer-cell')).toHaveText(expectedCustomer);
+    }
+
+    const recentUsers = page.getByTestId('admin-recent-users').locator('.ru-row');
+    await expect(recentUsers.nth(0)).toContainText('Eli Tanaka');
+    await expect(recentUsers.nth(0)).toContainText('Support Agent');
+    await expect(recentUsers.nth(0).locator('.ru-time')).toHaveText(/^(just now|\d+[mhd] ago)$/);
+    await expect(recentUsers.nth(4)).toContainText('Priya Singh');
+    await expect(recentUsers.nth(4)).toContainText('Employee');
+    await expect(recentUsers.nth(4).locator('.ru-time')).toHaveText(/^(just now|\d+[mhd] ago)$/);
+  });
+
+  test('a Recent Tickets action opens its menu without opening the row', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.getByTestId('admin-recent-tickets').waitFor();
+    await page.getByRole('button', { name: /open actions for/i }).first().click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await expect(page).toHaveURL(/\/admin/);
+    await page.getByRole('menuitem', { name: 'View ticket' }).click();
+    await expect(page).toHaveURL(/\/tickets\//);
   });
 
   test('the Workspace\'s "View all" links to the shared queue', async ({ page }) => {
@@ -548,6 +642,34 @@ test.describe('Feature: Admin Workspace (WDS-2026 Admin Workspace)', () => {
     await page.waitForURL(/\/tickets/, { timeout: 10_000 });
     // The shared table is there.
     await expect(page.getByTestId('ticket-table')).toBeVisible();
+  });
+
+  test('Admin Tickets uses the dark workspace rail with Tickets selected', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.getByTestId('admin-nav-tickets').click();
+    await page.waitForURL(/\/tickets$/);
+
+    const rail = page.locator('admin-sidebar .sidebar');
+    const activeTickets = page.getByTestId('admin-nav-tickets');
+    await expect(rail).toBeVisible();
+    await expect(page.getByTestId('ticket-table')).toBeVisible();
+    await expect.poll(() => rail.evaluate((el) => getComputedStyle(el).backgroundImage))
+      .toContain('linear-gradient');
+    await expect.poll(() => activeTickets.evaluate((el) => getComputedStyle(el).backgroundImage))
+      .toContain('linear-gradient');
+    const railBox = await rail.boundingBox();
+    expect(railBox?.height).toBeGreaterThan(800);
+    const activeBox = await activeTickets.boundingBox();
+    expect(activeBox?.x).toBe(25);
+    expect(activeBox?.width).toBe(169);
+    await expect(activeTickets.locator('.badge')).toHaveText(/^\d+$/);
+  });
+
+  test('Support Agent Tickets keeps the existing layout without the Admin rail', async ({ page }) => {
+    await loginAs(page, 'sam');
+    await expect(page.getByTestId('tickets-list-page')).toBeVisible();
+    await expect(page.getByTestId('ticket-table')).toBeVisible();
+    await expect(page.locator('admin-sidebar')).toHaveCount(0);
   });
 
   test('the Workspace does not cause horizontal page overflow at 1440px', async ({ page }) => {
@@ -751,14 +873,10 @@ test.describe('Feature: Users tab', () => {
     expect(active + inactive).toBe(total);
   });
 
-  test('admin self-row has the "You cannot change your own role" micro-label', async ({ page }) => {
-    // Wireframe §"Self-protection" — the Admin viewing the
-    // page has disabled role dropdown + active toggle on their
-    // own row + the micro-label "You cannot change your own
-    // role."
+  test('admin self-row is marked with a You tag', async ({ page }) => {
     await loginAs(page, 'admin');
     await page.goto('/users');
-    await expect(page.getByText(/you cannot change your own role/i)).toBeVisible();
+    await expect(page.getByText('You', { exact: true })).toBeVisible();
   });
 });
 

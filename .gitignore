@@ -124,3 +124,8 @@ qa/scripts/*
 qa/*.cjs
 qa/admin-workspace-metrics.json
 qa/qa/
+
+# Cropped PNG tiles pulled out of the reference mockup while
+# measuring the wordmark, badge and heading. Scratch — the
+# measurements taken from them live in the `verify-*.js` gates.
+qa/.crop-*.png

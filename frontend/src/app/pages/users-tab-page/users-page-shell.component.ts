@@ -22,30 +22,50 @@
  * standalone route.
  */
 
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 
 import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
+import { AdminSidebarComponent } from '../../components/molecules/admin-sidebar/admin-sidebar.component';
+import type { AdminSidebarBadge } from '../../components/molecules/admin-sidebar/admin-sidebar.component';
+import { TicketService } from '../../services/ticket.service';
 import { UsersTabPageComponent } from './users-tab-page.component';
 
 @Component({
   selector: 'app-users-page-shell',
   standalone: true,
-  imports: [AppChromeComponent, UsersTabPageComponent],
+  imports: [AppChromeComponent, AdminSidebarComponent, UsersTabPageComponent, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <app-chrome>
-      <section class="users-shell">
-        <header class="users-shell__header">
-          <div class="users-shell__title-group">
-            <h1 class="users-shell__title">Users</h1>
-            <p class="users-shell__subtitle">
-              Manage who has access to HelpDesk Lite and what role they hold.
-            </p>
-          </div>
-        </header>
+    <app-chrome [wide]="true">
+      <div class="users-workspace">
+        <admin-sidebar class="users-rail" [badge]="sidebarBadge()" />
+        <main class="users-main">
+          <section class="users-shell">
+            <nav class="users-breadcrumb" aria-label="Breadcrumb">
+              <a routerLink="/admin">Home</a><span aria-hidden="true">›</span><span aria-current="page">Users</span>
+            </nav>
+            <header class="users-shell__header">
+              <div class="users-shell__title-group">
+                <h1 class="users-shell__title">
+                  Users
+                  <span class="users-title-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.5a5.5 5.5 0 0 1 11 0V19zM16 5.5a3 3 0 0 1 0 5.8M17 14a4.5 4.5 0 0 1 3.5 4.4V19h-4"/></svg>
+                  </span>
+                </h1>
+                <p class="users-shell__subtitle">
+                  Manage who has access to HelpDesk Lite and what role they hold. Invite new users, assign roles, and control access.
+                </p>
+              </div>
+              <button class="users-invite" type="button" disabled title="Invitations are not available yet">
+                <span aria-hidden="true">＋</span> Invite User
+              </button>
+            </header>
 
-        <app-users-tab-page />
-      </section>
+            <app-users-tab-page (usersCountChanged)="onUsersCount($event)" />
+          </section>
+        </main>
+      </div>
     </app-chrome>
   `,
   styles: [`
@@ -57,4 +77,28 @@ import { UsersTabPageComponent } from './users-tab-page.component';
        same pattern as every other page component. */
   `],
 })
-export class UsersPageShellComponent {}
+export class UsersPageShellComponent implements OnInit {
+  private readonly ticketService = inject(TicketService);
+  readonly sidebarBadge = signal<AdminSidebarBadge>({});
+
+  ngOnInit(): void {
+    void this.loadTicketCount();
+  }
+
+  onUsersCount(count: number): void {
+    this.sidebarBadge.update((badge) => ({ ...badge, users: count }));
+  }
+
+  private async loadTicketCount(): Promise<void> {
+    try {
+      const bundle = await this.ticketService.workspace();
+      this.sidebarBadge.update((badge) => ({
+        ...badge,
+        tickets: bundle.summary.totalTickets,
+      }));
+    } catch {
+      // The Users roster remains available if the optional sidebar
+      // ticket counter cannot be loaded.
+    }
+  }
+}

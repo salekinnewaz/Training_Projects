@@ -67,7 +67,11 @@ const PERSONAS = [
     email: 'admin@company.com',
     path: '/admin',
     variant: 'stacked',
-    cardHeight: 90,
+    // The WDS-2026 Admin Workspace reference (the supplied
+    // 1536×1024 image — HANDSOFF Iteration 17) draws the strip card
+    // at y=198..285 — 87px tall. It replaced the earlier 90px
+    // reference when the Admin hero and grid were rebuilt.
+    cardHeight: 87,
     hasBar: false,
   },
 ];
@@ -284,9 +288,13 @@ async function readStrip(page) {
     sameRatios(ratios(user.cardWidths), ratios(agent.cardWidths)), true);
 
   // The Admin renders the OTHER variant, so its card height follows
-  // the Admin reference (90px) rather than the HD-021 one (88px).
+  // the Admin reference rather than the HD-021 one (88px). The
+  // WDS-2026 Admin Workspace reference (the supplied 1536×1024
+  // image — HANDSOFF Iteration 17) draws the card at y=198..285,
+  // i.e. 87px tall; it replaced the earlier 90px reference when
+  // the Admin hero and grid were rebuilt.
   check('the Admin\'s cards are the Admin reference\'s height',
-    admin.cardHeights, [90, 90, 90, 90, 90]);
+    admin.cardHeights, [87, 87, 87, 87, 87]);
   check('the Admin and the Agent use different variants',
     admin.variant !== agent.variant, true);
   check('the Admin and the Agent share the same card anatomy',

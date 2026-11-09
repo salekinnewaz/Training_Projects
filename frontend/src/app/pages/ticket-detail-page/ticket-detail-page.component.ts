@@ -91,6 +91,8 @@ import type {
 import type { UserPublic } from '../../models/user';
 
 import { AppChromeComponent } from '../../components/patterns/app-chrome/app-chrome.component';
+import { AdminSidebarComponent } from '../../components/molecules/admin-sidebar/admin-sidebar.component';
+import type { AdminSidebarBadge } from '../../components/molecules/admin-sidebar/admin-sidebar.component';
 import { LoadingSkeletonComponent } from '../../components/patterns/loading-skeleton/loading-skeleton.component';
 import { ButtonComponent } from '../../components/atoms/button/button.component';
 import { SelectComponent, type SelectOption } from '../../components/atoms/select/select.component';
@@ -109,6 +111,7 @@ const COMMENT_MAX = 5000;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AppChromeComponent,
+    AdminSidebarComponent,
     LoadingSkeletonComponent,
     ButtonComponent,
     SelectComponent,
@@ -118,8 +121,13 @@ const COMMENT_MAX = 5000;
     TimelineEntryComponent,
   ],
   template: `
-    <app-chrome>
-      <section class="detail-page">
+    <app-chrome [wide]="isAdmin()">
+      <div class="detail-workspace" [class.is-admin]="isAdmin()">
+        @if (isAdmin()) {
+          <admin-sidebar class="users-rail detail-rail" [badge]="sidebarBadge()" />
+        }
+        <div class="users-main detail-main">
+          <section class="detail-page">
         @if (composerError(); as msg) {
           <div
             class="error-toast"
@@ -448,12 +456,43 @@ const COMMENT_MAX = 5000;
             }
           }
         }
-      </section>
+          </section>
+        </div>
+      </div>
     </app-chrome>
   `,
   styles: [`
     :host {
       display: block;
+    }
+    /* The Admin detail view shares the workspace rail and full-bleed
+       shell. Display-contents keeps the Agent and User detail layout
+       on the original app-chrome content column. */
+    .detail-workspace:not(.is-admin),
+    .detail-workspace:not(.is-admin) > .detail-main {
+      display: contents;
+    }
+    .detail-workspace.is-admin {
+      display: flex;
+      align-items: stretch;
+      min-height: calc(100vh - var(--chrome-height));
+      width: 100%;
+      font-family: var(--font-admin, "Figtree", var(--font-sans));
+    }
+    .detail-workspace.is-admin > .detail-rail {
+      height: calc(100vh - var(--chrome-height));
+    }
+    .detail-workspace.is-admin > .detail-main {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    @media (max-width: 900px) {
+      .detail-workspace.is-admin > .detail-rail {
+        display: none;
+      }
+      .detail-workspace.is-admin > .detail-main {
+        padding: 20px;
+      }
     }
     .detail-page {
       width: 100%;
@@ -824,6 +863,9 @@ export class TicketDetailPageComponent implements OnInit, OnDestroy {
   /** The active JWT user. */
   readonly currentUser = signal<UserPublic | null>(null);
 
+  readonly isAdmin = computed(() => this.currentUser()?.role === 'Admin');
+  readonly sidebarBadge = signal<AdminSidebarBadge>({});
+
   /** Render branch. */
   readonly renderState = signal<RenderState>('loading');
 
@@ -1042,15 +1084,32 @@ export class TicketDetailPageComponent implements OnInit, OnDestroy {
     const snap = this.authService.userSnapshot();
     if (snap) {
       this.currentUser.set(snap);
+      if (snap.role === 'Admin') void this.loadAdminSidebarBadge();
     } else {
       this.authService.refreshUser()
-        .then(() => this.currentUser.set(this.authService.userSnapshot()))
+        .then(() => {
+          const user = this.authService.userSnapshot();
+          this.currentUser.set(user);
+          if (user?.role === 'Admin') void this.loadAdminSidebarBadge();
+        })
         .catch(() => {
           // best-effort — leave currentUser null; gates simply disable
         });
     }
 
     void this.load(parsed);
+  }
+
+  private async loadAdminSidebarBadge(): Promise<void> {
+    try {
+      const bundle = await this.ticketService.workspace();
+      this.sidebarBadge.set({
+        tickets: bundle.summary.totalTickets,
+        users: bundle.summary.totalUsers,
+      });
+    } catch {
+      // The detail view remains usable when optional rail counts fail.
+    }
   }
 
   goToDashboard(): void {

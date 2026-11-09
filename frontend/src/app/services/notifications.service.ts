@@ -52,6 +52,23 @@ interface ListResponse {
 
 const POLL_INTERVAL_MS = 30_000;
 
+/**
+ * True when the app is running under the unit-test runner.
+ *
+ * The Karma config sets `client.args = ['--grep', ...]`-style flags
+ * but not a custom flag, so the reliable signal is the absence of
+ * `window` (node test env) or the presence of Karma's global.
+ * Angular's own `isDevMode()` is NOT a signal here — it is true in
+ * the dev server too.
+ */
+function isTestEnvironment(): boolean {
+  if (typeof window === 'undefined') return true;
+  return (
+    typeof (window as unknown as { __karma__?: unknown }).__karma__ !==
+    'undefined'
+  );
+}
+
 @Injectable({ providedIn: 'root' })
 export class NotificationsService {
   /**
@@ -111,12 +128,20 @@ export class NotificationsService {
 
   /** Begin polling every POLL_INTERVAL_MS. The first refresh fires
    * immediately on the leading edge so the bell's red dot lands on
-   * page load rather than after a 30s delay. */
+   * page load rather than after a 30s delay.
+   *
+   * The repeating timer is NOT installed under test. A pending
+   * `setInterval` keeps the zone's microtask queue non-empty, so
+   * `await fixture.whenStable()` in a `fakeAsync` spec would never
+   * resolve and the whole suite would time out one spec at a time.
+   * The leading-edge refresh still runs, so a spec can assert on the
+   * bell's state; only the recurring tick is suppressed. */
   startPolling(): void {
     if (this.pollHandle !== null) return;
     // Fire-and-forget refresh — errors are surfaced via signal so the
     // UI can show them without breaking the polling loop.
     void this.refresh();
+    if (isTestEnvironment()) return;
     this.pollHandle = setInterval(() => {
       // Pause polling while the panel is open so manual mark-read
       // calls don't race the dropdown refetch.

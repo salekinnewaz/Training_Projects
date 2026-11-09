@@ -34,6 +34,30 @@ async function setRoleViaUi(
 }
 
 /**
+ * Reads the human-readable role label a row currently shows.
+ *
+ * The WDS-2026 rework dropped the separate static role badge and
+ * folded the role into the compact `<atom-select>`: the real
+ * `<select>` carries the machine value while the
+ * `.select-wrap__overlay` span paints the readable label ("Employee"
+ * / "Support Agent" / "Admin") over the closed control.
+ *
+ * Falls back to the selected `<option>` text when no overlay is
+ * rendered, so the helper works on both the compact and the plain
+ * variant of the select.
+ */
+async function roleLabelOf(
+  row: import('@playwright/test').Locator,
+): Promise<string> {
+  const overlay = row.locator('.select-wrap__overlay');
+  if ((await overlay.count()) > 0) {
+    return (await overlay.first().innerText()).trim();
+  }
+  const selected = row.locator('select option:checked');
+  return (await selected.first().innerText()).trim();
+}
+
+/**
  * Regression suite for the Admin Users page.
  *
  * Covers the three defects reported after the users-page redesign:
@@ -81,19 +105,19 @@ test.describe('Admin Users page — regression', () => {
       for (let i = 0; i < count; i++) {
         const row = rows.nth(i);
         const name = (await row.locator('.user-row__display-name').innerText()).trim();
-        const badge = (await row.locator('.user-row__role-badge').innerText()).trim();
         const selectValue = await row.locator('select').inputValue();
+        const shownLabel = await roleLabelOf(row);
 
-        // The badge is the readable role; the select's value is the
-        // machine role. Map the badge back to the enum value.
-        const badgeToRole: Record<string, string> = {
+        // The select's value is the machine role; the overlay is the
+        // human label. Map the label back to the enum value.
+        const labelToRole: Record<string, string> = {
           Employee: 'User',
           'Support Agent': 'Support Agent',
           Admin: 'Admin',
         };
-        const expected = badgeToRole[badge];
+        const expected = labelToRole[shownLabel];
         if (expected && selectValue !== expected) {
-          mismatches.push(`${name}: badge=${badge} select=${selectValue}`);
+          mismatches.push(`${name}: label=${shownLabel} select=${selectValue}`);
         }
       }
       expect(mismatches, `rows showing the wrong role:\n${mismatches.join('\n')}`).toEqual([]);
@@ -161,15 +185,15 @@ test.describe('Admin Users page — regression', () => {
         await page.waitForTimeout(900);
 
         const row = page.locator('.user-row', { hasText: name }).first();
-        const badge = (await row.locator('.user-row__role-badge').innerText()).trim();
+        const label = await roleLabelOf(row);
         const value = await row.locator('select').inputValue();
 
-        const badgeToRole: Record<string, string> = {
+        const labelToRole: Record<string, string> = {
           Employee: 'User',
           'Support Agent': 'Support Agent',
           Admin: 'Admin',
         };
-        expect(badgeToRole[badge]).toBe(value);
+        expect(labelToRole[label]).toBe(value);
       } finally {
         await page.reload();
         await page.waitForLoadState('networkidle');
@@ -215,7 +239,7 @@ test.describe('Admin Users page — regression', () => {
         // Promote to Admin.
         await target.locator('select').selectOption('Admin');
         await page.waitForTimeout(1200);
-        await expect(target.locator('.user-row__role-badge')).toContainText('Admin');
+        await expect(target.locator('select')).toHaveValue('Admin');
 
         // Demote → the confirmation dialog must appear. It is
         // rendered via a portal into <body>, so target the
@@ -246,7 +270,7 @@ test.describe('Admin Users page — regression', () => {
 
         const rowAfter = page.locator('.user-row', { hasText: name }).first();
         await expect(rowAfter.locator('select')).toHaveValue('Support Agent');
-        await expect(rowAfter.locator('.user-row__role-badge')).toContainText('Support Agent');
+        expect(await roleLabelOf(rowAfter)).toBe('Support Agent');
       } finally {
         // Restore the seeded role.
         await page.reload();
@@ -315,11 +339,13 @@ test.describe('Admin Users page — regression', () => {
 
       for (let i = 0; i < count; i++) {
         const row = rows.nth(i);
-        const badgeText = (await row.locator('.user-row__role-badge').innerText()).trim();
+        const labelText = await roleLabelOf(row);
 
-        // The badge carries the full role name — no ellipsis.
-        expect(badgeText).not.toContain('…');
-        expect(badgeText).not.toContain('...');
+        // The label carries the full role name — no ellipsis.
+        expect(labelText).not.toContain('…');
+        expect(labelText).not.toContain('...');
+        // And it is one of the three real roles, spelled out.
+        expect(['Employee', 'Support Agent', 'Admin']).toContain(labelText);
 
         // The select must not overflow its own box (no clipped
         // label) — scrollWidth should not exceed clientWidth.
@@ -334,20 +360,22 @@ test.describe('Admin Users page — regression', () => {
       }
     });
 
-    test('the role column shows a compact change control next to the badge', async ({ page }) => {
+    test('the role column shows a compact change control', async ({ page }) => {
       await loginAs(page, 'admin');
       await page.goto('/users');
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(600);
 
       const first = page.locator('.user-row:not(.user-row--self)').first();
-      await expect(first.locator('.user-row__role-badge')).toBeVisible();
       await expect(first.locator('select')).toBeVisible();
 
-      // The control reads "Change", NOT the role name — the badge
-      // already carries the role, so repeating it would make the
-      // column say the same thing twice.
-      await expect(first.locator('.select-wrap__overlay')).toHaveText('Change');
+      // The role is shown ONCE — the select itself carries it, so
+      // there is no separate badge repeating the same word.
+      await expect(first.locator('.user-row__role-badge')).toHaveCount(0);
+
+      // The select's closed state shows the full role name.
+      const shown = await first.locator('select option:checked').innerText();
+      expect(shown.trim()).toBe(await roleLabelOf(first));
 
       const width = await first.locator('select').evaluate((el) => el.clientWidth);
       expect(width).toBeLessThanOrEqual(140);
@@ -392,7 +420,7 @@ test.describe('Admin Users page — regression', () => {
       await expect(page.locator('[data-testid="users-empty"]')).toBeVisible();
     });
 
-    test('a role filter chip narrows the list and toggles off', async ({ page }) => {
+    test('a role filter narrows the list and toggles off', async ({ page }) => {
       await loginAs(page, 'admin');
       await page.goto('/users');
       await page.waitForLoadState('networkidle');
@@ -402,25 +430,24 @@ test.describe('Admin Users page — regression', () => {
       // Filter on "Support Agent" — the seed has several of them,
       // so the assertion is stable regardless of how many Admins
       // happen to exist.
-      const chip = page.locator('[data-testid="role-filter-support-agent"]');
-      await expect(chip).toBeVisible();
+      const filter = page.locator('[data-testid="users-role-filter"]');
+      await expect(filter).toBeVisible();
 
-      await chip.click();
+      await filter.selectOption('Support Agent');
       await page.waitForTimeout(400);
       const agents = await page.locator('.user-row').count();
       expect(agents).toBeLessThan(total);
       expect(agents).toBeGreaterThan(0);
 
       // Every visible row is now an Agent.
-      const badges = await page
-        .locator('.user-row .user-row__role-badge')
-        .allInnerTexts();
-      for (const badge of badges) {
-        expect(badge.trim()).toBe('Support Agent');
+      const rows = page.locator('.user-row');
+      for (let i = 0; i < agents; i++) {
+        const value = await rows.nth(i).locator('select').inputValue();
+        expect(value).toBe('Support Agent');
       }
 
-      // Clicking the active chip again clears the filter.
-      await chip.click();
+      // Switching the filter back to "All roles" clears it.
+      await filter.selectOption('all');
       await page.waitForTimeout(400);
       await expect(page.locator('.user-row')).toHaveCount(total);
     });
@@ -458,20 +485,25 @@ test.describe('Admin Users page — regression', () => {
       await expect(selfRow.locator('select')).toBeDisabled();
       await expect(selfRow.locator('.user-row__active-toggle')).toBeDisabled();
 
-      // The explanatory micro-label is present and INSIDE the row
-      // (it used to be absolutely positioned below the row and
-      // overlapped the next one).
-      const note = selfRow.locator('.user-row__self-micro-label');
-      await expect(note).toBeVisible();
-      await expect(note).toContainText('cannot change your own role');
+      // The "You" tag marks the row as the admin's own and carries
+      // the explanation of why the controls are locked. It sits
+      // INSIDE the row (it used to be absolutely positioned below
+      // the row and overlapped the next one).
+      const tag = selfRow.locator('.user-row__you-tag');
+      await expect(tag).toBeVisible();
+      await expect(tag).toHaveText('You');
+      await expect(tag).toHaveAttribute(
+        'title',
+        'You cannot change your own role',
+      );
 
-      const noteBox = await note.boundingBox();
+      const tagBox = await tag.boundingBox();
       const rowBox = await selfRow.boundingBox();
-      expect(noteBox).not.toBeNull();
+      expect(tagBox).not.toBeNull();
       expect(rowBox).not.toBeNull();
-      if (noteBox && rowBox) {
-        // The note's bottom edge must sit within the row's box.
-        expect(noteBox.y + noteBox.height).toBeLessThanOrEqual(rowBox.y + rowBox.height + 2);
+      if (tagBox && rowBox) {
+        // The tag's bottom edge must sit within the row's box.
+        expect(tagBox.y + tagBox.height).toBeLessThanOrEqual(rowBox.y + rowBox.height + 2);
       }
     });
   });
