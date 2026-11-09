@@ -2,7 +2,7 @@
   "name": "helpdesk-lite-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "HelpDesk Lite monorepo — Angular 17 frontend, Express + TypeScript backend, MySQL via Sequelize. WDS Phase 6 (Mimir) implementation scaffold.",
+  "description": "HelpDesk Lite monorepo — Angular 17 frontend, Express + TypeScript backend, PostgreSQL via Sequelize.",
   "workspaces": [
     "frontend",
     "backend"
@@ -23,7 +23,7 @@
     "test": "npm run test --workspace backend",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f mysql",
+    "docker:logs": "docker compose logs -f postgres",
     "docker:ps": "docker compose ps"
   },
   "devDependencies": {
