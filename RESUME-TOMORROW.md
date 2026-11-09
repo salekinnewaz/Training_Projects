@@ -1,12 +1,25 @@
 # RESUME — Admin Workspace rework (session `30945ab7`)
 
-> **⚠️ MOSTLY STALE — read Iteration 20 first (2026-11-09).**
-> The work described here is now **committed and published**:
-> committed as `b6bea8d`, pushed to `origin/main`
-> (`d21256b..b6bea8d`), and deployed to Vercel production. The
-> working tree is **clean** — there is nothing uncommitted to
-> protect, and no commit is outstanding. §4's inventory and §7's
-> action list are **historical**.
+> **⚠️ MOSTLY STALE — read Iteration 21 first (2026-11-09).**
+>
+> **Iteration 21 (2026-11-09) fixed the last production 500.**
+> `POST /api/attachments` was returning 500 in production because the
+> Vercel serverless filesystem is **read-only** (`/var/task` → EROFS)
+> and the storage backend wrote there. Attachment bytes now go to a
+> **private Vercel Blob store** on production
+> (`ATTACHMENT_STORAGE_BACKEND=blob`); local dev still uses the
+> filesystem with zero config. The upload cap is **4 MB in
+> production** (Vercel rejects bodies over 4.5 MB before the app sees
+> them) and 10 MB locally. The app **refuses to boot** on Vercel with
+> the `fs` backend, so a missing env var fails loudly instead of
+> silently breaking uploads. Committed as `d739ffb`, pushed to
+> `origin/main`, and deployed to Vercel production.
+>
+> Read **`HANDSOFF.md` → `## Iteration 21`** for the full write-up,
+> including the two latent path bugs (a doubled `uploads/` prefix and a
+> missing path-traversal guard) that were fixed alongside.
+>
+> ---
 >
 > **Iteration 20 also repaired the production database.** The
 > `notifications` table had never been created on the production
@@ -18,7 +31,7 @@
 > set.
 >
 > The whole tree is green: **652/652 QA gate checks**, **610/610
-> Angular unit tests**, **189/189 backend tests** (153 unit + 36
+> Angular unit tests**, **215/215 backend tests** (179 unit + 36
 > integration), **145 Playwright E2E passed / 1 skipped / 0 failed**,
 > both `tsc --noEmit` runs clean, and `npm run build` clean on both
 > sides. Read **`HANDSOFF.md` → `## Iteration 16`**, **`## Iteration
