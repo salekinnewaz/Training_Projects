@@ -1226,3 +1226,114 @@ eight failures that were unrelated to notifications but real:
 Plain `ChromeHeadless` defaults to a ~741px viewport, which trips the
 stat-strip's responsive breakpoints and produces three phantom
 geometry failures.
+
+---
+
+## Iteration 20 — 2026-11-09 — Commit the working tree, deploy to GitHub + Vercel, and repair the production schema
+
+The Admin Workspace rework and the notification matrix were finished
+but entirely uncommitted. This iteration commits that work, publishes
+it, and fixes a production database defect the deploy exposed.
+
+### The production defect
+
+Pushing to GitHub auto-triggered a Vercel production build (the
+project has git integration enabled, so `git push origin main` is
+enough — no `vercel --prod` needed). The new code deployed fine, but
+two production endpoints returned HTTP 500:
+
+```
+GET  /api/notifications   500   relation "notifications" does not exist
+POST /api/tickets         500   relation "notifications" does not exist
+```
+
+The stack trace (via `vercel logs`) pointed at
+`notificationService.ts` → `Notification.bulkCreate`, and the Postgres
+error was `42P01 relation "notifications" does not exist`.
+
+**Root cause.** The `notifications` table had never been created on
+the production Neon database. `20260915000007-create-notifications.js`
+and `20260915000008-ticket-priority-nullable.js` were committed to git
+in `abb4e9a`, but per `DEPLOY_VERCEL.md` §4.4 migrations are applied
+to Neon as a **one-time manual step** — and that step was never run.
+The production schema was six migrations behind:
+
+```
+APPLIED (before):  ...06-create-activity-logs
+APPLIED (after):   ...06-create-activity-logs
+                    ...07-create-notifications      <- was missing
+                    ...08-ticket-priority-nullable <- was missing
+```
+
+**Fix.** Ran the two pending migrations against Neon using the
+non-pooled string, per the doc's guidance that DDL needs a long-lived
+connection:
+
+```bash
+POSTGRES_URL_DIRECT='<neon direct url>' NODE_ENV=production \
+  npx sequelize db:migrate
+```
+
+Both applied cleanly (1.657s / 1.266s). `notifications` now exists
+and all 9 migrations are recorded in `SequelizeMeta`.
+
+Note the tracking table is `SequelizeMeta` (capitalised) — a
+lowercase `sequelize_meta` query fails with "relation does not
+exist", which is an easy way to misdiagnose this.
+
+No schema change was needed for the new `ticket_created` type:
+`notifications.type` is a `varchar`, not a Postgres enum, so the
+new type needed no `ALTER TYPE`.
+
+### Verification on the live production deployment
+
+Confirmed the matrix end to end against
+`https://helpdesk-lite-tawny.vercel.app`:
+
+| Check | Result |
+|---|---|
+| `GET /api/health` | 200 `{"status":"ok"}` |
+| `GET /api/notifications` (Admin) | 200, no longer 500 |
+| `POST /api/tickets` (User jess) | 200, ticket HD-102 created |
+| Admin notified of `ticket_created` | ✅ received it, `unreadCount: 1` |
+| Support Agent notified | ✅ received it, `unreadCount: 1` |
+| Actor NOT notified of own action | ✅ Jess received nothing |
+
+The smoke-test ticket and its notifications were deleted afterwards;
+the production ticket count went back to its prior value (81).
+
+### What was committed
+
+One commit on top of the three that were already sitting unpushed
+(`b6bea8d`, 41 files, +3880/-1728), pushing `d21256b..b6bea8d` to
+`origin/main`. The three unpushed commits were:
+
+- `37c8758` — docs(handoff): snapshot the Admin Workspace rework
+- `2dabed4` — docs(handsoff): flag the in-progress Admin Workspace rework
+- `147966d` — feat(admin): finish the WDS-2026 Admin Workspace
+
+### Housekeeping
+
+- `.gitignore` now ignores `qa/.crop-*.png` — five scratch tiles
+  cropped out of the reference mockup while measuring the wordmark,
+  badge and heading. The measurements taken from them live in the
+  `verify-*.js` gates, so the tiles themselves are scratch.
+- Per the standing rule in `RESUME-TOMORROW.md` §7, files were staged
+  **by name**. No `git add -A`.
+- A schema snapshot of production was written to
+  `.qa-tmp/prod-schema-before.txt` (47 columns) before migrating.
+
+### Verification before committing
+
+| Suite | Result |
+|---|---|
+| Backend Jest (unit) | **153 passed** |
+| Backend Jest (integration) | **36 passed** |
+| Frontend Karma | **610 SUCCESS**, 0 failed |
+| Playwright (full suite) | **145 passed**, 1 skipped, 0 failed |
+| QA verify gates | **all 7 green** — 170/170, 62/62, 97/97, 49/49, 68/68, 57/57, 149/149 |
+| Backend typecheck + build | clean |
+| Frontend production build | clean |
+
+Total: **652/652 QA gate checks**, **610/610** Angular,
+**189/189** backend, **145** E2E passed / 1 skipped / 0 failed.
